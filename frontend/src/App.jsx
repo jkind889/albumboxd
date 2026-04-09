@@ -1,16 +1,21 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Home from "./Components/Home";
-import SearchResults from "./Components/SearchResults";
+import SearchBar from "./Components/Searchbar";
+import SearchResults from "./Pages/SearchResults";
+import AlbumDetail from "./Components/AlbumDetail";
 
 export function App() {
-  return(
+   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/search" element={<SearchResults />} />
-      </Routes>
+      <div className="app-shell">
+        <SearchBar />
+
+        <Routes>
+          <Route path="/search" element={<SearchResults />} />
+          <Route path="/album/:id" element={<AlbumDetail />} />
+        </Routes>
+      </div>
     </BrowserRouter>
-  )
+  );
 
 
 }
