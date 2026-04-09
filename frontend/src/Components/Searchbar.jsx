@@ -1,13 +1,17 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-export function SearchBar({ onSearch})
+
+export function SearchBar()
 {
     const [input, setInput] = useState("")
+    const navigate = useNavigate()
 
     const handleSubmit = (e) => 
     {
         e.preventDefault();
-        onSearch(input)
+        // Navigate to the search results page with the query as a URL parameter
+        navigate(`/search?q=${input}`)
     };
 
     return (

@@ -1,49 +1,24 @@
-import { useState, useEffect } from "react";
-import SearchBar from "./Components/Searchbar";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./App.css";
-export function App()
-{
-  const [query, setQuery] = useState("")
-  const [searchresults, setResults] = useState([])
+import SearchBar from "./Components/Searchbar";
+import SearchResults from "./Pages/SearchResults";
+import AlbumDetail from "./Components/AlbumDetail";
 
-    useEffect(() =>{
-      fetch(`http://localhost:3000/api/search?q=${query}`)
-      .then(res => res.json())
-      .then(data => {
-        console.log(data)
-        setResults(data)
-
-      });
-
-
-
-
-    }, [query])
-
-
-  
-
-  return (
-    <>
+export function App() {
+   return (
+    <BrowserRouter>
       <div className="app-shell">
-        <SearchBar onSearch={setQuery} />
-        <div className="results-grid">
-          {searchresults.map((result) => (
-            <article className="result-card" key={result.id}>
-              <img className="result-cover" src={result.cover} alt={`${result.title} cover`} />
-              <h3>{result.title}</h3>
-              <p>{result.artist}</p>
-            </article>
-          ))}
-        </div>
+        <SearchBar />
+
+        <Routes>
+          <Route path="/search" element={<SearchResults />} />
+          <Route path="/album/:id" element={<AlbumDetail />} />
+        </Routes>
       </div>
-    </>
-  )
+    </BrowserRouter>
+  );
 
 
 }
-
-
-
 
 export default App
