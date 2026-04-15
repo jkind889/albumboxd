@@ -73,7 +73,7 @@ export function AlbumDetail()
             <p>Year: {album.year}</p>
             <button onClick={SaveAlbum}>Save to Collection</button>
 
-            <ReviewForm albumId={album.id} onAddReview={addReview} />
+            <ReviewForm album={album} onAddReview={addReview} />
             <ReviewList reviews={review} onRemoveReview={removeReview} />
         </div>
 

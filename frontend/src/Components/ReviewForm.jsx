@@ -1,7 +1,8 @@
 import { useState } from "react";
+import SearchBar from "./Searchbar";
 
 
-export function ReviewForm({albumId, onAddReview})
+export function ReviewForm({album, onAddReview})
 {
     const [reviewText, setReviewText] = useState("");
     const [rating, setRating] = useState("");
@@ -10,7 +11,9 @@ export function ReviewForm({albumId, onAddReview})
         e.preventDefault();
 
         const newReview = {
-            albumId,
+            albumId: album.id,
+            albumTitle: album.title,
+            artist: album.artist,
             rating,
             reviewText,
             date: Date.now()
