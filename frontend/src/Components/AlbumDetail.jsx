@@ -1,10 +1,13 @@
 import {useParams} from "react-router-dom";
 import { useState, useEffect } from "react";
-
+import ReviewForm from "./ReviewForm";
+import ReviewList from "./ReviewList";
+    
 export function AlbumDetail()
 {
     const {id} = useParams();
     const [album, setAlbum] = useState(null);
+    const [review, setReview] = useState([]);
 
     useEffect(() => {
         // Fetch album details from the backend API
@@ -14,7 +17,32 @@ export function AlbumDetail()
         .then(data => setAlbum(data))
     }, [id])
 
-    if (!album) return <p>Loading...</p>;
+
+    useEffect(() => {
+        const stored = JSON.parse(localStorage.getItem("reviews")) || [];
+        const albumReviews = stored.filter(r => r.albumId === id);
+        setReview(albumReviews);
+    }, [id]);
+
+    const addReview = (review) => {
+        const stored = JSON.parse(localStorage.getItem("reviews")) || [];
+        const updated = [review, ...stored]
+
+        localStorage.setItem("reviews", JSON.stringify(updated));
+        setReview(updated.filter(r => r.albumId === album.id));
+
+    };
+
+     const removeReview= (date) => {
+        const stored = JSON.parse(localStorage.getItem("reviews")) || [];
+        const updated = stored.filter((r) => r.date !== date);
+        localStorage.setItem("reviews", JSON.stringify(updated));
+
+        setReview(updated.filter(r => r.albumId === album.id));
+    }
+
+
+     if (!album) return <p>Loading...</p>;
 
 
     const SaveAlbum = () => {
@@ -35,13 +63,22 @@ export function AlbumDetail()
 
     };
 
+
+
+
     return (
         <div>
             <h1>{album.title}</h1>
             <p>Artist: {album.artist}</p>
             <p>Year: {album.year}</p>
             <button onClick={SaveAlbum}>Save to Collection</button>
+
+            <ReviewForm albumId={album.id} onAddReview={addReview} />
+            <ReviewList reviews={review} onRemoveReview={removeReview} />
         </div>
+
+
+
         // Album Detail component rendered when user clicks on a search result, showing more information about the selected album
     );
 
