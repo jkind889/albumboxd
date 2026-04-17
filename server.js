@@ -15,11 +15,12 @@ app.get("/", (req,res) =>
 
 
 const authRoutes = require("./routes/auth");
-const baseRoutes = require("./routes/base");
+const albumRoutes = require("./routes/album");
 const searchRoutes = require("./routes/search");
 
 app.use("/auth", authRoutes);
 app.use("/search", searchRoutes);
+app.use("/albums", albumRoutes);
 
 
 app.listen(3000, () =>

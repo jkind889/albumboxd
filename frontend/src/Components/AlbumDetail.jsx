@@ -12,7 +12,7 @@ export function AlbumDetail()
     useEffect(() => {
         // Fetch album details from the backend API
         // Use the album ID from the URL parameters
-        fetch(`http://localhost:3000/api/album/${id}`)
+        fetch(`http://localhost:3000/albums/album/${id}`)
         .then(res => res.json())
         .then(data => setAlbum(data))
     }, [id])
