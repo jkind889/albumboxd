@@ -16,9 +16,10 @@ app.get("/", (req,res) =>
 
 const authRoutes = require("./routes/auth");
 const baseRoutes = require("./routes/base");
+const searchRoutes = require("./routes/search");
 
 app.use("/auth", authRoutes);
-app.use("/api", baseRoutes);
+app.use("/search", searchRoutes);
 
 
 app.listen(3000, () =>

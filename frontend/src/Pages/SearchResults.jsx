@@ -20,7 +20,7 @@ export function SearchResults()
 
       setLoading(true)
 
-      fetch(`http://localhost:3000/api/search?q=${query}`)
+      fetch(`http://localhost:3000/search/search?q=${query}`)
       .then(res => res.json())
       .then(data => {
         console.log(data)

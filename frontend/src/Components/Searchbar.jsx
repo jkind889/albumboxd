@@ -18,7 +18,7 @@ export function SearchBar()
             return;
         }
 
-        fetch(`http://localhost:3000/api/search?q=${input}`)
+        fetch(`http://localhost:3000/search/search?q=${input}`)
           .then(res => res.json())
           .then(data => setSuggestions(data.slice(0, 5)))
           }, 200); // Add a debounce delay of 200ms before making the API call
