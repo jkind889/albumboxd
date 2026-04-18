@@ -1,6 +1,4 @@
 import { useState } from "react";
-import SearchBar from "./Searchbar";
-
 
 export function ReviewForm({album, onAddReview})
 {
@@ -29,22 +27,37 @@ export function ReviewForm({album, onAddReview})
 
 
     return (
-        <form onSubmit={handleSubmit}>
-            <input
-                type="text"
-                min="1"
-                max="5"
-                value={rating}
-                onChange={(e) => setRating(parseInt(e.target.value))}
-            />
+        <form className="review-form-card" onSubmit={handleSubmit}>
+            <div className="review-form-header">
+                <div>
+                    <p className="review-form-kicker">Your review</p>
+                    <h2>Log {album.title}</h2>
+                </div>
+            </div>
 
-            <textarea
-                value={reviewText}
-                onChange={(e) => setReviewText(e.target.value)}
-                placeholder="Write your review here..."
-            />
+            <label className="review-form-field">
+                <span>Rating</span>
+                <input
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={rating}
+                    onChange={(e) => setRating(parseInt(e.target.value))}
+                    placeholder="1-5"
+                />
+            </label>
 
-            <button type="submit">Submit Review</button>
+            <label className="review-form-field">
+                <span>Review</span>
+                <textarea
+                    value={reviewText}
+                    onChange={(e) => setReviewText(e.target.value)}
+                    placeholder="Write your review here..."
+                    rows="5"
+                />
+            </label>
+
+            <button className="review-submit-button" type="submit">Submit Review</button>
         </form>
                 
 

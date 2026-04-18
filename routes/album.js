@@ -19,9 +19,15 @@ router.get("/album/:id", async(req, res) =>
             id: data.id,
             title: data.name,
             artist: data.artists?.[0]?.name || "Unknown Artist",
+            artists: data.artists?.map((artist) => artist.name) || [],
             year: data.release_date?.slice(0, 4) || "unknown",
+            releaseDate: data.release_date || "",
             genres: data.genres || [],
-            imgs: data.images || []
+            imgs: data.images || [],
+            totalTracks: data.total_tracks || 0,
+            label: data.label || "",
+            albumType: data.album_type || "album",
+            spotifyUrl: data.external_urls?.spotify || ""
         };
         res.json(album);
     } catch (error) {

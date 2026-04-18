@@ -1,18 +1,26 @@
 
 export function ReviewList({reviews, onRemoveReview})
 {
-    if (reviews.length === 0) return <p>No reviews yet.</p>;
+    if (reviews.length === 0) {
+        return (
+            <div className="review-list-empty">
+                <p>No reviews yet.</p>
+            </div>
+        );
+    }
 
 
     return (
-        <div>
+        <div className="review-list">
             {reviews.map((review, index) => (
-                <div key={index}>
-                    <p>Rating: {review.rating}</p>
-                    <p>{review.reviewText}</p>
-                    <p>{new Date(review.date).toLocaleDateString()}</p>
-                    <button onClick={() => onRemoveReview(review.date)}>Delete Review</button>
-                </div>
+                <article className="review-card" key={index}>
+                    <div className="review-card-header">
+                        <p className="review-card-rating">Rating: {review.rating}/5</p>
+                        <p className="review-card-date">{new Date(review.date).toLocaleDateString()}</p>
+                    </div>
+                    <p className="review-card-copy">{review.reviewText}</p>
+                    <button className="review-delete-button" onClick={() => onRemoveReview(review.date)}>Delete Review</button>
+                </article>
             ))}
         </div>
 
