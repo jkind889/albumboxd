@@ -45,7 +45,6 @@ export function SearchResults()
         </div>
 
         <div className="results-grid">
-          {console.log(searchresults)}
           {Array.isArray(searchresults) && searchresults.map((result) => (
             // When a result is clicked, navigate to the album detail page using the album's ID
             <article className="result-card" key={result.id} onClick={() => navigate(`/album/${result.id}`)}>

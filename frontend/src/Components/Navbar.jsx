@@ -19,9 +19,6 @@ function Navbar()
                                     <Link to ="/collection" className="nav-link active">Collection</Link>
                                 </li>
                                 <li className="nav-item">
-                                    <Link to="/Callback" className="nav-link active">Top Artiss</Link>
-                                </li>
-                                <li className="nav-item">
                                     <SearchBar/>
                                 </li>   
                                 </ul>

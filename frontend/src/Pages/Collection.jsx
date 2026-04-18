@@ -26,27 +26,21 @@ export function Collection() {
             {savedAlbums.length === 0 ? (
                 <p>No albums saved in collection.</p>
             ) : (
-                <ul>
-                    {savedAlbums.map(album => (
-                        <li key={album.id}
-                            onClick={() => navigate(`/album/${album.id}`)}
-                        >
-                            {album.title} by {album.artist} ({album.year})
-
-                            <button onClick={(e) => {
-                                e.stopPropagation(); // prevent navigating to album detail when clicking remove
-                                removeAlbum(album.id)
-                               }}
-                                
-                                
-                                > 
-                                Remove
-                            </button>
-    
-                        </li>
-                        // Add remove button to each album in the collection, calling removeAlbum with the album's id when clicked
+                
+                    <div className="results-grid">
+                    {Array.isArray(savedAlbums) && savedAlbums.map((result) => (
+                        // When a result is clicked, navigate to the album detail page using the album's ID
+                        <article className="result-card" key={result.id} onClick={() => navigate(`/album/${result.id}`)}>
+                        <img className="result-cover" src={result.imgs?.[0]?.url} alt={`${result.title} cover`} />
+                        <h3>{result.title}</h3>
+                        <p>{result.artist}</p>
+                        <span className="result-year">{result.year || "Year unknown"} </span>
+                        <button className="remove-button" onClick={(e) => { e.stopPropagation(); removeAlbum(result.id); }}>Remove</button>
+                        </article>
+                        
                     ))}
-                </ul>
+
+                    </div>
             )}
         </div>
     );
