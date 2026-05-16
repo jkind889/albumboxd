@@ -12,6 +12,7 @@ export function ReviewForm({album, onAddReview})
             albumId: album.id,
             albumTitle: album.title,
             artist: album.artist,
+            cover: album.imgs?.[0]?.url,
             rating,
             reviewText,
             date: Date.now()
@@ -20,6 +21,7 @@ export function ReviewForm({album, onAddReview})
 
         setReviewText("");
         setRating(0);
+        console.log("Review submitted:", newReview);
 
     };
 

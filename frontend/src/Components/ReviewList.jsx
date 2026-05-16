@@ -17,6 +17,7 @@ export function ReviewList({reviews, onRemoveReview})
                     <div className="review-card-header">
                         <p className="review-card-rating">Rating: {review.rating}/5</p>
                         <p className="review-card-date">{new Date(review.date).toLocaleDateString()}</p>
+                        <img className="review-card-image" src={review.cover} alt={`${review.albumTitle} cover`} />
                     </div>
                     <p className="review-card-copy">{review.reviewText}</p>
                     <button className="review-delete-button" onClick={() => onRemoveReview(review.date)}>Delete Review</button>
