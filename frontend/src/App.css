@@ -525,3 +525,27 @@
     align-items: flex-start;
   }
 }
+
+.featuregrid
+{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.feature
+{
+  display: flex;
+  
+}
+
+.featured-albums
+{
+  display: flex;
+}
+.featured-albums img
+{
+  width: 100%;
+  height: auto;
+
+}
