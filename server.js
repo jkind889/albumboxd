@@ -1,6 +1,8 @@
 const express = require('express')
 const app = express()
 const cors = require("cors");
+
+const mongoose = require("mongoose");
 require("dotenv").config()
 
 app.use(express.json())
@@ -13,6 +15,10 @@ app.get("/", (req,res) =>
     res.send("Hey")
 })
 
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB Connected"))
+  .catch((err) => console.log(err));
 
 const authRoutes = require("./routes/auth");
 const albumRoutes = require("./routes/album");
