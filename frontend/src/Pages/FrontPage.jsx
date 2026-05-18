@@ -1,5 +1,6 @@
 import ReviewList from "../Components/ReviewList";
 import FeaturedAlbum from "../Components/FeaturedAlbums";
+import RecentlySaved from "../Components/RecentlySaved";
 import {useState, useEffect, useMemo} from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -70,8 +71,8 @@ export function FrontPage() {
 
 
             <div>
-                <h3> Recently Saved</h3>
-
+                <h3>Recently Saved</h3>
+                <RecentlySaved />
             </div>
 
             <div>

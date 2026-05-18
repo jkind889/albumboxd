@@ -70,7 +70,8 @@ export function SearchBar()
         <ul className="suggestions-dropdown">
           {suggestions.map((suggestion) => (
             <li key={suggestion.id} onClick={() => { navigate(`/album/${suggestion.id}`); setShowDropdown(false); }}>
-              {suggestion.title} - {suggestion.artist}
+             <img src={suggestion.cover} className="suggestion-cover" alt={suggestion.title} />
+             {suggestion.title} - {suggestion.artist}
             </li>
           ))}
         </ul>

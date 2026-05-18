@@ -549,3 +549,22 @@
   height: auto;
 
 }
+
+.recently-saved
+{
+  display: flex;
+}
+.recently-saved img
+{
+  width: 100%;
+  height: auto;
+}
+
+.suggestion-cover
+{
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-right: 0.5rem;
+}
