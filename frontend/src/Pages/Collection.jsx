@@ -8,10 +8,13 @@ export function Collection() {
     const navigate = useNavigate();
     
     useEffect(() => {
-        
+        async function fetchSavedAlbums() {
+            const res = await fetch("http://localhost:3000/albums/album");
+            const saved = await res.json();
 
-
-        setSavedAlbums(saved);
+            setSavedAlbums(saved);
+        }
+        fetchSavedAlbums();
     }, [])
 
 
@@ -32,8 +35,8 @@ export function Collection() {
                     <div className="results-grid">
                     {Array.isArray(savedAlbums) && savedAlbums.map((result) => (
                         // When a result is clicked, navigate to the album detail page using the album's ID
-                        <article className="result-card" key={result.id} onClick={() => navigate(`/album/${result.id}`)}>
-                        <img className="result-cover" src={result.imgs?.[0]?.url} alt={`${result.title} cover`} />
+                        <article className="result-card" key={result.spotifyId} onClick={() => navigate(`/album/${result.spotifyId}`)}>
+                        <img className="result-cover" src={result.cover} alt={`${result.title} cover`} />
                         <h3>{result.title}</h3>
                         <p>{result.artist}</p>
                         <span className="result-year">{result.year || "Year unknown"} </span>

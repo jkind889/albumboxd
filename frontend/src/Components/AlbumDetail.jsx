@@ -60,23 +60,23 @@ export function AlbumDetail()
           })
         : null;
 
-    const saveAlbum = () => {
-        // Save the album to localStorage for the collection page
-        const saved = JSON.parse(localStorage.getItem("savedAlbums")) || [];
+    // const saveAlbum = () => {
+    //     // Save the album to localStorage for the collection page
+    //     const saved = JSON.parse(localStorage.getItem("savedAlbums")) || [];
 
-        // if the album exists we can alert the user and return early
-        const exists= saved.some(a => a.id === album.id);
-        if (exists) {
-            alert("Album already saved in collection");
-            return;
-        }
-        // push the album into the saved array and save it back to localStorage
-        saved.push(album)
-        console.log(saved);
-        // Save the updated array back to localStorage
-        localStorage.setItem("savedAlbums", JSON.stringify(saved));
+    //     // if the album exists we can alert the user and return early
+    //     const exists= saved.some(a => a.id === album.id);
+    //     if (exists) {
+    //         alert("Album already saved in collection");
+    //         return;
+    //     }
+    //     // push the album into the saved array and save it back to localStorage
+    //     saved.push(album)
+    //     console.log(saved);
+    //     // Save the updated array back to localStorage
+    //     localStorage.setItem("savedAlbums", JSON.stringify(saved));
 
-    };
+    // };
 
     async function handleSaveToCollection() {
         const res = await fetch("http://localhost:3000/albums/album", {
