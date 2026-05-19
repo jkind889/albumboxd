@@ -99,6 +99,374 @@
   text-align: center;
 }
 
+.album-detail-page {
+  position: relative;
+  isolation: isolate;
+  margin-top: 1.5rem;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  width: 100vw;
+  padding: 2rem 0 3rem;
+  color: #e5e7eb;
+}
+
+.album-detail-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    linear-gradient(180deg, rgba(10, 14, 20, 0.82) 0%, rgba(10, 14, 20, 0.96) 36%, #0b1016 100%),
+    var(--album-cover);
+  background-size: cover;
+  background-position: center top;
+  filter: saturate(0.9) blur(0px);
+}
+
+.album-detail-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at top right, rgba(52, 211, 153, 0.12), transparent 26%),
+    linear-gradient(90deg, rgba(11, 16, 22, 0.25), rgba(11, 16, 22, 0.78) 30%, rgba(11, 16, 22, 0.96) 100%);
+}
+
+.album-detail-shell {
+  width: min(1400px, calc(100vw - 3rem));
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
+  gap: 2.25rem;
+  align-items: start;
+}
+
+.album-detail-sidebar {
+  position: sticky;
+  top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.album-poster-card,
+.album-spotify-card,
+.album-ratings-panel,
+.album-info-panel,
+.review-form-card,
+.review-card,
+.review-list-empty {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  background: rgba(15, 23, 32, 0.84);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+}
+
+.album-poster-card {
+  overflow: hidden;
+}
+
+.album-poster-image,
+.album-poster-fallback {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.album-poster-image {
+  object-fit: cover;
+}
+
+.album-poster-fallback {
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+  background: rgba(30, 41, 59, 0.8);
+}
+
+.album-sidebar-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.album-sidebar-stats > div {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  padding: 0.9rem 0.75rem;
+  background: rgba(15, 23, 32, 0.72);
+}
+
+.album-sidebar-stats strong,
+.album-rating-value {
+  display: block;
+  font-size: 1.7rem;
+  line-height: 1;
+  color: #f8fafc;
+}
+
+.album-stat-label,
+.album-detail-kicker,
+.review-form-kicker,
+.album-panel-header {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.album-stat-label {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: #94a3b8;
+}
+
+.album-detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.album-title-block h1 {
+  margin: 0.25rem 0 0;
+  font-size: clamp(2.6rem, 5vw, 4.4rem);
+  line-height: 0.96;
+  color: #f8fafc;
+}
+
+.album-detail-kicker {
+  margin: 0;
+  color: #86efac;
+}
+
+.album-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem 1rem;
+  margin-top: 0.9rem;
+  color: #cbd5e1;
+}
+
+.album-meta-line span {
+  position: relative;
+}
+
+.album-meta-line span:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  right: -0.56rem;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  background: rgba(148, 163, 184, 0.7);
+}
+
+.album-action-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.album-action-button,
+.album-primary-link,
+.review-submit-button,
+.review-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+  cursor: pointer;
+}
+
+.album-action-button,
+.review-submit-button {
+  background: #86efac;
+  color: #102218;
+}
+
+.album-primary-link {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #f8fafc;
+}
+
+.review-delete-button {
+  background: transparent;
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+}
+
+.album-action-button:hover,
+.album-primary-link:hover,
+.review-submit-button:hover,
+.review-delete-button:hover {
+  transform: translateY(-1px);
+}
+
+.album-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.album-detail-copy,
+.album-detail-sidepanel,
+.album-reviews-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.album-info-panel,
+.album-spotify-card,
+.album-ratings-panel,
+.review-form-card,
+.review-card,
+.review-list-empty {
+  padding: 1.2rem;
+}
+
+.album-info-panel h2,
+.review-form-header h2 {
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+  color: #f8fafc;
+}
+
+.album-facts {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+}
+
+.album-facts div {
+  display: grid;
+  grid-template-columns: minmax(88px, 120px) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.album-facts div:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.album-facts dt {
+  color: #94a3b8;
+}
+
+.album-facts dd {
+  margin: 0;
+  color: #e2e8f0;
+}
+
+.album-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.album-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0.45rem 0.8rem;
+  border-radius: 8px;
+  background: rgba(71, 85, 105, 0.45);
+  color: #dbeafe;
+}
+
+.album-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+  color: #94a3b8;
+}
+
+.album-spotify-card p,
+.album-ratings-panel p,
+.review-card-copy,
+.review-list-empty p {
+  margin: 0;
+  color: #cbd5e1;
+  line-height: 1.65;
+}
+
+.album-rating-value {
+  margin-bottom: 0.6rem;
+}
+
+.review-form-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.review-form-kicker {
+  margin: 0 0 0.35rem;
+  color: #94a3b8;
+}
+
+.review-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.review-form-field span {
+  color: #cbd5e1;
+}
+
+.review-form-field input,
+.review-form-field textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  background: rgba(15, 23, 32, 0.92);
+  color: #f8fafc;
+  padding: 0.8rem 0.9rem;
+}
+
+.review-form-field textarea {
+  resize: vertical;
+}
+
+.review-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.review-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.review-card-rating,
+.review-card-date {
+  margin: 0;
+  color: #94a3b8;
+}
+
+.review-card-copy {
+  margin-bottom: 1rem;
+}
+
 @media (max-width: 640px) {
   .app-shell {
     padding: 1rem;
@@ -108,4 +476,95 @@
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 1rem;
   }
+}
+
+@media (max-width: 980px) {
+  .album-detail-shell,
+  .album-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .album-detail-sidebar {
+    position: static;
+    order: 2;
+  }
+
+  .album-detail-main {
+    order: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .album-detail-page {
+    margin-top: 1rem;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding: 1.25rem 0 2rem;
+  }
+
+  .album-detail-shell {
+    width: min(100vw - 1.5rem, 1400px);
+  }
+
+  .album-title-block h1 {
+    font-size: 2.35rem;
+  }
+
+  .album-sidebar-stats {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .album-facts div {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .review-card-header,
+  .album-panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.featuregrid
+{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.feature
+{
+  display: flex;
+  
+}
+
+.featured-albums
+{
+  display: flex;
+}
+.featured-albums img
+{
+  width: 100%;
+  height: auto;
+
+}
+
+.recently-saved
+{
+  display: flex;
+}
+.recently-saved img
+{
+  width: 100%;
+  height: auto;
+}
+
+.suggestion-cover
+{
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-right: 0.5rem;
 }
