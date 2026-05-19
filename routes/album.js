@@ -1,5 +1,6 @@
 const express = require("express");
 const { getSpotifyAccessToken } = require("./utils/spotify");
+const Album = require("../models/Albums");
 const router = express.Router();
 
 router.get("/album/:id", async(req, res) =>
@@ -35,7 +36,27 @@ router.get("/album/:id", async(req, res) =>
     }
 });
 
+router.post("/album", async(req, res) => 
+{
+    try {
+        const album = await Album.create(req.body);
+        res.status(201).json(album);
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Failed to create album" });
+    }
+});
 
+router.get("/album", async(req, res) =>
+{
+    try {
+        const albums = await Album.find();
+        res.json(albums);
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Failed to fetch albums" });
+    }
+});
 
 
 

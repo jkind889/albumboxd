@@ -78,6 +78,22 @@ export function AlbumDetail()
 
     };
 
+    async function handleSaveToCollection() {
+        const res = await fetch("http://localhost:3000/albums/album", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                spotifyId: album.id,
+                title: album.title,
+                artist: artistNames.join(", "),
+                cover: albumArt
+             }),
+        });
+        const data = await res.json();
+        console.log("Album saved to collection:", data);
+    }
 
 
 
@@ -147,7 +163,7 @@ export function AlbumDetail()
                     </div>
 
                     <div className="album-action-row">
-                        <button className="album-action-button" onClick={saveAlbum}>
+                        <button className="album-action-button" onClick={handleSaveToCollection}>
                             Save to Collection
                         </button>
                     </div>

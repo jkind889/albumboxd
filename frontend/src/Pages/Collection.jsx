@@ -8,7 +8,9 @@ export function Collection() {
     const navigate = useNavigate();
     
     useEffect(() => {
-        const saved = JSON.parse(localStorage.getItem("savedAlbums")) || [];
+        
+
+
         setSavedAlbums(saved);
     }, [])
 
