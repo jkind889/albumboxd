@@ -18,11 +18,19 @@ export function Collection() {
     }, [])
 
 
-   function removeAlbum(id) {
-        // filter out the album with the given id and update state and localStorage
-        const updatedAlbums = savedAlbums.filter(album => album.id !== id);
+   async function removeAlbum(id) {
+        const res = await fetch(`http://localhost:3000/albums/album/${id}`, {
+            method: "DELETE",
+            headers: {
+                "Content-Type": "application/json"
+            }
+        });
+        if (!res.ok) {
+            console.error("Failed to remove album from collection");
+            return;
+        }
+        const updatedAlbums = savedAlbums.filter(album => album.spotifyId !== id);
         setSavedAlbums(updatedAlbums);
-        localStorage.setItem("savedAlbums", JSON.stringify(updatedAlbums));
     }
 
     return (
@@ -40,7 +48,7 @@ export function Collection() {
                         <h3>{result.title}</h3>
                         <p>{result.artist}</p>
                         <span className="result-year">{result.year || "Year unknown"} </span>
-                        <button className="remove-button" onClick={(e) => { e.stopPropagation(); removeAlbum(result.id); }}>Remove</button>
+                        <button className="remove-button" onClick={(e) => { e.stopPropagation(); removeAlbum(result.spotifyId); }}>Remove</button>
                         </article>
                         
                     ))}

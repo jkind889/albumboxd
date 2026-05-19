@@ -58,7 +58,15 @@ router.get("/album", async(req, res) =>
     }
 });
 
-
+router.delete("/album/:id", async(req, res) => {
+    try {
+        await Album.findOneAndDelete({ spotifyId: req.params.id });
+        res.json({ message: "Album removed from collection" });
+    } catch (error) {
+        console.log(error)
+        res.status(500).json({ error: "Failed to remove album" });
+    }  
+});
 
 
 
