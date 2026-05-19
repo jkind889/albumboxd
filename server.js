@@ -23,11 +23,12 @@ mongoose
 const authRoutes = require("./routes/auth");
 const albumRoutes = require("./routes/album");
 const searchRoutes = require("./routes/search");
+const reviewRoutes = require("./routes/reviews");
 
 app.use("/auth", authRoutes);
 app.use("/search", searchRoutes);
 app.use("/albums", albumRoutes);
-
+app.use("/reviews", reviewRoutes);
 
 app.listen(3000, () =>
 {

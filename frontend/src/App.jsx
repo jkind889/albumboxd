@@ -20,7 +20,7 @@ export function App() {
             <Route path="/Home" element={<FrontPage />} />
             <Route path="/collection" element={<Collection />} />
             <Route path="/album/:id" element={<AlbumDetail />} />
-            <Route path="/reviews" element={<ViewReviews />} />
+            <Route path="/viewreviews" element={<ViewReviews />} />
         </Routes>
       </div>
     </BrowserRouter>

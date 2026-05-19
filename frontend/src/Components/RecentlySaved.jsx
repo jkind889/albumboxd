@@ -5,8 +5,12 @@ export function RecentlySaved() {
     const [savedAlbums, setSavedAlbums] = useState([]);
     
     useEffect(() => {
-        const stored = JSON.parse(localStorage.getItem("savedAlbums")) || [];
-        setSavedAlbums(stored.slice(0, 5)); // Show only the 5 most recently saved albums
+        async function fetchSavedAlbums() {
+            const res = await fetch("http://localhost:3000/albums/album");
+            const saved = await res.json();
+            setSavedAlbums(saved.slice(0, 5)); // Show only the 5 most recently saved albums
+        }
+        fetchSavedAlbums();
     }, []);
 
 
