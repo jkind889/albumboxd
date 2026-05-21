@@ -10,9 +10,28 @@ export function ViewReviews()
 
     
     useEffect(() => {
-        const stored = JSON.parse(localStorage.getItem("reviews")) || [];
-        setReviews(stored);
+        async function fetchReviews() {
+            const response = await fetch("http://localhost:3000/reviews/reviewlist");
+            const data = await response.json();
+            setReviews(data);
+        }
+
+        fetchReviews();
     }, []);
+
+    async function removeReview(id) {
+        const res = await fetch(`http://localhost:3000/reviews/review/${id}`, {
+            method: "DELETE"
+        });
+        if (!res.ok) {
+            console.error("Failed to delete review");
+            return;
+        }
+        setReviews((prev) => prev.filter((review) => review._id !== id));
+    };
+
+
+
 
     const recentReviews = useMemo(() => {
         return [...reviews]
@@ -31,9 +50,9 @@ export function ViewReviews()
     return (
         <div>
             <h3>Recent Reviews</h3>
-            <ReviewList reviews={recentReviews} />
+            <ReviewList reviews={recentReviews} onRemoveReview={removeReview} />
             <h3>Popular Reviews</h3>
-            <ReviewList reviews={popularReviews} />
+            <ReviewList reviews={popularReviews} onRemoveReview={removeReview} />
         </div>
     );
 
