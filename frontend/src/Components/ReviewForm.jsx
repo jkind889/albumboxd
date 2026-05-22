@@ -5,27 +5,24 @@ export function ReviewForm({album, onAddReview})
     const [reviewText, setReviewText] = useState("");
     const [rating, setRating] = useState("");
     
-    const handleSubmit = (e) => {
+    async function handleSubmit(e) {
         e.preventDefault();
 
-        const newReview = {
-            albumId: album.id,
-            albumTitle: album.title,
+        const review = {
+            spotifyId: album.id,
+            title: album.title,
             artist: album.artist,
             cover: album.imgs?.[0]?.url,
             rating,
             reviewText,
             date: Date.now()
         };
-        onAddReview(newReview);
 
-        setReviewText("");
+        onAddReview(review);
+
         setRating(0);
-        console.log("Review submitted:", newReview);
-
-    };
-
-    
+        setReviewText("");
+    }
 
 
     return (

@@ -13,7 +13,7 @@ function Navbar()
                             <div className="navbar-collapse">
                                 <ul className="navbar nav">
                                 <li className="nav-item">
-                                    <Link to ="/reviews" className="nav-link active">Reviews</Link>
+                                    <Link to ="/viewreviews" className="nav-link active">Reviews</Link>
                                 </li>
                                 <li className="nav-item">
                                     <Link to ="/collection" className="nav-link active">Collection</Link>

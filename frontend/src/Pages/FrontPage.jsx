@@ -11,8 +11,14 @@ export function FrontPage() {
 
     
     useEffect(() => {
-        const stored = JSON.parse(localStorage.getItem("reviews")) || [];
-        setReviews(stored);
+
+        async function fetchReviews()
+        {
+            const response = await fetch("http://localhost:3000/reviews/reviewlist");
+            const data = await response.json();
+            setReviews(data);
+        }
+        fetchReviews();
     }, []);
 
     const popularReviews = useMemo(() => {
