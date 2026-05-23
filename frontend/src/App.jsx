@@ -1,26 +1,28 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./App.css";
-import SearchBar from "./Components/Searchbar";
 import SearchResults from "./Pages/SearchResults";
 import AlbumDetail from "./Components/AlbumDetail";
 import Collection from "./Pages/Collection";
 import ViewReviews from "./Pages/ViewReviews";
 import FrontPage from "./Pages/FrontPage";
 import Layout from "./Layout";
+import Account from "./Pages/Account";
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 export function App() {
    return (
     <BrowserRouter>
       <div className="app-shell">
-        <Layout />
-
         <Routes>
+          <Route element={<Layout />}>
+            <Route index element={<FrontPage />} />
+            <Route path="/home" element={<FrontPage />} />
             <Route path="/search" element={<SearchResults />} />
-            <Route path="/Home" element={<FrontPage />} />
             <Route path="/collection" element={<Collection />} />
             <Route path="/album/:id" element={<AlbumDetail />} />
             <Route path="/viewreviews" element={<ViewReviews />} />
+            <Route path="/account" element={<Account />} />
+          </Route>
         </Routes>
       </div>
     </BrowserRouter>
