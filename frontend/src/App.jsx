@@ -7,6 +7,7 @@ import ViewReviews from "./Pages/ViewReviews";
 import FrontPage from "./Pages/FrontPage";
 import Layout from "./Layout";
 import Account from "./Pages/Account";
+import ProtectedRoute from "./Components/ProtectedRoute";
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 export function App() {
@@ -16,11 +17,16 @@ export function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<FrontPage />} />
-            <Route path="/home" element={<FrontPage />} />
             <Route path="/search" element={<SearchResults />} />
-            <Route path="/collection" element={<Collection />} />
+            <Route path="/collection" element={
+              <ProtectedRoute>
+                <Collection />
+             </ProtectedRoute>} />
             <Route path="/album/:id" element={<AlbumDetail />} />
-            <Route path="/viewreviews" element={<ViewReviews />} />
+            <Route path="/viewreviews" element={
+            <ProtectedRoute>
+              <ViewReviews />
+            </ProtectedRoute>} />
             <Route path="/account" element={<Account />} />
           </Route>
         </Routes>
