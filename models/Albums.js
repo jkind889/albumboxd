@@ -1,6 +1,10 @@
 const mongoose = require("mongoose");
 
 const albumSchema = new mongoose.Schema({
+  userId: {
+    type: String,
+    required: true,
+  },
   spotifyId: {
     type: String,
     required: true,

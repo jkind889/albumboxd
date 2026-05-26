@@ -1,18 +1,28 @@
 import {useParams} from "react-router-dom";
-import { useMemo, useState, useEffect } from "react";
+import {useState, useEffect } from "react";
 import ReviewForm from "./ReviewForm";
 import ReviewList from "./ReviewList";
+import { useUser } from "@clerk/react";
     
 export function AlbumDetail()
 {
     const {id} = useParams();
     const [album, setAlbum] = useState(null);
-    const [reviewVersion, setReviewVersion] = useState(0);
-    const review = useMemo(() => {
-        void reviewVersion;
-        const stored = JSON.parse(localStorage.getItem("reviews")) || [];
-        return stored.filter((r) => r.albumId === id);
-    }, [id, reviewVersion]);
+    const [reviews, setReviews] = useState([]);
+    const { user } = useUser();
+
+    useEffect(() => {
+        async function fetchReviews() {
+            const res = await fetch(`http://localhost:3000/reviews/review/album/${id}`);
+            const data = await res.json();
+
+            setReviews(data)
+        }
+
+        fetchReviews();
+    }, [id])
+
+    
 
     useEffect(() => {
         // Fetch album details from the backend API
@@ -22,29 +32,42 @@ export function AlbumDetail()
         .then(data => setAlbum(data))
     }, [id])
 
-    const addReview = (review) => {
-        const stored = JSON.parse(localStorage.getItem("reviews")) || [];
-        const updated = [review, ...stored]
+    async function addReview(review) {
+        const res = await fetch("http://localhost:3000/reviews/review", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(review)  
+          });
+        if (!res.ok) {
+            console.error("Failed to submit review");
+            return;
+        }
 
-        localStorage.setItem("reviews", JSON.stringify(updated));
-        setReviewVersion((version) => version + 1);
+        const newReview = await res.json();
+        console.log("Review saved to server:", newReview);
+        setReviews((prev) => [newReview, ...prev]);
 
     };
 
-     const removeReview= (date) => {
-        const stored = JSON.parse(localStorage.getItem("reviews")) || [];
-        const updated = stored.filter((r) => r.date !== date);
-        localStorage.setItem("reviews", JSON.stringify(updated));
-
-        setReviewVersion((version) => version + 1);
-    }
+    async function removeReview(id) {
+        const res = await fetch(`http://localhost:3000/reviews/review/${id}`, {
+            method: "DELETE"
+        });
+        if (!res.ok) {
+            console.error("Failed to delete review");
+            return;
+        }
+        setReviews((prev) => prev.filter((review) => review._id !== id));
+    };
 
 
      if (!album) return <p>Loading...</p>;
 
     const artistNames = album.artists?.length ? album.artists : [album.artist];
-    const averageRating = review.length
-        ? (review.reduce((total, item) => total + (Number(item.rating) || 0), 0) / review.length).toFixed(1)
+    const averageRating = reviews.length
+        ? (reviews.reduce((total, item) => total + (Number(item.rating) || 0), 0) / reviews.length).toFixed(1)
         : null;
     const albumArt = album.imgs?.[0]?.url;
     const accentStyle = albumArt
@@ -85,6 +108,7 @@ export function AlbumDetail()
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
+                userId: user.id,
                 spotifyId: album.id,
                 title: album.title,
                 artist: artistNames.join(", "),
@@ -121,7 +145,7 @@ export function AlbumDetail()
                         </div>
                         <div>
                             <span className="album-stat-label">Reviews</span>
-                            <strong>{review.length}</strong>
+                            <strong>{reviews.length}</strong>
                         </div>
                         <div>
                             <span className="album-stat-label">Avg.</span>
@@ -208,7 +232,7 @@ export function AlbumDetail()
                             <div className="album-ratings-panel">
                                 <div className="album-panel-header">
                                     <span>Ratings</span>
-                                    <span>{review.length} review{review.length === 1 ? "" : "s"}</span>
+                                    <span>{reviews.length} review{reviews.length === 1 ? "" : "s"}</span>
                                 </div>
                                 <div className="album-rating-value">{averageRating || "--"}</div>
                                 <p>
@@ -222,7 +246,7 @@ export function AlbumDetail()
 
                     <section className="album-reviews-section">
                         <ReviewForm album={album} onAddReview={addReview} />
-                        <ReviewList reviews={review} onRemoveReview={removeReview} />
+                        <ReviewList reviews={reviews} onRemoveReview={removeReview} />
                     </section>
                 </div>
             </div>

@@ -1,15 +1,16 @@
 import {useState, useEffect} from "react";
 import { useNavigate } from "react-router-dom";
-
+import { useUser } from "@clerk/react";
 
 export function Collection() {
 
     const [savedAlbums, setSavedAlbums] = useState([]);
     const navigate = useNavigate();
-    
+    const { user } = useUser();
+
     useEffect(() => {
         async function fetchSavedAlbums() {
-            const res = await fetch("http://localhost:3000/albums/album");
+            const res = await fetch(`http://localhost:3000/albums/user/${user.id}`);
             const saved = await res.json();
 
             setSavedAlbums(saved);

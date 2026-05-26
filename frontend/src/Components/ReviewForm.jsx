@@ -1,16 +1,19 @@
 import { useState } from "react";
-
+import { useUser } from "@clerk/react";
 export function ReviewForm({album, onAddReview})
 {
     const [reviewText, setReviewText] = useState("");
     const [rating, setRating] = useState("");
-    
+    const { user } = useUser();
+
+
     const handleSubmit = (e) => {
         e.preventDefault();
 
         const newReview = {
-            albumId: album.id,
-            albumTitle: album.title,
+            userId: user.id,
+            spotifyId: album.id,
+            title: album.title,
             artist: album.artist,
             cover: album.imgs?.[0]?.url,
             rating,

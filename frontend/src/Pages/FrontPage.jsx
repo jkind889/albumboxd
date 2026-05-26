@@ -9,10 +9,15 @@ export function FrontPage() {
     const navigate = useNavigate();
 
 
-    
     useEffect(() => {
-        const stored = JSON.parse(localStorage.getItem("reviews")) || [];
-        setReviews(stored);
+
+        async function fetchReviews()
+        {
+            const response = await fetch("http://localhost:3000/reviews/popular");
+            const data = await response.json();
+            setReviews(data);
+        }
+        fetchReviews();
     }, []);
 
     const popularReviews = useMemo(() => {

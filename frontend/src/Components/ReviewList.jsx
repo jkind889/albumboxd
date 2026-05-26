@@ -20,7 +20,7 @@ export function ReviewList({reviews, onRemoveReview})
                         <img className="review-card-image" src={review.cover} alt={`${review.albumTitle} cover`} />
                     </div>
                     <p className="review-card-copy">{review.reviewText}</p>
-                    <button className="review-delete-button" onClick={() => onRemoveReview(review.date)}>Delete Review</button>
+                    <button className="review-delete-button" onClick={() => onRemoveReview(review._id)}>Delete Review</button>
                 </article>
             ))}
         </div>

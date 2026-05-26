@@ -47,10 +47,10 @@ router.post("/album", async(req, res) =>
     }
 });
 
-router.get("/album", async(req, res) =>
+router.get("/user/:userId", async(req, res) =>
 {
     try {
-        const albums = await Album.find();
+        const albums = await Album.find({ userId: req.params.userId });
         res.json(albums);
     } catch (error) {
         console.log(error);

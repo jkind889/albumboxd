@@ -1,15 +1,14 @@
 import {Navigate} from 'react-router-dom';
-import { SignedIn, SignedOut } from '@clerk/react';
-
+import { Show } from '@clerk/react';
 function ProtectedRoute({ children }) {
     return (
         <>
-        <SignedIn>
+        <Show when="signed-in">
             {children}
-        </SignedIn>
-        <SignedOut>
+        </Show>
+        <Show when="signed-out">
             <Navigate to="/" />
-        </SignedOut>
+        </Show>
         </>
     )
 }
