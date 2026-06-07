@@ -1,17 +1,23 @@
 import { useState, useEffect, useMemo } from "react";
+import { useAuth } from "@clerk/react";
 import ReviewList from "../Components/ReviewList";
-import { useUser } from "@clerk/react";
 
 export function ViewReviews()
 {
     const [reviews, setReviews] = useState([]);
-    const { user } = useUser();
+    const  { getToken } = useAuth();
 
-
+    
     
     useEffect(() => {
         async function fetchReviews() {
-            const response = await fetch(`http://localhost:3000/reviews/review/user/${user.id}`);
+            const token = await getToken();
+
+            const response = await fetch(`http://localhost:3000/reviews/review/user/`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
             const data = await response.json();
             setReviews(data);
         }

@@ -2,13 +2,14 @@ import {useParams} from "react-router-dom";
 import {useState, useEffect } from "react";
 import ReviewForm from "./ReviewForm";
 import ReviewList from "./ReviewList";
+import { useAuth } from "@clerk/react";
 import { useUser } from "@clerk/react";
-    
 export function AlbumDetail()
 {
     const {id} = useParams();
     const [album, setAlbum] = useState(null);
     const [reviews, setReviews] = useState([]);
+    const { getToken } = useAuth();
     const { user } = useUser();
 
     useEffect(() => {
@@ -33,10 +34,12 @@ export function AlbumDetail()
     }, [id])
 
     async function addReview(review) {
+        const token = await getToken();
         const res = await fetch("http://localhost:3000/reviews/review", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
             },
             body: JSON.stringify(review)  
           });
