@@ -3,14 +3,12 @@ import {useState, useEffect } from "react";
 import ReviewForm from "./ReviewForm";
 import ReviewList from "./ReviewList";
 import { useAuth } from "@clerk/react";
-import { useUser } from "@clerk/react";
 export function AlbumDetail()
 {
     const {id} = useParams();
     const [album, setAlbum] = useState(null);
     const [reviews, setReviews] = useState([]);
     const { getToken } = useAuth();
-    const { user } = useUser();
 
     useEffect(() => {
         async function fetchReviews() {
@@ -86,32 +84,16 @@ export function AlbumDetail()
           })
         : null;
 
-    // const saveAlbum = () => {
-    //     // Save the album to localStorage for the collection page
-    //     const saved = JSON.parse(localStorage.getItem("savedAlbums")) || [];
-
-    //     // if the album exists we can alert the user and return early
-    //     const exists= saved.some(a => a.id === album.id);
-    //     if (exists) {
-    //         alert("Album already saved in collection");
-    //         return;
-    //     }
-    //     // push the album into the saved array and save it back to localStorage
-    //     saved.push(album)
-    //     console.log(saved);
-    //     // Save the updated array back to localStorage
-    //     localStorage.setItem("savedAlbums", JSON.stringify(saved));
-
-    // };
-
+// users can keep saving the same album over and over again, need to check if the album already exists in the user's collection before saving
     async function handleSaveToCollection() {
+        const token = await getToken();
         const res = await fetch("http://localhost:3000/albums/album", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
             },
             body: JSON.stringify({
-                userId: user.id,
                 spotifyId: album.id,
                 title: album.title,
                 artist: artistNames.join(", "),

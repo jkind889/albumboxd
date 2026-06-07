@@ -1,12 +1,17 @@
 import { useState, useEffect } from "react";
-
+import { useAuth } from "@clerk/react";
 
 export function RecentlySaved() {
     const [savedAlbums, setSavedAlbums] = useState([]);
-    
+    const { getToken } = useAuth();
     useEffect(() => {
         async function fetchSavedAlbums() {
-            const res = await fetch("http://localhost:3000/albums/album");
+            const token = await getToken();
+            const res = await fetch("http://localhost:3000/albums/collection", {
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
+            });
             const saved = await res.json();
             setSavedAlbums(saved.slice(0, 5)); // Show only the 5 most recently saved albums
         }

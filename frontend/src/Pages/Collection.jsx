@@ -1,16 +1,19 @@
 import {useState, useEffect} from "react";
 import { useNavigate } from "react-router-dom";
-import { useUser } from "@clerk/react";
-
+import { useAuth } from "@clerk/react";
 export function Collection() {
 
     const [savedAlbums, setSavedAlbums] = useState([]);
     const navigate = useNavigate();
-    const { user } = useUser();
-
+    const { getToken } = useAuth();
     useEffect(() => {
         async function fetchSavedAlbums() {
-            const res = await fetch(`http://localhost:3000/albums/user/${user.id}`);
+            const token = await getToken();
+            const res = await fetch(`http://localhost:3000/albums/collection`, {
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
+            });
             const saved = await res.json();
 
             setSavedAlbums(saved);
@@ -18,11 +21,13 @@ export function Collection() {
         fetchSavedAlbums();
     }, [])
 
-
+// updates the collection state but is not removing the album from the database, need to add a fetch request to delete the album from the database as well
    async function removeAlbum(id) {
+        const token = await getToken();
         const res = await fetch(`http://localhost:3000/albums/album/${id}`, {
             method: "DELETE",
             headers: {
+                "Authorization": `Bearer ${token}`,
                 "Content-Type": "application/json"
             }
         });
