@@ -9,19 +9,25 @@ export function ReviewForm({album, onAddReview})
     const handleSubmit = (e) => {
         e.preventDefault();
 
+        const numericRating = Number(rating);
+
+        if (!numericRating || !reviewText.trim()) {
+            return;
+        }
+
         const newReview = {
             spotifyId: album.id,
             title: album.title,
             artist: album.artist,
             cover: album.imgs?.[0]?.url,
-            rating,
-            reviewText,
+            rating: numericRating,
+            reviewText: reviewText.trim(),
             date: Date.now()
         };
         onAddReview(newReview);
 
         setReviewText("");
-        setRating(0);
+        setRating("");
         console.log("Review submitted:", newReview);
 
     };
@@ -44,8 +50,9 @@ export function ReviewForm({album, onAddReview})
                     type="number"
                     min="1"
                     max="5"
+                    required
                     value={rating}
-                    onChange={(e) => setRating(parseInt(e.target.value))}
+                    onChange={(e) => setRating(e.target.value)}
                     placeholder="1-5"
                 />
             </label>
@@ -57,6 +64,7 @@ export function ReviewForm({album, onAddReview})
                     onChange={(e) => setReviewText(e.target.value)}
                     placeholder="Write your review here..."
                     rows="5"
+                    required
                 />
             </label>
 

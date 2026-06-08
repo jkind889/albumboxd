@@ -79,6 +79,22 @@ router.get("/collection", ensureAuthenticated, async(req, res) =>
     }
 });
 
+router.get("/collections/:spotifyId", ensureAuthenticated, async(req, res) => {
+    try {
+        const  userId  = req.userId;
+        const { spotifyId } = req.params;
+
+        const album = await Album.findOne({ spotifyId, userId });
+        res.json({
+            saved: !!album,
+            album,
+        });
+    } catch (error) {
+            console.log(error);
+            res.status(500).json({ error: "Failed to check album in collection" });
+    }
+});
+
 router.delete("/album/:id", ensureAuthenticated, async(req, res) => {
     try {
         await Album.findOneAndDelete({ spotifyId: req.params.id, userId: req.userId });

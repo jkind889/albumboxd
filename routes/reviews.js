@@ -56,11 +56,8 @@ router.delete("/review/:id", ensureAuthenticated, async(req, res) => {
 
 router.get("/review/album/:albumId", async(req, res) => {
     try {
-        const review = await Review.find({ spotifyId: req.params.id});
-        if (!review.length) {
-            return [];
-        }
-        res.json(review);
+        const reviews = await Review.find({ spotifyId: req.params.albumId }).sort({ date: -1 });
+        res.json(reviews);
     } catch (error) {
         console.log(error);
         res.status(500).json({ error: "Failed to fetch review" });

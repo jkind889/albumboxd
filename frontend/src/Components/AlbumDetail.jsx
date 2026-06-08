@@ -8,20 +8,55 @@ export function AlbumDetail()
     const {id} = useParams();
     const [album, setAlbum] = useState(null);
     const [reviews, setReviews] = useState([]);
+    const [isSaved, setIsSaved] = useState(false);
     const { getToken } = useAuth();
 
     useEffect(() => {
         async function fetchReviews() {
-            const res = await fetch(`http://localhost:3000/reviews/review/album/${id}`);
-            const data = await res.json();
+            try {
+                const res = await fetch(`http://localhost:3000/reviews/review/album/${id}`);
 
-            setReviews(data)
+                if (!res.ok) {
+                    console.error("Failed to fetch reviews");
+                    setReviews([]);
+                    return;
+                }
+
+                const data = await res.json();
+                setReviews(Array.isArray(data) ? data : []);
+            } catch (error) {
+                console.error("Failed to fetch reviews", error);
+                setReviews([]);
+            }
         }
 
-        fetchReviews();
+        if (id) {
+            fetchReviews();
+        }
     }, [id])
 
-    
+    useEffect(() => {
+        async function checkIfSaved() {
+            const token = await getToken();
+
+            const res = await fetch(
+            `http://localhost:3000/albums/collections/${id}`,
+            {
+                headers: {
+                Authorization: `Bearer ${token}`,
+                },
+            }
+            );
+
+            const data = await res.json();
+            setIsSaved(data.saved);
+        }
+
+        if (id) {
+            checkIfSaved();
+        }
+    }, [id, getToken]);
+        
 
     useEffect(() => {
         // Fetch album details from the backend API
@@ -118,6 +153,10 @@ export function AlbumDetail()
             alert("Failed to save album to collection. Please try again.");
             return;
         }
+        if (res.ok) {
+            setIsSaved(true);
+        }
+
 
         console.log("Album saved to collection:", data);
     }
@@ -125,6 +164,7 @@ export function AlbumDetail()
 
 
     return (
+
         <section className="album-detail-page" style={accentStyle}>
             <div className="album-detail-overlay" />
             <div className="album-detail-shell">
@@ -190,8 +230,8 @@ export function AlbumDetail()
                     </div>
 
                     <div className="album-action-row">
-                        <button className="album-action-button" onClick={handleSaveToCollection}>
-                            Save to Collection
+                        <button className="album-action-button" disabled={isSaved} onClick={handleSaveToCollection}>
+                            {isSaved ? "Saved to Collection" : "Save to Collection"}
                         </button>
                     </div>
 

@@ -21,7 +21,7 @@ export function Collection() {
         fetchSavedAlbums();
     }, [getToken]);
 
-// updates the collection state but is not removing the album from the database, need to add a fetch request to delete the album from the database as well
+
    async function removeAlbum(id) {
         const token = await getToken();
         const res = await fetch(`http://localhost:3000/albums/album/${id}`, {
