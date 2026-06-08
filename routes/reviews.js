@@ -1,11 +1,29 @@
 const express = require("express");
 const Review = require("../models/Reviews");
+const { getAuth } = require("@clerk/express");
+
 const router = express.Router();
 
-router.post("/review", async(req, res) =>
+function ensureAuthenticated(req, res, next) {
+    const { userId } = getAuth(req);
+
+    if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    req.userId = userId;
+    next();
+}
+
+router.post("/review", ensureAuthenticated, async(req, res) =>
     {
+        const userId = req.userId;
+
+
         try {
-            const review = await Review.create(req.body);
+            const review = await Review.create(
+                { ...req.body, userId }
+            );
             res.status(201).json(review);
         } catch (error) {
             console.log(error);
@@ -13,10 +31,12 @@ router.post("/review", async(req, res) =>
         }
     });
 
- router.get("/reviewlist", async(req, res) =>
+ router.get("/review/user/", ensureAuthenticated, async(req, res) =>
     {
+        const userId = req.userId;
+
         try {
-            const reviews = await Review.find();
+            const reviews = await Review.find({ userId });
             res.json(reviews);
         } catch (error) {
             console.log(error);
@@ -24,9 +44,9 @@ router.post("/review", async(req, res) =>
         }
     });
 
-router.delete("/review/:id", async(req, res) => {
+router.delete("/review/:id", ensureAuthenticated, async(req, res) => {
     try {
-        await Review.findOneAndDelete({ _id: req.params.id });
+        await Review.findOneAndDelete({ _id: req.params.id, userId: req.userId });
         res.json({ message: "Review deleted" });
     } catch (error) {
         console.log(error);
@@ -36,17 +56,23 @@ router.delete("/review/:id", async(req, res) => {
 
 router.get("/review/album/:albumId", async(req, res) => {
     try {
-        const review = await Review.find({ albumId: req.params.id });
-        if (!review) {
-            return res.status(404).json({ error: "Review not found" });
-        }
-        res.json(review);
+        const reviews = await Review.find({ spotifyId: req.params.albumId }).sort({ date: -1 });
+        res.json(reviews);
     } catch (error) {
         console.log(error);
         res.status(500).json({ error: "Failed to fetch review" });
     }
 });
 
+router.get("/popular", async(req, res) => {
+    try {
+        const reviews = await Review.find();
+        res.json(reviews);
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Failed to fetch reviews" });
+    }
+});
 
 
 

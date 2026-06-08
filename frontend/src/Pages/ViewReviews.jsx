@@ -1,23 +1,47 @@
 import { useState, useEffect, useMemo } from "react";
+import { useAuth } from "@clerk/react";
 import ReviewList from "../Components/ReviewList";
-
 
 export function ViewReviews()
 {
     const [reviews, setReviews] = useState([]);
+    const  { getToken } = useAuth();
 
-
-
+    
     
     useEffect(() => {
         async function fetchReviews() {
-            const response = await fetch("http://localhost:3000/reviews/reviewlist");
+            const token = await getToken();
+
+            const response = await fetch(`http://localhost:3000/reviews/review/user/`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
             const data = await response.json();
             setReviews(data);
         }
 
         fetchReviews();
-    }, []);
+    }, [getToken]);
+
+    async function removeReview(id) {
+        const token = await getToken();
+        const res = await fetch(`http://localhost:3000/reviews/review/${id}`, {
+            method: "DELETE",
+            headers: {
+                "Authorization": `Bearer ${token}`
+            }
+        });
+        if (!res.ok) {
+            console.error("Failed to delete review");
+            return;
+        }
+        setReviews((prev) => prev.filter((review) => review._id !== id));
+    };
+
+
+
 
     async function removeReview(id) {
         const res = await fetch(`http://localhost:3000/reviews/review/${id}`, {

@@ -1,27 +1,33 @@
 import {useState, useEffect} from "react";
 import { useNavigate } from "react-router-dom";
-
-
+import { useAuth } from "@clerk/react";
 export function Collection() {
 
     const [savedAlbums, setSavedAlbums] = useState([]);
     const navigate = useNavigate();
-    
+    const { getToken } = useAuth();
     useEffect(() => {
         async function fetchSavedAlbums() {
-            const res = await fetch("http://localhost:3000/albums/album");
+            const token = await getToken();
+            const res = await fetch(`http://localhost:3000/albums/collection`, {
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
+            });
             const saved = await res.json();
 
             setSavedAlbums(saved);
         }
         fetchSavedAlbums();
-    }, [])
+    }, [getToken]);
 
 
    async function removeAlbum(id) {
+        const token = await getToken();
         const res = await fetch(`http://localhost:3000/albums/album/${id}`, {
             method: "DELETE",
             headers: {
+                "Authorization": `Bearer ${token}`,
                 "Content-Type": "application/json"
             }
         });

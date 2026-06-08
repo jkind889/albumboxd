@@ -2,25 +2,61 @@ import {useParams} from "react-router-dom";
 import {useState, useEffect } from "react";
 import ReviewForm from "./ReviewForm";
 import ReviewList from "./ReviewList";
-    
+import { useAuth } from "@clerk/react";
 export function AlbumDetail()
 {
     const {id} = useParams();
     const [album, setAlbum] = useState(null);
     const [reviews, setReviews] = useState([]);
-    
+    const [isSaved, setIsSaved] = useState(false);
+    const { getToken } = useAuth();
+
     useEffect(() => {
         async function fetchReviews() {
-            const res = await fetch(`http://localhost:3000/reviews/review/album/${id}`);
-            const data = await res.json();
+            try {
+                const res = await fetch(`http://localhost:3000/reviews/review/album/${id}`);
 
-            setReviews(data)
+                if (!res.ok) {
+                    console.error("Failed to fetch reviews");
+                    setReviews([]);
+                    return;
+                }
+
+                const data = await res.json();
+                setReviews(Array.isArray(data) ? data : []);
+            } catch (error) {
+                console.error("Failed to fetch reviews", error);
+                setReviews([]);
+            }
         }
 
-        fetchReviews();
+        if (id) {
+            fetchReviews();
+        }
     }, [id])
 
-    
+    useEffect(() => {
+        async function checkIfSaved() {
+            const token = await getToken();
+
+            const res = await fetch(
+            `http://localhost:3000/albums/collections/${id}`,
+            {
+                headers: {
+                Authorization: `Bearer ${token}`,
+                },
+            }
+            );
+
+            const data = await res.json();
+            setIsSaved(data.saved);
+        }
+
+        if (id) {
+            checkIfSaved();
+        }
+    }, [id, getToken]);
+        
 
     useEffect(() => {
         // Fetch album details from the backend API
@@ -31,10 +67,12 @@ export function AlbumDetail()
     }, [id])
 
     async function addReview(review) {
+        const token = await getToken();
         const res = await fetch("http://localhost:3000/reviews/review", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
             },
             body: JSON.stringify(review)  
           });
@@ -50,8 +88,12 @@ export function AlbumDetail()
     };
 
     async function removeReview(id) {
+        const token = await getToken();
         const res = await fetch(`http://localhost:3000/reviews/review/${id}`, {
-            method: "DELETE"
+            method: "DELETE",
+            headers: {
+                "Authorization": `Bearer ${token}`
+            }
         });
         if (!res.ok) {
             console.error("Failed to delete review");
@@ -81,29 +123,16 @@ export function AlbumDetail()
           })
         : null;
 
-    // const saveAlbum = () => {
-    //     // Save the album to localStorage for the collection page
-    //     const saved = JSON.parse(localStorage.getItem("savedAlbums")) || [];
-
-    //     // if the album exists we can alert the user and return early
-    //     const exists= saved.some(a => a.id === album.id);
-    //     if (exists) {
-    //         alert("Album already saved in collection");
-    //         return;
-    //     }
-    //     // push the album into the saved array and save it back to localStorage
-    //     saved.push(album)
-    //     console.log(saved);
-    //     // Save the updated array back to localStorage
-    //     localStorage.setItem("savedAlbums", JSON.stringify(saved));
-
-    // };
-
+// users can keep saving the same album over and over again, need to check if the album already exists in the user's collection before saving
     async function handleSaveToCollection() {
+        const token = await getToken();
+        
+
         const res = await fetch("http://localhost:3000/albums/album", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
             },
             body: JSON.stringify({
                 spotifyId: album.id,
@@ -113,12 +142,29 @@ export function AlbumDetail()
              }),
         });
         const data = await res.json();
+
+        if (res.status === 409) {
+            alert("This album is already in your collection.");
+            return;
+        }
+        
+        if (!res.ok) {
+            console.error("Failed to save album to collection");
+            alert("Failed to save album to collection. Please try again.");
+            return;
+        }
+        if (res.ok) {
+            setIsSaved(true);
+        }
+
+
         console.log("Album saved to collection:", data);
     }
 
 
 
     return (
+
         <section className="album-detail-page" style={accentStyle}>
             <div className="album-detail-overlay" />
             <div className="album-detail-shell">
@@ -184,8 +230,8 @@ export function AlbumDetail()
                     </div>
 
                     <div className="album-action-row">
-                        <button className="album-action-button" onClick={handleSaveToCollection}>
-                            Save to Collection
+                        <button className="album-action-button" disabled={isSaved} onClick={handleSaveToCollection}>
+                            {isSaved ? "Saved to Collection" : "Save to Collection"}
                         </button>
                     </div>
 

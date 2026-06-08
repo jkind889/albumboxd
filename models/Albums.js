@@ -1,6 +1,10 @@
 const mongoose = require("mongoose");
 
 const albumSchema = new mongoose.Schema({
+  userId: {
+    type: String,
+    required: true,
+  },
   spotifyId: {
     type: String,
     required: true,
@@ -17,6 +21,9 @@ const albumSchema = new mongoose.Schema({
     type: String,
   },
 });
+
+albumSchema.index({ spotifyId: 1, userId: 1 }, { unique: true });
+
 
 const Album = mongoose.model("Album", albumSchema);
 

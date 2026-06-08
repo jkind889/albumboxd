@@ -9,12 +9,11 @@ export function FrontPage() {
     const navigate = useNavigate();
 
 
-    
     useEffect(() => {
 
         async function fetchReviews()
         {
-            const response = await fetch("http://localhost:3000/reviews/reviewlist");
+            const response = await fetch("http://localhost:3000/reviews/popular");
             const data = await response.json();
             setReviews(data);
         }
