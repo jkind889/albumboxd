@@ -43,19 +43,6 @@ export function ViewReviews()
 
 
 
-    async function removeReview(id) {
-        const res = await fetch(`http://localhost:3000/reviews/review/${id}`, {
-            method: "DELETE"
-        });
-        if (!res.ok) {
-            console.error("Failed to delete review");
-            return;
-        }
-        setReviews((prev) => prev.filter((review) => review._id !== id));
-    };
-
-
-
 
     const recentReviews = useMemo(() => {
         return [...reviews]
