@@ -57,6 +57,10 @@ router.post("/album", ensureAuthenticated, async(req, res) =>
         const album = await Album.create({ ...req.body, userId: req.userId });
         res.status(201).json(album);
     } catch (error) {
+        if (error.code === 11000) {
+            return res.status(409).json({ error: "Album already exists in your collection" });
+        }
+
         console.log(error);
         res.status(500).json({ error: "Failed to create album" });
     }

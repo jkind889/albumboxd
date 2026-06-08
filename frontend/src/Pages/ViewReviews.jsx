@@ -23,11 +23,15 @@ export function ViewReviews()
         }
 
         fetchReviews();
-    }, []);
+    }, [getToken]);
 
     async function removeReview(id) {
+        const token = await getToken();
         const res = await fetch(`http://localhost:3000/reviews/review/${id}`, {
-            method: "DELETE"
+            method: "DELETE",
+            headers: {
+                "Authorization": `Bearer ${token}`
+            }
         });
         if (!res.ok) {
             console.error("Failed to delete review");

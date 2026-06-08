@@ -22,6 +22,9 @@ const albumSchema = new mongoose.Schema({
   },
 });
 
+albumSchema.index({ spotifyId: 1, userId: 1 }, { unique: true });
+
+
 const Album = mongoose.model("Album", albumSchema);
 
 module.exports = Album;

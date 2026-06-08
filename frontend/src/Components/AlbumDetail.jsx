@@ -53,8 +53,12 @@ export function AlbumDetail()
     };
 
     async function removeReview(id) {
+        const token = await getToken();
         const res = await fetch(`http://localhost:3000/reviews/review/${id}`, {
-            method: "DELETE"
+            method: "DELETE",
+            headers: {
+                "Authorization": `Bearer ${token}`
+            }
         });
         if (!res.ok) {
             console.error("Failed to delete review");
@@ -87,6 +91,8 @@ export function AlbumDetail()
 // users can keep saving the same album over and over again, need to check if the album already exists in the user's collection before saving
     async function handleSaveToCollection() {
         const token = await getToken();
+        
+
         const res = await fetch("http://localhost:3000/albums/album", {
             method: "POST",
             headers: {
@@ -101,6 +107,18 @@ export function AlbumDetail()
              }),
         });
         const data = await res.json();
+
+        if (res.status === 409) {
+            alert("This album is already in your collection.");
+            return;
+        }
+        
+        if (!res.ok) {
+            console.error("Failed to save album to collection");
+            alert("Failed to save album to collection. Please try again.");
+            return;
+        }
+
         console.log("Album saved to collection:", data);
     }
 

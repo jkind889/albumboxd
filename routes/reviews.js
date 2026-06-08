@@ -44,9 +44,9 @@ router.post("/review", ensureAuthenticated, async(req, res) =>
         }
     });
 
-router.delete("/review/:id", async(req, res) => {
+router.delete("/review/:id", ensureAuthenticated, async(req, res) => {
     try {
-        await Review.findOneAndDelete({ _id: req.params.id });
+        await Review.findOneAndDelete({ _id: req.params.id, userId: req.userId });
         res.json({ message: "Review deleted" });
     } catch (error) {
         console.log(error);
