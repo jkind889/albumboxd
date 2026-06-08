@@ -24,7 +24,6 @@ export function ReviewForm({album, onAddReview})
             reviewText: reviewText.trim(),
             date: Date.now()
         };
-        onAddReview(newReview);
 
         setReviewText("");
         setRating("");
@@ -32,7 +31,9 @@ export function ReviewForm({album, onAddReview})
 
     };
 
-    
+        setRating(0);
+        setReviewText("");
+    }
 
 
     return (

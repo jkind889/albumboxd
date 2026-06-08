@@ -25,7 +25,7 @@ export function RecentlySaved() {
                 <div key={album.spotifyId} className="recent-saved-album">
                     <img src={album.cover} alt={`${album.name} cover`} className="recent-saved-album-cover" />
                     <div className="recent-saved-album-info">
-                        <h3>{album.name}</h3>
+                        <h3>{album.title}</h3>
                         <p>{album.artists?.[0]?.name || album.artist}</p>
                     </div>
                 </div>
