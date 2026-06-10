@@ -13,20 +13,24 @@ export function SearchResults()
   
 
     useEffect(() =>{
-      if (!query) {
-        setResults([])
-        return;
+      async function fetchResults() {
+        if (!query) {
+          setResults([])
+          return;
+        }
+
+        setLoading(true)
+
+        fetch(`http://localhost:3000/search/search?q=${encodeURIComponent(query)}`)
+        .then(res => res.json())
+        .then(data => {
+          console.log(data)
+          setResults(data)})
+        .catch(() => setResults([]))
+        .finally(() => setLoading(false))
       }
 
-      setLoading(true)
-
-      fetch(`http://localhost:3000/search/search?q=${query}`)
-      .then(res => res.json())
-      .then(data => {
-        console.log(data)
-        setResults(data)})
-      .catch(() => setResults([]))
-      .finally(() => setLoading(false))
+      fetchResults();
     }, [query])
 
 

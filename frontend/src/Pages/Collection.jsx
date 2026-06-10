@@ -9,14 +9,19 @@ export function Collection() {
     useEffect(() => {
         async function fetchSavedAlbums() {
             const token = await getToken();
-            const res = await fetch(`http://localhost:3000/albums/collection`, {
+            const res = await fetch(`http://localhost:3000/collections/collection`, {
                 headers: {
                     "Authorization": `Bearer ${token}`
                 }
             });
+            if (!res.ok) {
+                setSavedAlbums([]);
+                return;
+            }
+
             const saved = await res.json();
 
-            setSavedAlbums(saved);
+            setSavedAlbums(Array.isArray(saved) ? saved : []);
         }
         fetchSavedAlbums();
     }, [getToken]);
@@ -24,7 +29,7 @@ export function Collection() {
 
    async function removeAlbum(id) {
         const token = await getToken();
-        const res = await fetch(`http://localhost:3000/albums/album/${id}`, {
+        const res = await fetch(`http://localhost:3000/collections/collection/album/${id}`, {
             method: "DELETE",
             headers: {
                 "Authorization": `Bearer ${token}`,

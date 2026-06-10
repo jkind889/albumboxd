@@ -40,13 +40,18 @@ export function AlbumDetail()
             const token = await getToken();
 
             const res = await fetch(
-            `http://localhost:3000/albums/collections/${id}`,
+            `http://localhost:3000/collections/collection/${id}`,
             {
                 headers: {
                 Authorization: `Bearer ${token}`,
                 },
             }
             );
+
+            if (!res.ok) {
+                setIsSaved(false);
+                return;
+            }
 
             const data = await res.json();
             setIsSaved(data.saved);
@@ -89,7 +94,7 @@ export function AlbumDetail()
 
     async function removeReview(id) {
         const token = await getToken();
-        const res = await fetch(`http://localhost:3000/reviews/review/${id}`, {
+        const res = await fetch(`http://localhost:3000/reviews/review/user/${id}`, {
             method: "DELETE",
             headers: {
                 "Authorization": `Bearer ${token}`

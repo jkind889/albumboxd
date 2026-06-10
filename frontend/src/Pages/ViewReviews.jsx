@@ -27,7 +27,7 @@ export function ViewReviews()
 
     async function removeReview(id) {
         const token = await getToken();
-        const res = await fetch(`http://localhost:3000/reviews/review/${id}`, {
+        const res = await fetch(`http://localhost:3000/reviews/review/user/${id}`, {
             method: "DELETE",
             headers: {
                 "Authorization": `Bearer ${token}`

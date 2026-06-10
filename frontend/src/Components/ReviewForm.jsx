@@ -25,16 +25,12 @@ export function ReviewForm({album, onAddReview})
             date: Date.now()
         };
 
+        onAddReview(newReview)
         setReviewText("");
         setRating("");
         console.log("Review submitted:", newReview);
 
     };
-
-        setRating(0);
-        setReviewText("");
-    }
-
 
     return (
         <form className="review-form-card" onSubmit={handleSubmit}>
@@ -71,10 +67,7 @@ export function ReviewForm({album, onAddReview})
 
             <button className="review-submit-button" type="submit">Submit Review</button>
         </form>
-                
-
     );
-
 }
 
 export default ReviewForm;
