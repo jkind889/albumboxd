@@ -12,6 +12,24 @@ const findCalls = [];
 const findOneCalls = [];
 const deleteCalls = [];
 
+// Mimics the small part of Mongoose query chaining used by collection routes.
+function chainResult(result) {
+  return {
+    populate(path) {
+      this.populatePath = path;
+      return this;
+    },
+    sort(sortBy) {
+      this.sortBy = sortBy;
+      return Promise.resolve(result);
+    },
+    then(resolve, reject) {
+      return Promise.resolve(result).then(resolve, reject);
+    },
+  };
+}
+
+// Loads the collection router with mocked saved-album and Clerk dependencies.
 function loadCollectionRouter() {
   delete require.cache[collectionRoutePath];
 
@@ -20,17 +38,17 @@ function loadCollectionRouter() {
     filename: albumModelPath,
     loaded: true,
     exports: {
-      find: async (query) => {
+      find: (query) => {
         findCalls.push(query);
-        return foundAlbums;
+        return chainResult(foundAlbums);
       },
-      findOne: async (query) => {
+      findOne: (query) => {
         findOneCalls.push(query);
-        return foundAlbum;
+        return chainResult(foundAlbum);
       },
       findOneAndDelete: async (query) => {
         deleteCalls.push(query);
-        return { _id: "album_123", ...query };
+        return { _id: "saved_album_123", ...query };
       },
     },
   };
@@ -97,18 +115,66 @@ test.beforeEach(() => {
   deleteCalls.length = 0;
 });
 
-test("GET /collections/collection lists albums for the authenticated user", async () => {
-  foundAlbums = [{ spotifyId: "spotify_album_123", title: "Kind of Blue" }];
+test("GET /collections/collection lists populated catalog albums for the authenticated user", async () => {
+  foundAlbums = [
+    {
+      _id: "saved_album_123",
+      userId: "user_clerk_123",
+      spotifyId: "spotify_album_123",
+      savedAt: new Date("2026-06-09T00:00:00.000Z"),
+      albumCatalogId: {
+        _id: "catalog_album_123",
+        spotifyId: "spotify_album_123",
+        title: "Kind of Blue",
+        artist: "Miles Davis",
+        artists: ["Miles Davis"],
+        year: "1959",
+        cover: "https://example.com/kind-of-blue.jpg",
+      },
+    },
+  ];
 
   const response = await callRoute("get", "/collection");
 
   assert.equal(response.status, 200);
   assert.deepEqual(findCalls, [{ userId: "user_clerk_123" }]);
-  assert.deepEqual(response.body, foundAlbums);
+  assert.deepEqual(response.body, [
+    {
+      _id: "saved_album_123",
+      albumCatalogId: "catalog_album_123",
+      userId: "user_clerk_123",
+      savedAt: new Date("2026-06-09T00:00:00.000Z"),
+      id: "spotify_album_123",
+      spotifyId: "spotify_album_123",
+      title: "Kind of Blue",
+      artist: "Miles Davis",
+      artists: ["Miles Davis"],
+      year: "1959",
+      releaseDate: "",
+      genres: [],
+      imgs: [],
+      cover: "https://example.com/kind-of-blue.jpg",
+      totalTracks: 0,
+      label: "",
+      albumType: "album",
+      spotifyUrl: "",
+    },
+  ]);
 });
 
 test("GET /collections/collection/:spotifyId checks saved state for the authenticated user", async () => {
-  foundAlbum = { spotifyId: "spotify_album_123", title: "Kind of Blue" };
+  foundAlbum = {
+    _id: "saved_album_123",
+    userId: "user_clerk_123",
+    spotifyId: "spotify_album_123",
+    savedAt: new Date("2026-06-09T00:00:00.000Z"),
+    albumCatalogId: {
+      _id: "catalog_album_123",
+      spotifyId: "spotify_album_123",
+      title: "Kind of Blue",
+      artist: "Miles Davis",
+    },
+  };
 
   const response = await callRoute("get", "/collection/:spotifyId", {
     spotifyId: "spotify_album_123",
@@ -118,9 +184,20 @@ test("GET /collections/collection/:spotifyId checks saved state for the authenti
   assert.deepEqual(findOneCalls, [
     { spotifyId: "spotify_album_123", userId: "user_clerk_123" },
   ]);
+  assert.equal(response.body.saved, true);
+  assert.equal(response.body.album.spotifyId, "spotify_album_123");
+  assert.equal(response.body.album.title, "Kind of Blue");
+});
+
+test("GET /collections/collection/:spotifyId returns saved false when not found", async () => {
+  const response = await callRoute("get", "/collection/:spotifyId", {
+    spotifyId: "spotify_album_123",
+  });
+
+  assert.equal(response.status, 200);
   assert.deepEqual(response.body, {
-    saved: true,
-    album: foundAlbum,
+    saved: false,
+    album: null,
   });
 });
 

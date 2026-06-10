@@ -1,24 +1,23 @@
 const mongoose = require("mongoose");
 
+// Represents one user's saved album by referencing the shared Spotify catalog record.
 const albumSchema = new mongoose.Schema({
   userId: {
     type: String,
+    required: true,
+  },
+  albumCatalogId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "AlbumCatalog",
     required: true,
   },
   spotifyId: {
     type: String,
     required: true,
   },
-  title: {
-    type: String,
-    required: true,
-  },
-  artist: {
-    type: String,
-    required: true,
-  },
-  cover: {
-    type: String,
+  savedAt: {
+    type: Date,
+    default: Date.now,
   },
 });
 

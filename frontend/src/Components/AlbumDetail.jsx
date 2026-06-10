@@ -139,11 +139,9 @@ export function AlbumDetail()
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${token}`
             },
+            // The backend uses this ID to find or create the catalog album before saving.
             body: JSON.stringify({
                 spotifyId: album.id,
-                title: album.title,
-                artist: artistNames.join(", "),
-                cover: albumArt
              }),
         });
         const data = await res.json();

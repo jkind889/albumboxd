@@ -1,0 +1,102 @@
+const AlbumCatalog = require("../../models/AlbumCatalog");
+const { getSpotifyAccessToken } = require("./spotify");
+
+// Converts raw Spotify album payloads into the fields AlbumBoxd stores in Mongo.
+function normalizeSpotifyAlbum(data) {
+  return {
+    spotifyId: data.id,
+    title: data.name,
+    artist: data.artists?.[0]?.name || "Unknown Artist",
+    artists: data.artists?.map((artist) => artist.name) || [],
+    year: data.release_date?.slice(0, 4) || "unknown",
+    releaseDate: data.release_date || "",
+    genres: data.genres || [],
+    imgs: data.images || [],
+    cover: data.images?.[0]?.url || null,
+    totalTracks: data.total_tracks || 0,
+    label: data.label || "",
+    albumType: data.album_type || "album",
+    spotifyUrl: data.external_urls?.spotify || "",
+  };
+}
+
+// Converts catalog documents into the album shape the frontend already expects.
+function normalizeCatalogAlbum(album) {
+  const source = typeof album.toObject === "function" ? album.toObject() : album;
+
+  return {
+    id: source.spotifyId,
+    spotifyId: source.spotifyId,
+    title: source.title,
+    artist: source.artist,
+    artists: source.artists || [],
+    year: source.year || "unknown",
+    releaseDate: source.releaseDate || "",
+    genres: source.genres || [],
+    imgs: source.imgs || [],
+    cover: source.cover || source.imgs?.[0]?.url || null,
+    totalTracks: source.totalTracks || 0,
+    label: source.label || "",
+    albumType: source.albumType || "album",
+    spotifyUrl: source.spotifyUrl || "",
+  };
+}
+
+// Search dropdown/results only need a smaller album summary.
+function toSearchResult(album) {
+  const normalized = normalizeCatalogAlbum(album);
+
+  return {
+    id: normalized.spotifyId,
+    title: normalized.title,
+    artist: normalized.artist,
+    year: normalized.year,
+    cover: normalized.cover,
+  };
+}
+
+// Creates or refreshes a cached album while keeping spotifyId unique.
+async function upsertAlbumCatalog(albumData) {
+  return AlbumCatalog.findOneAndUpdate(
+    { spotifyId: albumData.spotifyId },
+    { $set: albumData },
+    { new: true, upsert: true, setDefaultsOnInsert: true },
+  );
+}
+
+async function fetchSpotifyAlbum(spotifyId) {
+  const token = await getSpotifyAccessToken();
+
+  const response = await fetch(`https://api.spotify.com/v1/albums/${spotifyId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Spotify album fetch failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Reads from the catalog first and falls back to Spotify on cache miss.
+async function getOrCreateAlbumCatalog(spotifyId) {
+  const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
+
+  if (cachedAlbum) {
+    return cachedAlbum;
+  }
+
+  const spotifyAlbum = await fetchSpotifyAlbum(spotifyId);
+  return upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
+}
+
+module.exports = {
+  fetchSpotifyAlbum,
+  getOrCreateAlbumCatalog,
+  normalizeCatalogAlbum,
+  normalizeSpotifyAlbum,
+  toSearchResult,
+  upsertAlbumCatalog,
+};

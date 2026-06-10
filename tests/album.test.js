@@ -2,13 +2,18 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const albumModelPath = require.resolve("../models/Albums");
+const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const clerkPath = require.resolve("@clerk/express");
 const albumRoutePath = require.resolve("../routes/album");
 
 let authUserId = null;
 let createdAlbum = null;
+let catalogAlbum = null;
+let getOrCreateError = null;
 const createCalls = [];
+const getOrCreateCalls = [];
 
+// Loads the album router with mocked database/auth/catalog dependencies.
 function loadAlbumRouter() {
   delete require.cache[albumRoutePath];
 
@@ -22,8 +27,45 @@ function loadAlbumRouter() {
         if (createdAlbum instanceof Error) {
           throw createdAlbum;
         }
-        return createdAlbum || { _id: "album_123", ...album };
+        return (
+          createdAlbum || {
+            _id: "saved_album_123",
+            savedAt: new Date("2026-06-09T00:00:00.000Z"),
+            ...album,
+          }
+        );
       },
+    },
+  };
+
+  require.cache[albumCatalogHelperPath] = {
+    id: albumCatalogHelperPath,
+    filename: albumCatalogHelperPath,
+    loaded: true,
+    exports: {
+      getOrCreateAlbumCatalog: async (spotifyId) => {
+        getOrCreateCalls.push(spotifyId);
+        if (getOrCreateError) {
+          throw getOrCreateError;
+        }
+        return catalogAlbum;
+      },
+      normalizeCatalogAlbum: (album) => ({
+        id: album.spotifyId,
+        spotifyId: album.spotifyId,
+        title: album.title,
+        artist: album.artist,
+        artists: album.artists || [],
+        year: album.year || "unknown",
+        releaseDate: album.releaseDate || "",
+        genres: album.genres || [],
+        imgs: album.imgs || [],
+        cover: album.cover || null,
+        totalTracks: album.totalTracks || 0,
+        label: album.label || "",
+        albumType: album.albumType || "album",
+        spotifyUrl: album.spotifyUrl || "",
+      }),
     },
   };
 
@@ -39,13 +81,15 @@ function loadAlbumRouter() {
   return require("../routes/album");
 }
 
-async function postAlbum(body) {
+async function callRoute(method, path, { body = {}, params = {} } = {}) {
   const router = loadAlbumRouter();
   const route = router.stack.find(
-    (layer) => layer.route?.path === "/album" && layer.route.methods.post,
+    (layer) => layer.route?.path === path && layer.route.methods[method],
   );
 
-  const req = { body };
+  assert.ok(route, `${method.toUpperCase()} ${path} should be registered`);
+
+  const req = { body, params };
   const res = {
     statusCode: 200,
     body: null,
@@ -81,37 +125,80 @@ async function postAlbum(body) {
 test.beforeEach(() => {
   authUserId = "user_clerk_123";
   createdAlbum = null;
-  createCalls.length = 0;
-});
-
-test("POST /albums/album saves an album with the authenticated Clerk user id", async () => {
-  const payload = {
-    userId: "frontend_user_should_not_win",
+  getOrCreateError = null;
+  catalogAlbum = {
+    _id: "catalog_album_123",
     spotifyId: "spotify_album_123",
     title: "Kind of Blue",
     artist: "Miles Davis",
+    artists: ["Miles Davis"],
+    year: "1959",
     cover: "https://example.com/kind-of-blue.jpg",
   };
+  createCalls.length = 0;
+  getOrCreateCalls.length = 0;
+});
 
-  const response = await postAlbum(payload);
+test("GET /albums/album/:id returns a cached or newly cached catalog album", async () => {
+  const response = await callRoute("get", "/album/:id", {
+    params: { id: "spotify_album_123" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(getOrCreateCalls, ["spotify_album_123"]);
+  assert.equal(response.body.id, "spotify_album_123");
+  assert.equal(response.body.title, "Kind of Blue");
+});
+
+test("GET /albums/album/:id returns 500 when catalog lookup fails", async () => {
+  getOrCreateError = new Error("spotify unavailable");
+
+  const response = await callRoute("get", "/album/:id", {
+    params: { id: "spotify_album_123" },
+  });
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(response.body, { error: "Failed to fetch album details" });
+});
+
+test("POST /albums/album saves a catalog reference with the authenticated Clerk user id", async () => {
+  const response = await callRoute("post", "/album", {
+    body: {
+      userId: "frontend_user_should_not_win",
+      spotifyId: "spotify_album_123",
+      title: "Frontend title should not be saved",
+    },
+  });
 
   assert.equal(response.status, 201);
+  assert.deepEqual(getOrCreateCalls, ["spotify_album_123"]);
   assert.equal(createCalls.length, 1);
   assert.deepEqual(createCalls[0], {
-    ...payload,
+    albumCatalogId: "catalog_album_123",
+    spotifyId: "spotify_album_123",
     userId: "user_clerk_123",
   });
   assert.equal(response.body.userId, "user_clerk_123");
-  assert.equal(response.body.spotifyId, payload.spotifyId);
+  assert.equal(response.body.spotifyId, "spotify_album_123");
+  assert.equal(response.body.title, "Kind of Blue");
+});
+
+test("POST /albums/album returns 400 without a spotifyId", async () => {
+  const response = await callRoute("post", "/album", {
+    body: { title: "Kind of Blue" },
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "spotifyId is required" });
+  assert.equal(createCalls.length, 0);
+  assert.equal(getOrCreateCalls.length, 0);
 });
 
 test("POST /albums/album returns 401 and does not save when Clerk has no user", async () => {
   authUserId = null;
 
-  const response = await postAlbum({
-    spotifyId: "spotify_album_123",
-    title: "Kind of Blue",
-    artist: "Miles Davis",
+  const response = await callRoute("post", "/album", {
+    body: { spotifyId: "spotify_album_123" },
   });
 
   assert.equal(response.status, 401);
@@ -119,14 +206,25 @@ test("POST /albums/album returns 401 and does not save when Clerk has no user", 
   assert.equal(createCalls.length, 0);
 });
 
+test("POST /albums/album returns 409 when the album already exists", async () => {
+  createdAlbum = Object.assign(new Error("duplicate key"), { code: 11000 });
+
+  const response = await callRoute("post", "/album", {
+    body: { spotifyId: "spotify_album_123" },
+  });
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(response.body, {
+    error: "Album already exists in your collection",
+  });
+});
+
 test("POST /albums/album returns 500 when the album cannot be saved", async (t) => {
   t.mock.method(console, "log", () => {});
   createdAlbum = new Error("database unavailable");
 
-  const response = await postAlbum({
-    spotifyId: "spotify_album_123",
-    title: "Kind of Blue",
-    artist: "Miles Davis",
+  const response = await callRoute("post", "/album", {
+    body: { spotifyId: "spotify_album_123" },
   });
 
   assert.equal(response.status, 500);

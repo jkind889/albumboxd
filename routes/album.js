@@ -1,7 +1,10 @@
 const express = require("express");
-const { getSpotifyAccessToken } = require("./utils/spotify");
 const Album = require("../models/Albums");
 const { getAuth } = require("@clerk/express");
+const {
+    getOrCreateAlbumCatalog,
+    normalizeCatalogAlbum,
+} = require("./utils/albumCatalog");
 const router = express.Router();
 
 function ensureAuthenticated(req, res, next) {
@@ -15,47 +18,41 @@ function ensureAuthenticated(req, res, next) {
     next();
 }
 
-
-
-
+// Album detail pages use the catalog cache before making any Spotify request.
 router.get("/album/:id", async(req, res) =>
 {
     try {
-        const token = await getSpotifyAccessToken();
-
-        const response = await fetch(`https://api.spotify.com/v1/albums/${req.params.id}`, {
-            headers: {
-                "Authorization": `Bearer ${token}`
-            }
-        });
-
-        const data = await response.json();
-
-        const album = {
-            id: data.id,
-            title: data.name,
-            artist: data.artists?.[0]?.name || "Unknown Artist",
-            artists: data.artists?.map((artist) => artist.name) || [],
-            year: data.release_date?.slice(0, 4) || "unknown",
-            releaseDate: data.release_date || "",
-            genres: data.genres || [],
-            imgs: data.images || [],
-            totalTracks: data.total_tracks || 0,
-            label: data.label || "",
-            albumType: data.album_type || "album",
-            spotifyUrl: data.external_urls?.spotify || ""
-        };
-        res.json(album);
+        const album = await getOrCreateAlbumCatalog(req.params.id);
+        res.json(normalizeCatalogAlbum(album));
     } catch (error) {
         res.status(500).json({ error: "Failed to fetch album details" });
     }
 });
 
+// User saves only store a reference to the shared catalog album.
 router.post("/album", ensureAuthenticated, async(req, res) => 
 {
     try {
-        const album = await Album.create({ ...req.body, userId: req.userId });
-        res.status(201).json(album);
+        const { spotifyId } = req.body;
+
+        if (!spotifyId) {
+            return res.status(400).json({ error: "spotifyId is required" });
+        }
+
+        const catalogAlbum = await getOrCreateAlbumCatalog(spotifyId);
+        const savedAlbum = await Album.create({
+            albumCatalogId: catalogAlbum._id,
+            spotifyId,
+            userId: req.userId,
+        });
+
+        res.status(201).json({
+            ...normalizeCatalogAlbum(catalogAlbum),
+            _id: savedAlbum._id,
+            albumCatalogId: savedAlbum.albumCatalogId,
+            userId: savedAlbum.userId,
+            savedAt: savedAlbum.savedAt,
+        });
     } catch (error) {
         if (error.code === 11000) {
             return res.status(409).json({ error: "Album already exists in your collection" });
