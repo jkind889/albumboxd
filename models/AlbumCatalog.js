@@ -44,6 +44,37 @@ const albumCatalogSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    tracks: {
+      type: [
+        {
+          spotifyId: {
+            type: String,
+            default: "",
+          },
+          trackNumber: {
+            type: Number,
+            default: 0,
+          },
+          discNumber: {
+            type: Number,
+            default: 1,
+          },
+          title: {
+            type: String,
+            default: "",
+          },
+          durationMs: {
+            type: Number,
+            default: 0,
+          },
+          spotifyUrl: {
+            type: String,
+            default: "",
+          },
+        },
+      ],
+      default: [],
+    },
     label: {
       type: String,
       default: "",

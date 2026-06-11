@@ -62,6 +62,7 @@ function loadAlbumRouter() {
         imgs: album.imgs || [],
         cover: album.cover || null,
         totalTracks: album.totalTracks || 0,
+        tracks: album.tracks || [],
         label: album.label || "",
         albumType: album.albumType || "album",
         spotifyUrl: album.spotifyUrl || "",
@@ -134,6 +135,25 @@ test.beforeEach(() => {
     artists: ["Miles Davis"],
     year: "1959",
     cover: "https://example.com/kind-of-blue.jpg",
+    totalTracks: 2,
+    tracks: [
+      {
+        spotifyId: "track_1",
+        trackNumber: 1,
+        discNumber: 1,
+        title: "So What",
+        durationMs: 545000,
+        spotifyUrl: "https://open.spotify.com/track/track_1",
+      },
+      {
+        spotifyId: "track_2",
+        trackNumber: 2,
+        discNumber: 1,
+        title: "Freddie Freeloader",
+        durationMs: 589000,
+        spotifyUrl: "https://open.spotify.com/track/track_2",
+      },
+    ],
   };
   createCalls.length = 0;
   getOrCreateCalls.length = 0;
@@ -148,6 +168,7 @@ test("GET /albums/album/:id returns a cached or newly cached catalog album", asy
   assert.deepEqual(getOrCreateCalls, ["spotify_album_123"]);
   assert.equal(response.body.id, "spotify_album_123");
   assert.equal(response.body.title, "Kind of Blue");
+  assert.deepEqual(response.body.tracks, catalogAlbum.tracks);
 });
 
 test("GET /albums/album/:id returns 500 when catalog lookup fails", async () => {

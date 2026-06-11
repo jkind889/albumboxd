@@ -369,6 +369,51 @@
   color: #e2e8f0;
 }
 
+.album-tracklist {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.album-tracklist h3 {
+  margin: 0 0 0.85rem;
+  color: #f8fafc;
+  font-size: 1rem;
+}
+
+.album-tracklist ol {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.album-tracklist li {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) 4rem;
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 36px;
+  padding: 0.35rem 0;
+  color: #e2e8f0;
+}
+
+.album-track-number,
+.album-track-duration {
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.album-track-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.album-track-duration {
+  text-align: right;
+}
+
 .album-tag-row {
   display: flex;
   flex-wrap: wrap;
@@ -628,6 +673,11 @@
   .album-facts div {
     grid-template-columns: 1fr;
     gap: 0.35rem;
+  }
+
+  .album-tracklist li {
+    grid-template-columns: 2.5rem minmax(0, 1fr) 3.5rem;
+    gap: 0.5rem;
   }
 
   .review-card-header,

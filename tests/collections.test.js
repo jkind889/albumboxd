@@ -155,6 +155,7 @@ test("GET /collections/collection lists populated catalog albums for the authent
       imgs: [],
       cover: "https://example.com/kind-of-blue.jpg",
       totalTracks: 0,
+      tracks: [],
       label: "",
       albumType: "album",
       spotifyUrl: "",

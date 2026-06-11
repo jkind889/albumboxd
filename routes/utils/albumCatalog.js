@@ -14,6 +14,14 @@ function normalizeSpotifyAlbum(data) {
     imgs: data.images || [],
     cover: data.images?.[0]?.url || null,
     totalTracks: data.total_tracks || 0,
+    tracks: data.tracks?.items?.map((track) => ({
+      spotifyId: track.id || "",
+      trackNumber: track.track_number || 0,
+      discNumber: track.disc_number || 1,
+      title: track.name || "",
+      durationMs: track.duration_ms || 0,
+      spotifyUrl: track.external_urls?.spotify || "",
+    })) || [],
     label: data.label || "",
     albumType: data.album_type || "album",
     spotifyUrl: data.external_urls?.spotify || "",
@@ -36,6 +44,7 @@ function normalizeCatalogAlbum(album) {
     imgs: source.imgs || [],
     cover: source.cover || source.imgs?.[0]?.url || null,
     totalTracks: source.totalTracks || 0,
+    tracks: source.tracks || [],
     label: source.label || "",
     albumType: source.albumType || "album",
     spotifyUrl: source.spotifyUrl || "",
@@ -84,7 +93,7 @@ async function fetchSpotifyAlbum(spotifyId) {
 async function getOrCreateAlbumCatalog(spotifyId) {
   const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
 
-  if (cachedAlbum) {
+  if (cachedAlbum && cachedAlbum.tracks?.length) {
     return cachedAlbum;
   }
 

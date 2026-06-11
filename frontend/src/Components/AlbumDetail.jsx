@@ -127,6 +127,27 @@ export function AlbumDetail()
             day: album.releaseDate.length > 7 ? "numeric" : undefined
           })
         : null;
+    const sortedTracks = [...(album.tracks || [])].sort((first, second) => {
+        const firstDisc = Number(first.discNumber) || 1;
+        const secondDisc = Number(second.discNumber) || 1;
+        const firstTrack = Number(first.trackNumber) || 0;
+        const secondTrack = Number(second.trackNumber) || 0;
+
+        return firstDisc - secondDisc || firstTrack - secondTrack;
+    });
+    const hasMultipleDiscs = sortedTracks.some((track) => Number(track.discNumber) > 1);
+    const formatTrackDuration = (durationMs) => {
+        const totalSeconds = Math.floor((Number(durationMs) || 0) / 1000);
+
+        if (!totalSeconds) {
+            return "--:--";
+        }
+
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = String(totalSeconds % 60).padStart(2, "0");
+
+        return `${minutes}:${seconds}`;
+    };
 
 // users can keep saving the same album over and over again, need to check if the album already exists in the user's collection before saving
     async function handleSaveToCollection() {
@@ -260,6 +281,29 @@ export function AlbumDetail()
                                         <dd>{album.totalTracks || "Unknown"}</dd>
                                     </div>
                                 </dl>
+
+                                {sortedTracks.length > 0 && (
+                                    <div className="album-tracklist">
+                                        <h3>Tracklist</h3>
+                                        <ol>
+                                            {sortedTracks.map((track, index) => {
+                                                const trackNumber = Number(track.trackNumber) || index + 1;
+                                                const discNumber = Number(track.discNumber) || 1;
+                                                const trackLabel = hasMultipleDiscs
+                                                    ? `${discNumber}.${trackNumber}`
+                                                    : trackNumber;
+
+                                                return (
+                                                    <li key={track.spotifyId || `${discNumber}-${trackNumber}-${track.title}`}>
+                                                        <span className="album-track-number">{trackLabel}</span>
+                                                        <span className="album-track-title">{track.title || "Untitled Track"}</span>
+                                                        <span className="album-track-duration">{formatTrackDuration(track.durationMs)}</span>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ol>
+                                    </div>
+                                )}
                             </div>
 
                             {album.genres?.length > 0 && (
