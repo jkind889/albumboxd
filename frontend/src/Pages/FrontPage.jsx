@@ -1,34 +1,10 @@
-import ReviewList from "../Components/ReviewList";
 import FeaturedAlbum from "../Components/FeaturedAlbums";
+import PopularAlbums from "../Components/PopularAlbums";
 import RecentlySaved from "../Components/RecentlySaved";
-import {useState, useEffect, useMemo} from "react";
 import { useNavigate } from "react-router-dom";
 
 export function FrontPage() {
-    const [reviews, setReviews] = useState([]);
     const navigate = useNavigate();
-
-
-    useEffect(() => {
-
-        async function fetchReviews()
-        {
-            const response = await fetch("http://localhost:3000/reviews/popular");
-            const data = await response.json();
-            setReviews(data);
-        }
-        fetchReviews();
-    }, []);
-
-    const popularReviews = useMemo(() => {
-        return [...reviews]
-            .sort((a, b) => b.rating - a.rating) 
-            .slice(0, 5);
-    }, [reviews]);
-
-
-
-
 
     return (
         <div className="front-page">
@@ -81,8 +57,8 @@ export function FrontPage() {
             </div>
 
             <div>
-                <h3>Popular Reviews</h3>
-                <ReviewList reviews={popularReviews} onRemoveReview={() => {}} />
+                <h3>Popular Albums</h3>
+                <PopularAlbums limit={5} window="30d" />
             </div>
         </div>
     );
