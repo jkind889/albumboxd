@@ -1,7 +1,7 @@
 const express = require("express");
-const { getSpotifyAccessToken } = require("./utils/spotify");
 const Album = require("../models/Albums");
 const { getAuth } = require("@clerk/express");
+const { normalizeCatalogAlbum } = require("./utils/albumCatalog");
 const router = express.Router();
 
 function ensureAuthenticated(req, res, next) {
@@ -15,13 +15,31 @@ function ensureAuthenticated(req, res, next) {
     next();
 }
 
+// Flattens populated catalog data so collection views can keep using title/artist/cover.
+function formatSavedAlbum(savedAlbum) {
+    const album = typeof savedAlbum.toObject === "function" ? savedAlbum.toObject() : savedAlbum;
+    const catalogAlbum = album.albumCatalogId;
+
+    if (!catalogAlbum || typeof catalogAlbum !== "object" || !catalogAlbum.spotifyId) {
+        return album;
+    }
+
+    return {
+        ...normalizeCatalogAlbum(catalogAlbum),
+        _id: album._id,
+        albumCatalogId: catalogAlbum._id,
+        userId: album.userId,
+        savedAt: album.savedAt,
+    };
+}
+
 router.get("/collection", ensureAuthenticated, async(req, res) =>
 {
     const userId = req.userId;
 
     try {
-        const albums = await Album.find({ userId });
-        res.json(albums);
+        const albums = await Album.find({ userId }).populate("albumCatalogId").sort({ savedAt: -1 });
+        res.json(albums.map(formatSavedAlbum));
     } catch (error) {
         console.log(error);
         res.status(500).json({ error: "Failed to fetch albums" });
@@ -34,10 +52,10 @@ router.get("/collection/:spotifyId", ensureAuthenticated, async(req, res) => {
         const  userId  = req.userId;
         const { spotifyId } = req.params;
 
-        const album = await Album.findOne({ spotifyId, userId });
+        const album = await Album.findOne({ spotifyId, userId }).populate("albumCatalogId");
         res.json({
             saved: !!album,
-            album,
+            album: album ? formatSavedAlbum(album) : null,
         });
     } catch (error) {
             console.log(error);
