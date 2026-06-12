@@ -4,12 +4,54 @@ import { RedirectToSignIn, Show, useAuth, useUser } from "@clerk/react";
 
 const MAX_BIO_LENGTH = 280;
 const MAX_FAVORITES = 5;
+const USERNAME_PATTERN = /^[A-Za-z0-9_]+$/;
 
 function getErrorMessage(error, fallback) {
   return error?.errors?.[0]?.longMessage
     || error?.errors?.[0]?.message
     || error?.message
     || fallback;
+}
+
+function validateUsername(value) {
+  const nextUsername = value.trim();
+
+  if (!nextUsername) {
+    return "Enter a username.";
+  }
+
+  if (nextUsername.length < 3 || nextUsername.length > 30) {
+    return "Username must be 3-30 characters.";
+  }
+
+  if (!USERNAME_PATTERN.test(nextUsername)) {
+    return "Use only letters, numbers, and underscores.";
+  }
+
+  return "";
+}
+
+function getClerkUsernameError(error) {
+  const clerkError = error?.errors?.[0];
+  const code = clerkError?.code || "";
+  const message = `${clerkError?.longMessage || clerkError?.message || error?.message || ""}`.toLowerCase();
+
+  if (code.includes("username") && (code.includes("taken") || code.includes("exists"))
+    || message.includes("username") && (message.includes("taken") || message.includes("already"))) {
+    return "That username is already taken.";
+  }
+
+  if (code.includes("username") && (code.includes("invalid") || code.includes("format"))
+    || message.includes("username") && (message.includes("invalid") || message.includes("format"))) {
+    return "Use only letters, numbers, and underscores.";
+  }
+
+  if (code.includes("username") && (code.includes("too_short") || code.includes("too_long"))
+    || message.includes("username") && (message.includes("too short") || message.includes("too long"))) {
+    return "Username must be 3-30 characters.";
+  }
+
+  return getErrorMessage(error, "Could not update username.");
 }
 
 function getAlbumId(album) {
@@ -49,6 +91,7 @@ export function EditProfile() {
   const [searchResults, setSearchResults] = useState([]);
   const [searchStatus, setSearchStatus] = useState("");
   const [searchError, setSearchError] = useState("");
+  const usernameValidationError = validateUsername(username);
 
   useEffect(() => {
     if (isLoaded && user) {
@@ -113,16 +156,22 @@ export function EditProfile() {
       return;
     }
 
+    if (usernameValidationError) {
+      setUsernameStatus("");
+      setUsernameError(username.trim() ? "" : usernameValidationError);
+      return;
+    }
+
     try {
       setUsernameError("");
       setUsernameStatus("Saving username...");
 
-      await user.update({ username: username.trim() || null });
+      await user.update({ username: username.trim() });
       await user.reload();
       setUsernameStatus("Username updated.");
     } catch (error) {
       setUsernameStatus("");
-      setUsernameError(getErrorMessage(error, "Could not update username."));
+      setUsernameError(getClerkUsernameError(error));
     }
   }
 
@@ -445,13 +494,29 @@ export function EditProfile() {
                   <span>Username</span>
                   <input
                     value={username}
-                    onChange={(event) => setUsername(event.target.value)}
+                    onChange={(event) => {
+                      setUsername(event.target.value);
+                      setUsernameStatus("");
+                      setUsernameError("");
+                    }}
                     placeholder="username"
                   />
                 </label>
+                <p className="edit-profile-current-value">
+                  Use 3-30 characters: letters, numbers, and underscores only.
+                </p>
+                {usernameValidationError && username && (
+                  <p className="edit-profile-error">{usernameValidationError}</p>
+                )}
                 {usernameStatus && <p className="edit-profile-status">{usernameStatus}</p>}
                 {usernameError && <p className="edit-profile-error">{usernameError}</p>}
-                <button className="album-action-button" type="submit">Save Username</button>
+                <button
+                  className="album-action-button"
+                  type="submit"
+                  disabled={!!usernameValidationError}
+                >
+                  Save Username
+                </button>
               </form>
 
               <section className="edit-profile-panel">
