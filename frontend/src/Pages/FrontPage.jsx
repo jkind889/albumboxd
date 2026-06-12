@@ -1,4 +1,4 @@
-import FeaturedAlbum from "../Components/FeaturedAlbums";
+import FeaturedAlbums from "../Components/FeaturedAlbums";
 import PopularAlbums from "../Components/PopularAlbums";
 import RecentlySaved from "../Components/RecentlySaved";
 import { useNavigate } from "react-router-dom";
@@ -17,7 +17,7 @@ export function FrontPage() {
 
 
             <div className= "featuredbanner">
-                <FeaturedAlbum />
+                <FeaturedAlbums limit={5} />
             </div>
 
             <div className="featuregrid">

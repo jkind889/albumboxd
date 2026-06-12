@@ -2,14 +2,20 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const reviewModelPath = require.resolve("../models/Reviews");
+const albumCatalogModelPath = require.resolve("../models/AlbumCatalog");
+const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const clerkPath = require.resolve("@clerk/express");
 const reviewRoutePath = require.resolve("../routes/reviews");
 
 const findCalls = [];
 const sortCalls = [];
 const aggregateCalls = [];
+const catalogFindCalls = [];
+const catalogSortCalls = [];
+const catalogLimitCalls = [];
 let foundReviews = [];
 let reviewDocuments = [];
+let catalogDocuments = [];
 
 function roundTo(value, decimals) {
   const multiplier = 10 ** decimals;
@@ -76,6 +82,7 @@ async function aggregatePopularReviews(pipeline) {
 
 function loadReviewRouter() {
   delete require.cache[reviewRoutePath];
+  delete require.cache[albumCatalogHelperPath];
 
   require.cache[reviewModelPath] = {
     id: reviewModelPath,
@@ -92,6 +99,43 @@ function loadReviewRouter() {
         };
       },
       aggregate: aggregatePopularReviews,
+    },
+  };
+
+  require.cache[albumCatalogModelPath] = {
+    id: albumCatalogModelPath,
+    filename: albumCatalogModelPath,
+    loaded: true,
+    exports: {
+      find: (query) => {
+        catalogFindCalls.push(query);
+        return {
+          sort: (sortOrder) => {
+            catalogSortCalls.push(sortOrder);
+            return {
+              limit: async (limit) => {
+                catalogLimitCalls.push(limit);
+                return catalogDocuments.slice(0, limit);
+              },
+            };
+          },
+        };
+      },
+    },
+  };
+
+  require.cache[albumCatalogHelperPath] = {
+    id: albumCatalogHelperPath,
+    filename: albumCatalogHelperPath,
+    loaded: true,
+    exports: {
+      normalizeCatalogAlbum: (album) => ({
+        spotifyId: album.spotifyId,
+        title: album.title,
+        artist: album.artist,
+        year: album.year || "unknown",
+        cover: album.cover || album.imgs?.[0]?.url || null,
+      }),
     },
   };
 
@@ -167,12 +211,47 @@ async function getPopularAlbums(query = {}) {
   };
 }
 
+async function getFeaturedAlbums(query = {}) {
+  const router = loadReviewRouter();
+  const route = router.stack.find(
+    (layer) => layer.route?.path === "/featured" && layer.route.methods.get,
+  );
+
+  assert.ok(route, "GET /featured should be registered");
+
+  const req = { query };
+  const res = {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(data) {
+      this.body = data;
+      return this;
+    },
+  };
+
+  const handler = route.route.stack[0].handle;
+  await handler(req, res);
+
+  return {
+    status: res.statusCode,
+    body: res.body,
+  };
+}
+
 test.beforeEach(() => {
   findCalls.length = 0;
   sortCalls.length = 0;
   aggregateCalls.length = 0;
+  catalogFindCalls.length = 0;
+  catalogSortCalls.length = 0;
+  catalogLimitCalls.length = 0;
   foundReviews = [];
   reviewDocuments = [];
+  catalogDocuments = [];
 });
 
 test("GET /reviews/review/album/:albumId fetches reviews by Spotify album id", async () => {
@@ -335,4 +414,81 @@ test("GET /reviews/popular returns an empty array when no reviews are eligible",
 
   assert.equal(response.status, 200);
   assert.deepEqual(response.body, []);
+});
+
+test("GET /reviews/featured fills the homepage strip from review activity and catalog albums", async () => {
+  const now = new Date();
+  reviewDocuments = [
+    {
+      spotifyId: "recent_album",
+      title: "Fresh Rotation",
+      artist: "Now Playing",
+      cover: "https://example.com/recent.jpg",
+      rating: 5,
+      date: now,
+    },
+    {
+      spotifyId: "older_album",
+      title: "Deep Cut",
+      artist: "Archive Band",
+      cover: "https://example.com/older.jpg",
+      rating: 5,
+      date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+    },
+  ];
+  catalogDocuments = [
+    {
+      spotifyId: "catalog_album",
+      title: "Catalog Favorite",
+      artist: "Cached Artist",
+      cover: "https://example.com/catalog.jpg",
+      year: "2024",
+    },
+  ];
+
+  const response = await getFeaturedAlbums({ limit: "5" });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.map((album) => album.spotifyId), [
+    "recent_album",
+    "older_album",
+    "catalog_album",
+  ]);
+  assert.equal(aggregateCalls.length, 2);
+  assert.equal(catalogLimitCalls[0], 3);
+  assert.deepEqual(catalogFindCalls[0].spotifyId.$nin, ["recent_album", "older_album"]);
+});
+
+test("GET /reviews/featured skips duplicate or coverless review albums", async () => {
+  reviewDocuments = [
+    {
+      spotifyId: "coverless_album",
+      title: "No Jacket Required",
+      artist: "Blank Art",
+      rating: 5,
+      date: new Date(),
+    },
+    {
+      spotifyId: "covered_album",
+      title: "Visible",
+      artist: "Cover Artist",
+      cover: "https://example.com/covered.jpg",
+      rating: 4,
+      date: new Date(),
+    },
+    {
+      spotifyId: "covered_album",
+      title: "Visible",
+      artist: "Cover Artist",
+      cover: "https://example.com/covered.jpg",
+      rating: 5,
+      date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+    },
+  ];
+
+  const response = await getFeaturedAlbums({ limit: "5" });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.map((album) => album.spotifyId), ["covered_album"]);
+  assert.equal(response.body[0].cover, "https://example.com/covered.jpg");
 });
