@@ -1,7 +1,7 @@
 import {useParams} from "react-router-dom";
 import {useState, useEffect } from "react";
 import ReviewForm from "./ReviewForm";
-import ReviewList from "./ReviewList";
+import AlbumReviewFeed from "./AlbumReviewFeed";
 import { useAuth } from "@clerk/react";
 export function AlbumDetail()
 {
@@ -9,7 +9,7 @@ export function AlbumDetail()
     const [album, setAlbum] = useState(null);
     const [reviews, setReviews] = useState([]);
     const [isSaved, setIsSaved] = useState(false);
-    const { getToken } = useAuth();
+    const { getToken, userId } = useAuth();
 
     useEffect(() => {
         async function fetchReviews() {
@@ -336,7 +336,11 @@ export function AlbumDetail()
 
                     <section className="album-reviews-section">
                         <ReviewForm album={album} onAddReview={addReview} />
-                        <ReviewList reviews={reviews} onRemoveReview={removeReview} />
+                        <AlbumReviewFeed
+                            reviews={reviews}
+                            currentUserId={userId}
+                            onRemoveReview={removeReview}
+                        />
                     </section>
                 </div>
             </div>

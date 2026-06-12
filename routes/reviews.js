@@ -1,10 +1,11 @@
 const express = require("express");
 const Review = require("../models/Reviews");
 const AlbumCatalog = require("../models/AlbumCatalog");
-const { getAuth } = require("@clerk/express");
+const { clerkClient, getAuth } = require("@clerk/express");
 const { normalizeCatalogAlbum } = require("./utils/albumCatalog");
 
 const router = express.Router();
+const DEFAULT_AUTHOR_USERNAME = "albumboxd user";
 const MIN_POPULAR_LIMIT = 5;
 const MAX_POPULAR_LIMIT = 10;
 const DEFAULT_POPULAR_LIMIT = 5;
@@ -92,6 +93,54 @@ async function getPopularAlbums({ limit, timeWindow }) {
     return Review.aggregate(buildPopularAlbumsPipeline({ limit, timeWindow }));
 }
 
+function toPlainReview(review) {
+    return typeof review?.toObject === "function" ? review.toObject() : review;
+}
+
+function getAuthorFromUser(userId, user) {
+    return {
+        userId,
+        username: user?.username || DEFAULT_AUTHOR_USERNAME,
+        imageUrl: user?.imageUrl || "",
+    };
+}
+
+async function getAuthorsByUserId(userIds) {
+    const authorsByUserId = new Map();
+    const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+
+    for (const userId of uniqueUserIds) {
+        authorsByUserId.set(userId, getAuthorFromUser(userId));
+    }
+
+    if (uniqueUserIds.length === 0) {
+        return authorsByUserId;
+    }
+
+    try {
+        const userList = await clerkClient.users.getUserList({ userId: uniqueUserIds });
+        const users = Array.isArray(userList) ? userList : userList.data || [];
+
+        for (const user of users) {
+            authorsByUserId.set(user.id, getAuthorFromUser(user.id, user));
+        }
+    } catch {
+        // Author metadata should never block review rendering.
+    }
+
+    return authorsByUserId;
+}
+
+async function addAuthorsToReviews(reviews) {
+    const plainReviews = reviews.map(toPlainReview);
+    const authorsByUserId = await getAuthorsByUserId(plainReviews.map((review) => review.userId));
+
+    return plainReviews.map((review) => ({
+        ...review,
+        author: authorsByUserId.get(review.userId) || getAuthorFromUser(review.userId),
+    }));
+}
+
 function addUniqueAlbums(target, albums, seenSpotifyIds) {
     for (const album of albums) {
         if (!album.spotifyId || !album.cover || seenSpotifyIds.has(album.spotifyId)) {
@@ -153,7 +202,8 @@ router.post("/review", ensureAuthenticated, async(req, res) =>
             const review = await Review.create(
                 { ...req.body, userId }
             );
-            res.status(201).json(review);
+            const [reviewWithAuthor] = await addAuthorsToReviews([review]);
+            res.status(201).json(reviewWithAuthor);
         } catch (error) {
             console.log(error);
             res.status(500).json({ error: "Failed to create review" });
@@ -186,7 +236,7 @@ router.delete("/review/user/:id", ensureAuthenticated, async(req, res) => {
 router.get("/review/album/:albumId", async(req, res) => {
     try {
         const reviews = await Review.find({ spotifyId: req.params.albumId }).sort({ date: -1 });
-        res.json(reviews);
+        res.json(await addAuthorsToReviews(reviews));
     } catch (error) {
         console.log(error);
         res.status(500).json({ error: "Failed to fetch review" });

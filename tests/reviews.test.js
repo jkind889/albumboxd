@@ -9,13 +9,18 @@ const reviewRoutePath = require.resolve("../routes/reviews");
 
 const findCalls = [];
 const sortCalls = [];
+const createCalls = [];
 const aggregateCalls = [];
 const catalogFindCalls = [];
 const catalogSortCalls = [];
 const catalogLimitCalls = [];
+const getUserListCalls = [];
 let foundReviews = [];
+let createdReview = null;
 let reviewDocuments = [];
 let catalogDocuments = [];
+let clerkUsers = [];
+let shouldRejectClerkLookup = false;
 
 function roundTo(value, decimals) {
   const multiplier = 10 ** decimals;
@@ -98,6 +103,10 @@ function loadReviewRouter() {
           },
         };
       },
+      create: async (review) => {
+        createCalls.push(review);
+        return createdReview || { _id: "created_review", ...review };
+      },
       aggregate: aggregatePopularReviews,
     },
   };
@@ -145,10 +154,38 @@ function loadReviewRouter() {
     loaded: true,
     exports: {
       getAuth: () => ({ userId: "user_clerk_123" }),
+      clerkClient: {
+        users: {
+          getUserList: async (query) => {
+            getUserListCalls.push(query);
+
+            if (shouldRejectClerkLookup) {
+              throw new Error("Clerk lookup failed");
+            }
+
+            return { data: clerkUsers };
+          },
+        },
+      },
     },
   };
 
   return require("../routes/reviews");
+}
+
+async function runRouteHandlers(route, req, res) {
+  const handlers = route.route.stack.map((layer) => layer.handle);
+
+  for (const handler of handlers) {
+    let nextCalled = false;
+    await handler(req, res, () => {
+      nextCalled = true;
+    });
+
+    if (!nextCalled) {
+      break;
+    }
+  }
 }
 
 async function getAlbumReviews(albumId) {
@@ -171,8 +208,37 @@ async function getAlbumReviews(albumId) {
     },
   };
 
-  const handler = route.route.stack[0].handle;
-  await handler(req, res);
+  await runRouteHandlers(route, req, res);
+
+  return {
+    status: res.statusCode,
+    body: res.body,
+  };
+}
+
+async function postReview(body = {}) {
+  const router = loadReviewRouter();
+  const route = router.stack.find(
+    (layer) => layer.route?.path === "/review" && layer.route.methods.post,
+  );
+
+  assert.ok(route, "POST /review should be registered");
+
+  const req = { body };
+  const res = {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(data) {
+      this.body = data;
+      return this;
+    },
+  };
+
+  await runRouteHandlers(route, req, res);
 
   return {
     status: res.statusCode,
@@ -245,23 +311,36 @@ async function getFeaturedAlbums(query = {}) {
 test.beforeEach(() => {
   findCalls.length = 0;
   sortCalls.length = 0;
+  createCalls.length = 0;
   aggregateCalls.length = 0;
   catalogFindCalls.length = 0;
   catalogSortCalls.length = 0;
   catalogLimitCalls.length = 0;
+  getUserListCalls.length = 0;
   foundReviews = [];
+  createdReview = null;
   reviewDocuments = [];
   catalogDocuments = [];
+  clerkUsers = [];
+  shouldRejectClerkLookup = false;
 });
 
-test("GET /reviews/review/album/:albumId fetches reviews by Spotify album id", async () => {
+test("GET /reviews/review/album/:albumId fetches reviews by Spotify album id and adds Clerk authors", async () => {
   foundReviews = [
     {
       _id: "review_123",
+      userId: "user_one",
       spotifyId: "spotify_album_123",
       title: "Kind of Blue",
       rating: 5,
       reviewText: "Still blue, still perfect.",
+    },
+  ];
+  clerkUsers = [
+    {
+      id: "user_one",
+      username: "kindofkaren",
+      imageUrl: "https://example.com/avatar.jpg",
     },
   ];
 
@@ -270,9 +349,19 @@ test("GET /reviews/review/album/:albumId fetches reviews by Spotify album id", a
   assert.equal(response.status, 200);
   assert.deepEqual(findCalls, [{ spotifyId: "spotify_album_123" }]);
   assert.deepEqual(sortCalls, [{ date: -1 }]);
+  assert.deepEqual(getUserListCalls, [{ userId: ["user_one"] }]);
   assert.equal(findCalls[0].spotifyId, "spotify_album_123");
   assert.notEqual(findCalls[0].spotifyId, undefined);
-  assert.deepEqual(response.body, foundReviews);
+  assert.deepEqual(response.body, [
+    {
+      ...foundReviews[0],
+      author: {
+        userId: "user_one",
+        username: "kindofkaren",
+        imageUrl: "https://example.com/avatar.jpg",
+      },
+    },
+  ]);
 });
 
 test("GET /reviews/review/album/:albumId returns an empty array when no reviews exist", async () => {
@@ -281,7 +370,87 @@ test("GET /reviews/review/album/:albumId returns an empty array when no reviews 
   assert.equal(response.status, 200);
   assert.deepEqual(findCalls, [{ spotifyId: "spotify_album_without_reviews" }]);
   assert.deepEqual(sortCalls, [{ date: -1 }]);
+  assert.deepEqual(getUserListCalls, []);
   assert.deepEqual(response.body, []);
+});
+
+test("GET /reviews/review/album/:albumId falls back to albumboxd user without email or full name", async () => {
+  foundReviews = [
+    {
+      _id: "review_without_username",
+      userId: "user_without_username",
+      spotifyId: "spotify_album_123",
+      title: "Kind of Blue",
+      rating: 4,
+      reviewText: "Good, but not email good.",
+    },
+  ];
+  clerkUsers = [
+    {
+      id: "user_without_username",
+      username: null,
+      firstName: "Not",
+      lastName: "Used",
+      emailAddresses: [{ emailAddress: "never@example.com" }],
+      imageUrl: "",
+    },
+  ];
+
+  const response = await getAlbumReviews("spotify_album_123");
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body[0].author.username, "albumboxd user");
+  assert.equal(response.body[0].author.imageUrl, "");
+});
+
+test("GET /reviews/review/album/:albumId falls back when Clerk lookup fails", async () => {
+  foundReviews = [
+    {
+      _id: "review_lookup_failure",
+      userId: "user_lookup_failure",
+      spotifyId: "spotify_album_123",
+      title: "Kind of Blue",
+      rating: 4,
+      reviewText: "Still renders.",
+    },
+  ];
+  shouldRejectClerkLookup = true;
+
+  const response = await getAlbumReviews("spotify_album_123");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body[0].author, {
+    userId: "user_lookup_failure",
+    username: "albumboxd user",
+    imageUrl: "",
+  });
+});
+
+test("POST /reviews/review creates a review and returns the Clerk author", async () => {
+  clerkUsers = [
+    {
+      id: "user_clerk_123",
+      username: "loggedinlistener",
+      imageUrl: "https://example.com/current-user.jpg",
+    },
+  ];
+
+  const response = await postReview({
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    rating: 5,
+    reviewText: "A forever record.",
+  });
+
+  assert.equal(response.status, 201);
+  assert.equal(createCalls[0].userId, "user_clerk_123");
+  assert.deepEqual(getUserListCalls, [{ userId: ["user_clerk_123"] }]);
+  assert.deepEqual(response.body.author, {
+    userId: "user_clerk_123",
+    username: "loggedinlistener",
+    imageUrl: "https://example.com/current-user.jpg",
+  });
 });
 
 test("GET /reviews/popular groups album reviews and ranks by balanced score", async () => {

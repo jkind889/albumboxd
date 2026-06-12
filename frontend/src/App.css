@@ -154,6 +154,7 @@
 .album-ratings-panel,
 .album-info-panel,
 .review-form-card,
+.album-review-card,
 .review-card,
 .review-list-empty {
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -336,6 +337,7 @@
 .album-spotify-card,
 .album-ratings-panel,
 .review-form-card,
+.album-review-card,
 .review-card,
 .review-list-empty {
   padding: 1.2rem;
@@ -500,6 +502,70 @@
 .review-list {
   display: grid;
   gap: 1rem;
+}
+
+.album-review-feed {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.album-review-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.album-review-avatar {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(226, 232, 240, 0.22);
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(71, 85, 105, 0.72);
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.album-review-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.album-review-content {
+  min-width: 0;
+}
+
+.album-review-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.65rem;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.album-review-meta p,
+.album-review-copy {
+  margin: 0;
+}
+
+.album-review-meta strong {
+  color: #e2e8f0;
+}
+
+.album-review-copy {
+  color: #cbd5e1;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.album-review-delete {
+  margin-top: 1rem;
 }
 
 .review-card-header {
