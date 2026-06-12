@@ -12,32 +12,32 @@ function Navbar()
 
     return (
         <>
-            <header>
-                <nav className="navbar navbar-expand">
-                    <div className="container-fluid">
+            <header className="site-header">
+                <nav className="navbar navbar-expand site-navbar">
+                    <div className="container-fluid site-navbar-inner">
                         <Link to="/" className="navbar-brand">albumboxd</Link>
-                        <div className="navbar-collapse">
-                            <ul className="navbar nav">
+                        <div className="navbar-collapse site-navbar-left">
+                            <ul className="navbar nav site-nav-links">
                                 <li className="nav-item">
                                     <Link to="/viewreviews" className="nav-link active">Reviews</Link>
                                 </li>
                                 <li className="nav-item">
                                     <Link to="/collection" className="nav-link active">Collection</Link>
                                 </li>
-                                <li className="nav-item">
-                                    <SearchBar />
-                                </li>
                             </ul>
                         </div>
-                        <div className="nav navbar-right d-flex align-items-center gap-2">
+                        <div className="site-navbar-search">
+                            <SearchBar />
+                        </div>
+                        <div className="nav navbar-right site-navbar-actions">
                             <Show when="signed-out">
                                 <SignInButton mode="modal">
-                                    <button type="button" className="btn btn-outline-dark">
+                                    <button type="button" className="nav-auth-button nav-auth-button-secondary">
                                         Sign in
                                     </button>
                                 </SignInButton>
                                 <SignUpButton mode="modal">
-                                    <button type="button" className="btn btn-dark">
+                                    <button type="button" className="nav-auth-button">
                                         Sign up
                                     </button>
                                 </SignUpButton>
