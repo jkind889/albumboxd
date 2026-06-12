@@ -29,6 +29,7 @@ export function App() {
               <ViewReviews />
             </ProtectedRoute>} />
             <Route path="/account" element={<Account />} />
+            <Route path="/profile/:userId" element={<Account />} />
             <Route path="/account/edit" element={
               <ProtectedRoute>
                 <EditProfile />

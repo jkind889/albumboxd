@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
   RedirectToSignIn,
-  Show,
+  SignInButton,
   UserProfile,
   useAuth,
   useUser,
@@ -61,21 +61,47 @@ function AlbumCover({ src, title }) {
 export function Account() {
   const { getToken, isSignedIn } = useAuth();
   const { user, isLoaded } = useUser();
+  const { userId: publicUserId } = useParams();
+  const location = useLocation();
+  const isPublicProfile = Boolean(publicUserId);
   const [activeTab, setActiveTab] = useState("overview");
   const [savedAlbums, setSavedAlbums] = useState([]);
   const [reviews, setReviews] = useState([]);
-  const [profile, setProfile] = useState({ bio: "", favoriteAlbums: [] });
+  const [profile, setProfile] = useState({
+    userId: "",
+    bio: "",
+    favoriteAlbums: [],
+    followerCount: 0,
+    followingCount: 0,
+    isFollowing: false,
+    isCurrentUser: false,
+  });
   const [isLoading, setIsLoading] = useState(true);
+  const [isFollowSaving, setIsFollowSaving] = useState(false);
   const [error, setError] = useState("");
+  const publicProfileState = location.state?.profileUser || {};
+  const canManageProfile = !isPublicProfile;
+  const availableTabs = useMemo(
+    () => (canManageProfile ? tabs : tabs.filter((tab) => tab.id !== "settings")),
+    [canManageProfile],
+  );
 
   useEffect(() => {
     let isCurrent = true;
 
     async function fetchProfileData() {
-      if (!isSignedIn) {
+      if (!isPublicProfile && !isSignedIn) {
         setSavedAlbums([]);
         setReviews([]);
-        setProfile({ bio: "", favoriteAlbums: [] });
+        setProfile({
+          userId: "",
+          bio: "",
+          favoriteAlbums: [],
+          followerCount: 0,
+          followingCount: 0,
+          isFollowing: false,
+          isCurrentUser: false,
+        });
         setIsLoading(false);
         return;
       }
@@ -84,26 +110,40 @@ export function Account() {
         setIsLoading(true);
         setError("");
 
-        const token = await getToken();
-        const headers = {
-          Authorization: `Bearer ${token}`,
-        };
+        const token = isSignedIn ? await getToken() : null;
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        let savedData = [];
+        let reviewsData = [];
+        let profileData;
 
-        const [savedResponse, reviewsResponse, profileResponse] = await Promise.all([
-          fetch("http://localhost:3000/collections/collection", { headers }),
-          fetch("http://localhost:3000/reviews/review/user/", { headers }),
-          fetch("http://localhost:3000/profile/me", { headers }),
-        ]);
+        if (isPublicProfile) {
+          const profileResponse = await fetch(
+            `http://localhost:3000/profile/${encodeURIComponent(publicUserId)}`,
+            { headers },
+          );
 
-        if (!savedResponse.ok || !reviewsResponse.ok || !profileResponse.ok) {
-          throw new Error("Failed to load profile data");
+          if (!profileResponse.ok) {
+            throw new Error("Failed to load profile data");
+          }
+
+          profileData = await profileResponse.json();
+        } else {
+          const [savedResponse, reviewsResponse, profileResponse] = await Promise.all([
+            fetch("http://localhost:3000/collections/collection", { headers }),
+            fetch("http://localhost:3000/reviews/review/user/", { headers }),
+            fetch("http://localhost:3000/profile/me", { headers }),
+          ]);
+
+          if (!savedResponse.ok || !reviewsResponse.ok || !profileResponse.ok) {
+            throw new Error("Failed to load profile data");
+          }
+
+          [savedData, reviewsData, profileData] = await Promise.all([
+            savedResponse.json(),
+            reviewsResponse.json(),
+            profileResponse.json(),
+          ]);
         }
-
-        const [savedData, reviewsData, profileData] = await Promise.all([
-          savedResponse.json(),
-          reviewsResponse.json(),
-          profileResponse.json(),
-        ]);
 
         if (!isCurrent) {
           return;
@@ -112,8 +152,13 @@ export function Account() {
         setSavedAlbums(Array.isArray(savedData) ? savedData : []);
         setReviews(Array.isArray(reviewsData) ? reviewsData : []);
         setProfile({
+          userId: profileData.userId || publicUserId || "",
           bio: typeof profileData.bio === "string" ? profileData.bio : "",
           favoriteAlbums: Array.isArray(profileData.favoriteAlbums) ? profileData.favoriteAlbums : [],
+          followerCount: Number(profileData.followerCount) || 0,
+          followingCount: Number(profileData.followingCount) || 0,
+          isFollowing: Boolean(profileData.isFollowing),
+          isCurrentUser: Boolean(profileData.isCurrentUser),
         });
       } catch (profileError) {
         console.error(profileError);
@@ -121,8 +166,18 @@ export function Account() {
         if (isCurrent) {
           setSavedAlbums([]);
           setReviews([]);
-          setProfile({ bio: "", favoriteAlbums: [] });
-          setError("Could not load your profile right now.");
+          setProfile({
+            userId: publicUserId || "",
+            bio: "",
+            favoriteAlbums: [],
+            followerCount: 0,
+            followingCount: 0,
+            isFollowing: false,
+            isCurrentUser: false,
+          });
+          setError(isPublicProfile
+            ? "Could not load this profile right now."
+            : "Could not load your profile right now.");
         }
       } finally {
         if (isCurrent) {
@@ -136,7 +191,13 @@ export function Account() {
     return () => {
       isCurrent = false;
     };
-  }, [getToken, isSignedIn]);
+  }, [getToken, isPublicProfile, isSignedIn, publicUserId]);
+
+  useEffect(() => {
+    if (!availableTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab("overview");
+    }
+  }, [activeTab, availableTabs]);
 
   const averageRating = useMemo(() => {
     if (reviews.length === 0) {
@@ -224,8 +285,56 @@ export function Account() {
     ));
   }
 
-  const displayName = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "Your profile";
-  const joinedDate = user?.createdAt ? formatDate(user.createdAt) : null;
+  async function updateFollowState(nextFollowing) {
+    if (!profile.userId || isFollowSaving) {
+      return;
+    }
+
+    try {
+      setIsFollowSaving(true);
+      setError("");
+
+      const token = await getToken();
+      const response = await fetch(
+        `http://localhost:3000/profile/${encodeURIComponent(profile.userId)}/follow`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ following: nextFollowing }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update follow status");
+      }
+
+      const data = await response.json();
+
+      setProfile((currentProfile) => ({
+        ...currentProfile,
+        followerCount: Number(data.followerCount) || 0,
+        followingCount: Number(data.followingCount) || 0,
+        isFollowing: Boolean(data.isFollowing),
+        isCurrentUser: Boolean(data.isCurrentUser),
+      }));
+    } catch (followError) {
+      console.error(followError);
+      setError("Could not update follow status right now.");
+    } finally {
+      setIsFollowSaving(false);
+    }
+  }
+
+  const displayName = isPublicProfile
+    ? publicProfileState.username || profile.userId || "albumboxd user"
+    : user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "Your profile";
+  const profileImageUrl = isPublicProfile ? publicProfileState.imageUrl : user?.imageUrl;
+  const joinedDate = !isPublicProfile && user?.createdAt ? formatDate(user.createdAt) : null;
+  const profileKicker = isPublicProfile ? "Profile" : "Current user";
+  const showFollowButton = isPublicProfile && !profile.isCurrentUser && (!isSignedIn || !isLoading);
 
   function renderOverview() {
     return (
@@ -238,7 +347,9 @@ export function Account() {
           {favoriteAlbums.length === 0 ? (
             <ProfileEmptyState
               title="No favorites chosen"
-              body="Choose up to five favorite albums from edit profile."
+              body={canManageProfile
+                ? "Choose up to five favorite albums from edit profile."
+                : "Favorite albums will show up here once this listener chooses them."}
             />
           ) : (
             <div className="profile-favorites-grid">
@@ -266,7 +377,9 @@ export function Account() {
           {recentActivity.length === 0 ? (
             <ProfileEmptyState
               title="No activity yet"
-              body="Save an album or write a review to start building your profile."
+              body={canManageProfile
+                ? "Save an album or write a review to start building your profile."
+                : "Public activity is not available for this profile yet."}
             />
           ) : (
             <div className="profile-activity-list">
@@ -297,7 +410,9 @@ export function Account() {
           {latestSavedAlbums.length === 0 ? (
             <ProfileEmptyState
               title="No saved albums"
-              body="Albums you save will show up here."
+              body={canManageProfile
+                ? "Albums you save will show up here."
+                : "Saved albums are not available for this profile yet."}
             />
           ) : (
             <div className="profile-mini-album-list">
@@ -326,7 +441,9 @@ export function Account() {
           {latestReviews.length === 0 ? (
             <ProfileEmptyState
               title="No reviews yet"
-              body="Reviews you write will appear on your profile."
+              body={canManageProfile
+                ? "Reviews you write will appear on your profile."
+                : "Reviews are not available on public profiles yet."}
             />
           ) : (
             <div className="profile-review-list">
@@ -358,7 +475,9 @@ export function Account() {
       return (
         <ProfileEmptyState
           title="No saved albums"
-          body="Save albums from their detail pages and they will collect here."
+          body={canManageProfile
+            ? "Save albums from their detail pages and they will collect here."
+            : "Saved albums are not available for this profile yet."}
         />
       );
     }
@@ -373,13 +492,15 @@ export function Account() {
               <p>{getArtistName(album)}</p>
               <span>{album.year || "Year unknown"}</span>
             </Link>
-            <button
-              className="profile-secondary-button"
-              type="button"
-              onClick={() => removeSavedAlbum(album.spotifyId)}
-            >
-              Remove
-            </button>
+            {canManageProfile && (
+              <button
+                className="profile-secondary-button"
+                type="button"
+                onClick={() => removeSavedAlbum(album.spotifyId)}
+              >
+                Remove
+              </button>
+            )}
           </article>
         ))}
       </div>
@@ -391,7 +512,9 @@ export function Account() {
       return (
         <ProfileEmptyState
           title="No reviews yet"
-          body="Your album reviews will live here once you write them."
+          body={canManageProfile
+            ? "Your album reviews will live here once you write them."
+            : "Reviews are not available on public profiles yet."}
         />
       );
     }
@@ -412,13 +535,15 @@ export function Account() {
               <time>{formatDate(review.date)}</time>
             </div>
             <p className="profile-review-copy">{review.reviewText}</p>
-            <button
-              className="profile-secondary-button"
-              type="button"
-              onClick={() => removeReview(review._id)}
-            >
-              Delete Review
-            </button>
+            {canManageProfile && (
+              <button
+                className="profile-secondary-button"
+                type="button"
+                onClick={() => removeReview(review._id)}
+              >
+                Delete Review
+              </button>
+            )}
           </article>
         ))}
       </div>
@@ -427,7 +552,14 @@ export function Account() {
 
   function renderActiveTab() {
     if (isLoading) {
-      return <ProfileEmptyState title="Loading profile" body="Pulling together your saved albums and reviews." />;
+      return (
+        <ProfileEmptyState
+          title="Loading profile"
+          body={canManageProfile
+            ? "Pulling together your saved albums and reviews."
+            : "Pulling together this listener's profile."}
+        />
+      );
     }
 
     if (error) {
@@ -453,67 +585,95 @@ export function Account() {
     );
   }
 
+  if (!isPublicProfile && !isSignedIn) {
+    return <RedirectToSignIn />;
+  }
+
   return (
     <>
-      <Show when="signed-in">
-        <section className="profile-page">
-          <header className="profile-hero">
-            <div className="profile-identity">
-              {isLoaded && user?.imageUrl ? (
-                <img className="profile-avatar" src={user.imageUrl} alt={`${displayName} avatar`} />
-              ) : (
-                <div className="profile-avatar profile-avatar-fallback">
-                  {displayName.charAt(0).toUpperCase()}
-                </div>
-              )}
+      <section className="profile-page">
+        <header className="profile-hero">
+          <div className="profile-identity">
+            {isLoaded && profileImageUrl ? (
+              <img className="profile-avatar" src={profileImageUrl} alt={`${displayName} avatar`} />
+            ) : (
+              <div className="profile-avatar profile-avatar-fallback">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+            )}
 
-              <div>
-                <p className="profile-kicker">Current user</p>
+            <div>
+              <p className="profile-kicker">{profileKicker}</p>
+              <div className="profile-name-row">
                 <h1>{displayName}</h1>
-                {joinedDate && <p className="profile-joined">Listening since {joinedDate}</p>}
-                {profile.bio && <p className="profile-bio">{profile.bio}</p>}
+                {showFollowButton && (
+                  isSignedIn ? (
+                    <button
+                      className="profile-follow-button"
+                      type="button"
+                      disabled={isFollowSaving || isLoading}
+                      onClick={() => updateFollowState(!profile.isFollowing)}
+                    >
+                      {isFollowSaving ? "Saving..." : profile.isFollowing ? "Following" : "Follow"}
+                    </button>
+                  ) : (
+                    <SignInButton mode="modal">
+                      <button className="profile-follow-button" type="button">
+                        Follow
+                      </button>
+                    </SignInButton>
+                  )
+                )}
+              </div>
+              {joinedDate && <p className="profile-joined">Listening since {joinedDate}</p>}
+              {profile.bio && <p className="profile-bio">{profile.bio}</p>}
+              {canManageProfile && (
                 <Link className="profile-edit-link" to="/account/edit">Edit Profile</Link>
-              </div>
+              )}
             </div>
-
-            <div className="profile-stat-grid" aria-label="Profile stats">
-              <div>
-                <span>Saved</span>
-                <strong>{savedAlbums.length}</strong>
-              </div>
-              <div>
-                <span>Reviews</span>
-                <strong>{reviews.length}</strong>
-              </div>
-              <div>
-                <span>Avg. Rating</span>
-                <strong>{averageRating}</strong>
-              </div>
-            </div>
-          </header>
-
-          <nav className="profile-tabs" aria-label="Profile sections">
-            {tabs.map((tab) => (
-              <button
-                className={activeTab === tab.id ? "profile-tab profile-tab-active" : "profile-tab"}
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="profile-tab-panel">
-            {renderActiveTab()}
           </div>
-        </section>
-      </Show>
 
-      <Show when="signed-out">
-        <RedirectToSignIn />
-      </Show>
+          <div className="profile-stat-grid" aria-label="Profile stats">
+            <div>
+              <span>Saved</span>
+              <strong>{savedAlbums.length}</strong>
+            </div>
+            <div>
+              <span>Reviews</span>
+              <strong>{reviews.length}</strong>
+            </div>
+            <div>
+              <span>Avg. Rating</span>
+              <strong>{averageRating}</strong>
+            </div>
+            <div>
+              <span>Followers</span>
+              <strong>{profile.followerCount}</strong>
+            </div>
+            <div>
+              <span>Following</span>
+              <strong>{profile.followingCount}</strong>
+            </div>
+          </div>
+        </header>
+
+        <nav className="profile-tabs" aria-label="Profile sections">
+          {availableTabs.map((tab) => (
+            <button
+              className={activeTab === tab.id ? "profile-tab profile-tab-active" : "profile-tab"}
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="profile-tab-panel">
+          {renderActiveTab()}
+        </div>
+      </section>
     </>
   );
 }

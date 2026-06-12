@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 const DEFAULT_USERNAME = "albumboxd user";
 
 function formatReviewDate(date) {
@@ -24,6 +26,12 @@ function AlbumReviewCard({ review, currentUserId, onRemoveReview }) {
     const username = getReviewUsername(review);
     const imageUrl = review.author?.imageUrl;
     const canDelete = currentUserId && review.userId === currentUserId;
+    const profileState = {
+        profileUser: {
+            username,
+            imageUrl,
+        },
+    };
 
     return (
         <article className="album-review-card">
@@ -38,7 +46,14 @@ function AlbumReviewCard({ review, currentUserId, onRemoveReview }) {
             <div className="album-review-content">
                 <div className="album-review-meta">
                     <p>
-                        Review by <strong>{username}</strong>
+                        Review by{" "}
+                        <Link
+                            className="album-review-author-link"
+                            to={`/profile/${review.userId}`}
+                            state={profileState}
+                        >
+                            {username}
+                        </Link>
                     </p>
                     <span>{review.rating}/5</span>
                     <span>{formatReviewDate(review.date)}</span>

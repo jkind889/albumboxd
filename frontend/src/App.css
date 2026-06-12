@@ -558,6 +558,17 @@
   color: #e2e8f0;
 }
 
+.album-review-author-link {
+  color: #e2e8f0;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.album-review-author-link:hover {
+  color: #f8fafc;
+  text-decoration: underline;
+}
+
 .album-review-copy {
   color: #cbd5e1;
   line-height: 1.7;
@@ -760,6 +771,17 @@
   overflow-wrap: anywhere;
 }
 
+.profile-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.profile-name-row h1 {
+  margin-bottom: 0;
+}
+
 .profile-bio {
   max-width: 52rem;
   margin: 0.6rem 0 0;
@@ -767,12 +789,12 @@
   line-height: 1.55;
 }
 
-.profile-edit-link {
+.profile-edit-link,
+.profile-follow-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 40px;
-  margin-top: 0.85rem;
   padding: 0.55rem 0.85rem;
   border: 1px solid rgba(226, 232, 240, 0.28);
   border-radius: 8px;
@@ -783,16 +805,31 @@
   transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
-.profile-edit-link:hover {
+.profile-edit-link {
+  margin-top: 0.85rem;
+}
+
+.profile-follow-button {
+  margin-top: 0.2rem;
+}
+
+.profile-edit-link:hover,
+.profile-follow-button:hover {
   border-color: rgba(226, 232, 240, 0.46);
   background: rgba(248, 250, 252, 0.14);
   color: #f8fafc;
   transform: translateY(-1px);
 }
 
+.profile-follow-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+}
+
 .profile-stat-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -1417,6 +1454,10 @@
   .profile-overview-grid,
   .edit-profile-grid {
     grid-template-columns: 1fr;
+  }
+
+  .profile-stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   }
 
   .edit-profile-wide-panel {
