@@ -2,19 +2,26 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const profileModelPath = require.resolve("../models/UserProfile");
+const followModelPath = require.resolve("../models/Follow");
+const reviewModelPath = require.resolve("../models/Reviews");
 const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const clerkPath = require.resolve("@clerk/express");
 const profileRoutePath = require.resolve("../routes/profile");
 
 let authUserId = "user_clerk_123";
-let foundProfile = null;
+const profilesByUserId = new Map();
 let createdProfile = null;
 let updatedProfile = null;
 let getOrCreateError = null;
+let reviewUserIds = new Set();
+let followDocuments = [];
 const findOneCalls = [];
 const createCalls = [];
 const updateCalls = [];
 const getOrCreateCalls = [];
+const reviewExistsCalls = [];
+const followUpdateCalls = [];
+const followDeleteCalls = [];
 
 function chainResult(result) {
   return {
@@ -58,15 +65,64 @@ function loadProfileRouter() {
     exports: {
       findOne: (query) => {
         findOneCalls.push(query);
-        return chainResult(foundProfile);
+        return chainResult(profilesByUserId.get(query.userId) || null);
       },
       create: async (profile) => {
         createCalls.push(profile);
-        return createdProfile || profile;
+        const nextProfile = createdProfile || profile;
+        profilesByUserId.set(profile.userId, nextProfile);
+        return nextProfile;
       },
       findOneAndUpdate: (query, update, options) => {
         updateCalls.push({ query, update, options });
-        return chainResult(updatedProfile);
+        const nextProfile = updatedProfile || {
+          userId: query.userId,
+          ...update.$set,
+        };
+        profilesByUserId.set(query.userId, nextProfile);
+        return chainResult(nextProfile);
+      },
+    },
+  };
+
+  require.cache[followModelPath] = {
+    id: followModelPath,
+    filename: followModelPath,
+    loaded: true,
+    exports: {
+      countDocuments: async (query) => followDocuments.filter((follow) => (
+        Object.entries(query).every(([key, value]) => follow[key] === value)
+      )).length,
+      exists: async (query) => followDocuments.find((follow) => (
+        Object.entries(query).every(([key, value]) => follow[key] === value)
+      )) || null,
+      updateOne: async (query, update, options) => {
+        followUpdateCalls.push({ query, update, options });
+        const exists = followDocuments.some((follow) => (
+          follow.followerId === query.followerId && follow.followingId === query.followingId
+        ));
+
+        if (!exists) {
+          followDocuments.push({ ...update.$setOnInsert });
+        }
+      },
+      deleteOne: async (query) => {
+        followDeleteCalls.push(query);
+        followDocuments = followDocuments.filter((follow) => !(
+          follow.followerId === query.followerId && follow.followingId === query.followingId
+        ));
+      },
+    },
+  };
+
+  require.cache[reviewModelPath] = {
+    id: reviewModelPath,
+    filename: reviewModelPath,
+    loaded: true,
+    exports: {
+      exists: async (query) => {
+        reviewExistsCalls.push(query);
+        return reviewUserIds.has(query.userId) ? { _id: `review_${query.userId}` } : null;
       },
     },
   };
@@ -109,7 +165,7 @@ function loadProfileRouter() {
   return require("../routes/profile");
 }
 
-async function callRoute(method, path, { body = {} } = {}) {
+async function callRoute(method, path, { body = {}, params = {} } = {}) {
   const router = loadProfileRouter();
   const route = router.stack.find(
     (layer) => layer.route?.path === path && layer.route.methods[method],
@@ -117,7 +173,7 @@ async function callRoute(method, path, { body = {} } = {}) {
 
   assert.ok(route, `${method.toUpperCase()} ${path} should be registered`);
 
-  const req = { body };
+  const req = { body, params };
   const res = {
     statusCode: 200,
     body: null,
@@ -152,14 +208,19 @@ async function callRoute(method, path, { body = {} } = {}) {
 
 test.beforeEach(() => {
   authUserId = "user_clerk_123";
-  foundProfile = null;
+  profilesByUserId.clear();
   createdProfile = null;
   updatedProfile = null;
   getOrCreateError = null;
+  reviewUserIds = new Set();
+  followDocuments = [];
   findOneCalls.length = 0;
   createCalls.length = 0;
   updateCalls.length = 0;
   getOrCreateCalls.length = 0;
+  reviewExistsCalls.length = 0;
+  followUpdateCalls.length = 0;
+  followDeleteCalls.length = 0;
 });
 
 test("GET /profile/me creates and returns an empty current user profile", async () => {
@@ -175,13 +236,18 @@ test("GET /profile/me creates and returns an empty current user profile", async 
     },
   ]);
   assert.deepEqual(response.body, {
+    userId: "user_clerk_123",
     bio: "",
     favoriteAlbums: [],
+    followerCount: 0,
+    followingCount: 0,
+    isFollowing: false,
+    isCurrentUser: true,
   });
 });
 
 test("GET /profile/me returns populated favorite albums in rank order", async () => {
-  foundProfile = {
+  profilesByUserId.set("user_clerk_123", {
     userId: "user_clerk_123",
     bio: "Jazz forever.",
     favoriteAlbums: [
@@ -210,7 +276,7 @@ test("GET /profile/me returns populated favorite albums in rank order", async ()
         },
       },
     ],
-  };
+  });
 
   const response = await callRoute("get", "/me");
 
@@ -294,6 +360,9 @@ test("PUT /profile/me saves bio and ordered favorite albums", async () => {
     response.body.favoriteAlbums.map((album) => album.spotifyId),
     ["album_1", "album_2"],
   );
+  assert.equal(response.body.followerCount, 0);
+  assert.equal(response.body.followingCount, 0);
+  assert.equal(response.body.isCurrentUser, true);
 });
 
 test("PUT /profile/me rejects more than five favorite albums", async () => {
@@ -357,4 +426,145 @@ test("PUT /profile/me returns 500 when catalog lookup fails", async (t) => {
   assert.deepEqual(response.body, { error: "Failed to update profile" });
   assert.deepEqual(getOrCreateCalls, ["album_1"]);
   assert.equal(updateCalls.length, 0);
+});
+
+test("GET /profile/:userId creates and returns a public profile for a reviewed user", async () => {
+  reviewUserIds.add("review_author_1");
+  followDocuments = [
+    { followerId: "fan_1", followingId: "review_author_1" },
+    { followerId: "fan_2", followingId: "review_author_1" },
+    { followerId: "review_author_1", followingId: "artist_friend" },
+    { followerId: "user_clerk_123", followingId: "review_author_1" },
+  ];
+
+  const response = await callRoute("get", "/:userId", {
+    params: { userId: "review_author_1" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(reviewExistsCalls, [{ userId: "review_author_1" }]);
+  assert.deepEqual(createCalls, [
+    {
+      userId: "review_author_1",
+      bio: "",
+      favoriteAlbums: [],
+    },
+  ]);
+  assert.deepEqual(response.body, {
+    userId: "review_author_1",
+    bio: "",
+    favoriteAlbums: [],
+    followerCount: 3,
+    followingCount: 1,
+    isFollowing: true,
+    isCurrentUser: false,
+  });
+});
+
+test("GET /profile/:userId returns 404 for a user without reviews", async () => {
+  const response = await callRoute("get", "/:userId", {
+    params: { userId: "random_user" },
+  });
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(response.body, { error: "User not found" });
+  assert.equal(createCalls.length, 0);
+});
+
+test("PUT /profile/:userId/follow creates a follow relationship once", async () => {
+  reviewUserIds.add("review_author_1");
+
+  const firstResponse = await callRoute("put", "/:userId/follow", {
+    params: { userId: "review_author_1" },
+    body: { following: true },
+  });
+  const secondResponse = await callRoute("put", "/:userId/follow", {
+    params: { userId: "review_author_1" },
+    body: { following: true },
+  });
+
+  assert.equal(firstResponse.status, 200);
+  assert.equal(secondResponse.status, 200);
+  assert.deepEqual(followDocuments, [
+    { followerId: "user_clerk_123", followingId: "review_author_1" },
+  ]);
+  assert.equal(followUpdateCalls.length, 2);
+  assert.equal(secondResponse.body.followerCount, 1);
+  assert.equal(secondResponse.body.followingCount, 0);
+  assert.equal(secondResponse.body.isFollowing, true);
+});
+
+test("PUT /profile/:userId/follow removes an existing follow relationship", async () => {
+  reviewUserIds.add("review_author_1");
+  followDocuments = [
+    { followerId: "user_clerk_123", followingId: "review_author_1" },
+    { followerId: "other_user", followingId: "review_author_1" },
+  ];
+
+  const response = await callRoute("put", "/:userId/follow", {
+    params: { userId: "review_author_1" },
+    body: { following: false },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(followDeleteCalls, [
+    { followerId: "user_clerk_123", followingId: "review_author_1" },
+  ]);
+  assert.deepEqual(followDocuments, [
+    { followerId: "other_user", followingId: "review_author_1" },
+  ]);
+  assert.equal(response.body.followerCount, 1);
+  assert.equal(response.body.isFollowing, false);
+});
+
+test("PUT /profile/:userId/follow succeeds when unfollowing without a relationship", async () => {
+  reviewUserIds.add("review_author_1");
+
+  const response = await callRoute("put", "/:userId/follow", {
+    params: { userId: "review_author_1" },
+    body: { following: false },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(followDocuments, []);
+  assert.equal(response.body.followerCount, 0);
+  assert.equal(response.body.isFollowing, false);
+});
+
+test("PUT /profile/:userId/follow blocks self-follow", async () => {
+  reviewUserIds.add("user_clerk_123");
+
+  const response = await callRoute("put", "/:userId/follow", {
+    params: { userId: "user_clerk_123" },
+    body: { following: true },
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "You cannot follow yourself" });
+  assert.equal(followUpdateCalls.length, 0);
+});
+
+test("PUT /profile/:userId/follow rejects a user without reviews", async () => {
+  const response = await callRoute("put", "/:userId/follow", {
+    params: { userId: "random_user" },
+    body: { following: true },
+  });
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(response.body, { error: "User not found" });
+  assert.equal(createCalls.length, 0);
+  assert.equal(followUpdateCalls.length, 0);
+});
+
+test("PUT /profile/:userId/follow rejects non-boolean follow state", async () => {
+  reviewUserIds.add("review_author_1");
+
+  const response = await callRoute("put", "/:userId/follow", {
+    params: { userId: "review_author_1" },
+    body: { following: "yes" },
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "following must be true or false" });
+  assert.equal(reviewExistsCalls.length, 0);
 });

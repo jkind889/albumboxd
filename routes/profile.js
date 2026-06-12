@@ -1,6 +1,8 @@
 const express = require("express");
 const { getAuth } = require("@clerk/express");
 const UserProfile = require("../models/UserProfile");
+const Follow = require("../models/Follow");
+const Review = require("../models/Reviews");
 const {
   getOrCreateAlbumCatalog,
   normalizeCatalogAlbum,
@@ -42,8 +44,36 @@ function formatProfile(profile) {
     .map((favoriteAlbum) => normalizeCatalogAlbum(getCatalogAlbum(favoriteAlbum)));
 
   return {
+    userId: source.userId,
     bio: source.bio || "",
     favoriteAlbums,
+  };
+}
+
+async function getSocialStats(userId, viewerId) {
+  const [followerCount, followingCount, isFollowing] = await Promise.all([
+    Follow.countDocuments({ followingId: userId }),
+    Follow.countDocuments({ followerId: userId }),
+    viewerId && viewerId !== userId
+      ? Follow.exists({ followerId: viewerId, followingId: userId })
+      : Promise.resolve(false),
+  ]);
+
+  return {
+    followerCount,
+    followingCount,
+    isFollowing: Boolean(isFollowing),
+    isCurrentUser: Boolean(viewerId && viewerId === userId),
+  };
+}
+
+async function formatProfileWithSocial(profile, viewerId) {
+  const formattedProfile = formatProfile(profile);
+  const socialStats = await getSocialStats(formattedProfile.userId, viewerId);
+
+  return {
+    ...formattedProfile,
+    ...socialStats,
   };
 }
 
@@ -62,10 +92,14 @@ async function getOrCreateProfile(userId) {
   });
 }
 
+async function isFollowableUser(userId) {
+  return Boolean(await Review.exists({ userId }));
+}
+
 router.get("/me", ensureAuthenticated, async(req, res) => {
   try {
     const profile = await getOrCreateProfile(req.userId);
-    res.json(formatProfile(profile));
+    res.json(await formatProfileWithSocial(profile, req.userId));
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Failed to fetch profile" });
@@ -119,10 +153,76 @@ router.put("/me", ensureAuthenticated, async(req, res) => {
       },
     ).populate("favoriteAlbums.albumCatalogId");
 
-    res.json(formatProfile(profile));
+    res.json(await formatProfileWithSocial(profile, req.userId));
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Failed to update profile" });
+  }
+});
+
+router.put("/:userId/follow", ensureAuthenticated, async(req, res) => {
+  try {
+    const targetUserId = String(req.params.userId || "").trim();
+
+    if (req.body.following !== true && req.body.following !== false) {
+      return res.status(400).json({ error: "following must be true or false" });
+    }
+
+    if (!targetUserId) {
+      return res.status(400).json({ error: "User id is required" });
+    }
+
+    if (targetUserId === req.userId) {
+      return res.status(400).json({ error: "You cannot follow yourself" });
+    }
+
+    if (!(await isFollowableUser(targetUserId))) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    await Promise.all([
+      getOrCreateProfile(req.userId),
+      getOrCreateProfile(targetUserId),
+    ]);
+
+    if (req.body.following) {
+      await Follow.updateOne(
+        { followerId: req.userId, followingId: targetUserId },
+        { $setOnInsert: { followerId: req.userId, followingId: targetUserId } },
+        { upsert: true },
+      );
+    } else {
+      await Follow.deleteOne({ followerId: req.userId, followingId: targetUserId });
+    }
+
+    res.json({
+      targetUserId,
+      ...(await getSocialStats(targetUserId, req.userId)),
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to update follow status" });
+  }
+});
+
+router.get("/:userId", async(req, res) => {
+  try {
+    const targetUserId = String(req.params.userId || "").trim();
+    const { userId: viewerId } = getAuth(req);
+
+    if (!targetUserId) {
+      return res.status(400).json({ error: "User id is required" });
+    }
+
+    if (!(await isFollowableUser(targetUserId))) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const profile = await getOrCreateProfile(targetUserId);
+    res.json(await formatProfileWithSocial(profile, viewerId));
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to fetch profile" });
   }
 });
 
