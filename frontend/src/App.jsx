@@ -7,6 +7,7 @@ import ViewReviews from "./Pages/ViewReviews";
 import FrontPage from "./Pages/FrontPage";
 import Layout from "./Layout";
 import Account from "./Pages/Account";
+import EditProfile from "./Pages/EditProfile";
 import ProtectedRoute from "./Components/ProtectedRoute";
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -28,6 +29,10 @@ export function App() {
               <ViewReviews />
             </ProtectedRoute>} />
             <Route path="/account" element={<Account />} />
+            <Route path="/account/edit" element={
+              <ProtectedRoute>
+                <EditProfile />
+              </ProtectedRoute>} />
           </Route>
         </Routes>
       </div>
