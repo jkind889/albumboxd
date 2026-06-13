@@ -36,6 +36,9 @@ const reviewSchema = new mongoose.Schema({
     },
 });
 
+reviewSchema.index({ spotifyId: 1, date: -1 });
+reviewSchema.index({ userId: 1, date: -1 });
+
 const Review = mongoose.model("Review", reviewSchema);
 
 module.exports = Review;
