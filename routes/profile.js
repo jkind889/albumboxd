@@ -1,5 +1,5 @@
 const express = require("express");
-const { getAuth } = require("@clerk/express");
+const { clerkClient, getAuth } = require("@clerk/express");
 const UserProfile = require("../models/UserProfile");
 const Follow = require("../models/Follow");
 const Review = require("../models/Reviews");
@@ -11,6 +11,8 @@ const {
 const router = express.Router();
 const MAX_BIO_LENGTH = 280;
 const MAX_FAVORITE_ALBUMS = 5;
+const DEFAULT_AUTHOR_USERNAME = "albumboxd user";
+const DEFAULT_ACTIVITY_LIMIT = 20;
 
 function ensureAuthenticated(req, res, next) {
   const { userId } = getAuth(req);
@@ -96,6 +98,64 @@ async function isFollowableUser(userId) {
   return Boolean(await Review.exists({ userId }));
 }
 
+function toPlainDocument(document) {
+  return typeof document?.toObject === "function" ? document.toObject() : document;
+}
+
+function getAuthorFromUser(userId, user) {
+  return {
+    userId,
+    username: user?.username || DEFAULT_AUTHOR_USERNAME,
+    imageUrl: user?.imageUrl || "",
+  };
+}
+
+async function getAuthorsByUserId(userIds) {
+  const authorsByUserId = new Map();
+  const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+
+  for (const userId of uniqueUserIds) {
+    authorsByUserId.set(userId, getAuthorFromUser(userId));
+  }
+
+  if (uniqueUserIds.length === 0) {
+    return authorsByUserId;
+  }
+
+  try {
+    const userList = await clerkClient.users.getUserList({ userId: uniqueUserIds });
+    const users = Array.isArray(userList) ? userList : userList.data || [];
+
+    for (const user of users) {
+      authorsByUserId.set(user.id, getAuthorFromUser(user.id, user));
+    }
+  } catch {
+    // Activity should still render when Clerk metadata is unavailable.
+  }
+
+  return authorsByUserId;
+}
+
+function formatReviewActivity(review, actor) {
+  const source = toPlainDocument(review);
+
+  return {
+    id: String(source._id),
+    type: "review",
+    actor,
+    userId: source.userId,
+    createdAt: source.date,
+    album: {
+      spotifyId: source.spotifyId,
+      title: source.title,
+      artist: source.artist,
+      cover: source.cover || "",
+    },
+    rating: source.rating,
+    reviewText: source.reviewText,
+  };
+}
+
 router.get("/me", ensureAuthenticated, async(req, res) => {
   try {
     const profile = await getOrCreateProfile(req.userId);
@@ -103,6 +163,40 @@ router.get("/me", ensureAuthenticated, async(req, res) => {
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Failed to fetch profile" });
+  }
+});
+
+router.get("/me/activity", ensureAuthenticated, async(req, res) => {
+  try {
+    const followingRows = await Follow.find({ followerId: req.userId });
+    const followedUserIds = [
+      ...new Set(
+        followingRows
+          .map((follow) => toPlainDocument(follow).followingId)
+          .filter((followingId) => followingId && followingId !== req.userId),
+      ),
+    ];
+
+    if (followedUserIds.length === 0) {
+      return res.json([]);
+    }
+
+    const reviews = await Review.find({ userId: { $in: followedUserIds } })
+      .sort({ date: -1 })
+      .limit(DEFAULT_ACTIVITY_LIMIT);
+    const authorsByUserId = await getAuthorsByUserId(reviews.map((review) => toPlainDocument(review).userId));
+    const activities = reviews.map((review) => {
+      const source = toPlainDocument(review);
+      return formatReviewActivity(
+        source,
+        authorsByUserId.get(source.userId) || getAuthorFromUser(source.userId),
+      );
+    });
+
+    res.json(activities);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to fetch activity" });
   }
 });
 

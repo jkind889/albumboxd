@@ -89,6 +89,7 @@ export function Account() {
   const [savedViewMode, setSavedViewMode] = useState("grid");
   const [savedAlbums, setSavedAlbums] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [activityItems, setActivityItems] = useState([]);
   const [profile, setProfile] = useState({
     userId: "",
     bio: "",
@@ -115,6 +116,7 @@ export function Account() {
       if (!isPublicProfile && !isSignedIn) {
         setSavedAlbums([]);
         setReviews([]);
+        setActivityItems([]);
         setProfile({
           userId: "",
           bio: "",
@@ -136,34 +138,41 @@ export function Account() {
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
         let savedData = [];
         let reviewsData = [];
+        let activityData = [];
         let profileData;
 
         if (isPublicProfile) {
-          const profileResponse = await fetch(
-            `http://localhost:3000/profile/${encodeURIComponent(publicUserId)}`,
-            { headers },
-          );
+          const encodedPublicUserId = encodeURIComponent(publicUserId);
+          const [profileResponse, reviewsResponse] = await Promise.all([
+            fetch(`http://localhost:3000/profile/${encodedPublicUserId}`, { headers }),
+            fetch(`http://localhost:3000/reviews/review/user/${encodedPublicUserId}`),
+          ]);
 
-          if (!profileResponse.ok) {
+          if (!profileResponse.ok || !reviewsResponse.ok) {
             throw new Error("Failed to load profile data");
           }
 
-          profileData = await profileResponse.json();
+          [profileData, reviewsData] = await Promise.all([
+            profileResponse.json(),
+            reviewsResponse.json(),
+          ]);
         } else {
-          const [savedResponse, reviewsResponse, profileResponse] = await Promise.all([
+          const [savedResponse, reviewsResponse, profileResponse, activityResponse] = await Promise.all([
             fetch("http://localhost:3000/collections/collection", { headers }),
             fetch("http://localhost:3000/reviews/review/user/", { headers }),
             fetch("http://localhost:3000/profile/me", { headers }),
+            fetch("http://localhost:3000/profile/me/activity", { headers }),
           ]);
 
-          if (!savedResponse.ok || !reviewsResponse.ok || !profileResponse.ok) {
+          if (!savedResponse.ok || !reviewsResponse.ok || !profileResponse.ok || !activityResponse.ok) {
             throw new Error("Failed to load profile data");
           }
 
-          [savedData, reviewsData, profileData] = await Promise.all([
+          [savedData, reviewsData, profileData, activityData] = await Promise.all([
             savedResponse.json(),
             reviewsResponse.json(),
             profileResponse.json(),
+            activityResponse.json(),
           ]);
         }
 
@@ -173,6 +182,7 @@ export function Account() {
 
         setSavedAlbums(Array.isArray(savedData) ? savedData : []);
         setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+        setActivityItems(Array.isArray(activityData) ? activityData : []);
         setProfile({
           userId: profileData.userId || publicUserId || "",
           bio: typeof profileData.bio === "string" ? profileData.bio : "",
@@ -188,6 +198,7 @@ export function Account() {
         if (isCurrent) {
           setSavedAlbums([]);
           setReviews([]);
+          setActivityItems([]);
           setProfile({
             userId: publicUserId || "",
             bio: "",
@@ -522,11 +533,62 @@ export function Account() {
   }
 
   function renderActivity() {
+    if (isPublicProfile) {
+      return (
+        <ProfileEmptyState
+          title="Activity is private"
+          body="Following activity is only available from your own profile."
+        />
+      );
+    }
+
+    if (activityItems.length === 0) {
+      return (
+        <ProfileEmptyState
+          title="No activity yet"
+          body="Follow listeners with reviews and their latest activity will show up here."
+        />
+      );
+    }
+
     return (
-      <ProfileEmptyState
-        title="Activity coming soon"
-        body="Saved albums, reviews, and collection updates will appear here as the activity model grows."
-      />
+      <div className="profile-activity-list">
+        {activityItems.map((activity) => {
+          const actor = activity.actor || {};
+          const album = activity.album || {};
+          const actorName = actor.username || "albumboxd user";
+          const actorState = {
+            profileUser: {
+              username: actorName,
+              imageUrl: actor.imageUrl || "",
+            },
+          };
+
+          return (
+            <article className="profile-activity-item" key={activity.id}>
+              <AlbumCover src={album.cover} title={album.title || "Album"} />
+              <div>
+                <span>Reviewed</span>
+                <h3>
+                  <Link to={`/profile/${actor.userId}`} state={actorState}>
+                    {actorName}
+                  </Link>
+                  {" reviewed "}
+                  <Link to={`/album/${album.spotifyId}`}>
+                    {album.title || "Untitled album"}
+                  </Link>
+                </h3>
+                <p>{album.artist || "Artist unknown"}</p>
+                {activity.reviewText && <p className="profile-review-copy">{activity.reviewText}</p>}
+              </div>
+              <div className="profile-activity-meta">
+                {activity.rating && <strong>{activity.rating}/5</strong>}
+                <time>{formatDate(activity.createdAt)}</time>
+              </div>
+            </article>
+          );
+        })}
+      </div>
     );
   }
 

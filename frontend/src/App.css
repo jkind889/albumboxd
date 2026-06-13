@@ -1982,11 +1982,33 @@ body:has(.profile-page),
   line-height: 1.25;
 }
 
+.profile-activity-item h3 a {
+  color: #f8fafc;
+  text-decoration: none;
+}
+
+.profile-activity-item h3 a:hover {
+  color: #38bdf8;
+}
+
 .profile-activity-item time,
 .profile-review-meta,
 .profile-album-card span {
   color: #93a4b8;
   font-size: 0.86rem;
+}
+
+.profile-activity-meta {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: end;
+  color: #93a4b8;
+  font-size: 0.86rem;
+}
+
+.profile-activity-meta strong {
+  color: #f8fafc;
+  font-size: 0.95rem;
 }
 
 .profile-cover,

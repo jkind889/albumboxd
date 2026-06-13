@@ -15,13 +15,21 @@ let updatedProfile = null;
 let getOrCreateError = null;
 let reviewUserIds = new Set();
 let followDocuments = [];
+let activityReviewDocuments = [];
+let clerkUsers = [];
+let shouldRejectClerkLookup = false;
 const findOneCalls = [];
 const createCalls = [];
 const updateCalls = [];
 const getOrCreateCalls = [];
 const reviewExistsCalls = [];
+const reviewFindCalls = [];
+const reviewSortCalls = [];
+const reviewLimitCalls = [];
+const followFindCalls = [];
 const followUpdateCalls = [];
 const followDeleteCalls = [];
+const getUserListCalls = [];
 
 function chainResult(result) {
   return {
@@ -96,6 +104,12 @@ function loadProfileRouter() {
       exists: async (query) => followDocuments.find((follow) => (
         Object.entries(query).every(([key, value]) => follow[key] === value)
       )) || null,
+      find: async (query) => {
+        followFindCalls.push(query);
+        return followDocuments.filter((follow) => (
+          Object.entries(query).every(([key, value]) => follow[key] === value)
+        ));
+      },
       updateOne: async (query, update, options) => {
         followUpdateCalls.push({ query, update, options });
         const exists = followDocuments.some((follow) => (
@@ -123,6 +137,27 @@ function loadProfileRouter() {
       exists: async (query) => {
         reviewExistsCalls.push(query);
         return reviewUserIds.has(query.userId) ? { _id: `review_${query.userId}` } : null;
+      },
+      find: (query) => {
+        reviewFindCalls.push(query);
+
+        return {
+          sort: (sortOrder) => {
+            reviewSortCalls.push(sortOrder);
+
+            return {
+              limit: async (limit) => {
+                reviewLimitCalls.push(limit);
+                const userIds = query.userId?.$in || [];
+
+                return activityReviewDocuments
+                  .filter((review) => userIds.includes(review.userId))
+                  .sort((first, second) => new Date(second.date) - new Date(first.date))
+                  .slice(0, limit);
+              },
+            };
+          },
+        };
       },
     },
   };
@@ -159,6 +194,19 @@ function loadProfileRouter() {
     loaded: true,
     exports: {
       getAuth: () => ({ userId: authUserId }),
+      clerkClient: {
+        users: {
+          getUserList: async (query) => {
+            getUserListCalls.push(query);
+
+            if (shouldRejectClerkLookup) {
+              throw new Error("Clerk lookup failed");
+            }
+
+            return { data: clerkUsers };
+          },
+        },
+      },
     },
   };
 
@@ -214,13 +262,21 @@ test.beforeEach(() => {
   getOrCreateError = null;
   reviewUserIds = new Set();
   followDocuments = [];
+  activityReviewDocuments = [];
+  clerkUsers = [];
+  shouldRejectClerkLookup = false;
   findOneCalls.length = 0;
   createCalls.length = 0;
   updateCalls.length = 0;
   getOrCreateCalls.length = 0;
   reviewExistsCalls.length = 0;
+  reviewFindCalls.length = 0;
+  reviewSortCalls.length = 0;
+  reviewLimitCalls.length = 0;
+  followFindCalls.length = 0;
   followUpdateCalls.length = 0;
   followDeleteCalls.length = 0;
+  getUserListCalls.length = 0;
 });
 
 test("GET /profile/me creates and returns an empty current user profile", async () => {
@@ -426,6 +482,142 @@ test("PUT /profile/me returns 500 when catalog lookup fails", async (t) => {
   assert.deepEqual(response.body, { error: "Failed to update profile" });
   assert.deepEqual(getOrCreateCalls, ["album_1"]);
   assert.equal(updateCalls.length, 0);
+});
+
+test("GET /profile/me/activity returns followed user review activity newest first", async () => {
+  followDocuments = [
+    { followerId: "user_clerk_123", followingId: "review_author_1" },
+    { followerId: "user_clerk_123", followingId: "review_author_2" },
+    { followerId: "other_user", followingId: "review_author_3" },
+  ];
+  activityReviewDocuments = [
+    {
+      _id: "older_review",
+      userId: "review_author_1",
+      spotifyId: "album_1",
+      title: "Kind of Blue",
+      artist: "Miles Davis",
+      cover: "https://example.com/kind-of-blue.jpg",
+      rating: 5,
+      reviewText: "Still the one.",
+      date: new Date("2026-06-10T10:00:00.000Z"),
+    },
+    {
+      _id: "newer_review",
+      userId: "review_author_2",
+      spotifyId: "album_2",
+      title: "Blue Train",
+      artist: "John Coltrane",
+      cover: "https://example.com/blue-train.jpg",
+      rating: 4,
+      reviewText: "Hard bop glow.",
+      date: new Date("2026-06-11T10:00:00.000Z"),
+    },
+    {
+      _id: "unfollowed_review",
+      userId: "review_author_3",
+      spotifyId: "album_3",
+      title: "Not in Feed",
+      artist: "Someone Else",
+      rating: 3,
+      reviewText: "Should not render.",
+      date: new Date("2026-06-12T10:00:00.000Z"),
+    },
+  ];
+  clerkUsers = [
+    {
+      id: "review_author_1",
+      username: "kindofkaren",
+      imageUrl: "https://example.com/karen.jpg",
+    },
+    {
+      id: "review_author_2",
+      username: "bluebill",
+      imageUrl: "https://example.com/bill.jpg",
+    },
+  ];
+
+  const response = await callRoute("get", "/me/activity");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(followFindCalls, [{ followerId: "user_clerk_123" }]);
+  assert.deepEqual(reviewFindCalls, [{ userId: { $in: ["review_author_1", "review_author_2"] } }]);
+  assert.deepEqual(reviewSortCalls, [{ date: -1 }]);
+  assert.deepEqual(reviewLimitCalls, [20]);
+  assert.deepEqual(getUserListCalls, [{ userId: ["review_author_2", "review_author_1"] }]);
+  assert.deepEqual(
+    response.body.map((activity) => activity.id),
+    ["newer_review", "older_review"],
+  );
+  assert.deepEqual(response.body[0], {
+    id: "newer_review",
+    type: "review",
+    actor: {
+      userId: "review_author_2",
+      username: "bluebill",
+      imageUrl: "https://example.com/bill.jpg",
+    },
+    userId: "review_author_2",
+    createdAt: new Date("2026-06-11T10:00:00.000Z"),
+    album: {
+      spotifyId: "album_2",
+      title: "Blue Train",
+      artist: "John Coltrane",
+      cover: "https://example.com/blue-train.jpg",
+    },
+    rating: 4,
+    reviewText: "Hard bop glow.",
+  });
+});
+
+test("GET /profile/me/activity returns empty when not following anyone", async () => {
+  const response = await callRoute("get", "/me/activity");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, []);
+  assert.deepEqual(followFindCalls, [{ followerId: "user_clerk_123" }]);
+  assert.equal(reviewFindCalls.length, 0);
+  assert.equal(getUserListCalls.length, 0);
+});
+
+test("GET /profile/me/activity excludes self-follow rows", async () => {
+  followDocuments = [
+    { followerId: "user_clerk_123", followingId: "user_clerk_123" },
+  ];
+
+  const response = await callRoute("get", "/me/activity");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, []);
+  assert.equal(reviewFindCalls.length, 0);
+});
+
+test("GET /profile/me/activity falls back when Clerk actor lookup fails", async () => {
+  shouldRejectClerkLookup = true;
+  followDocuments = [
+    { followerId: "user_clerk_123", followingId: "review_author_1" },
+  ];
+  activityReviewDocuments = [
+    {
+      _id: "review_lookup_failure",
+      userId: "review_author_1",
+      spotifyId: "album_1",
+      title: "Kind of Blue",
+      artist: "Miles Davis",
+      rating: 5,
+      reviewText: "Still renders.",
+      date: new Date("2026-06-10T10:00:00.000Z"),
+    },
+  ];
+
+  const response = await callRoute("get", "/me/activity");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body[0].actor, {
+    userId: "review_author_1",
+    username: "albumboxd user",
+    imageUrl: "",
+  });
 });
 
 test("GET /profile/:userId creates and returns a public profile for a reviewed user", async () => {

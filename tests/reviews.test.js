@@ -216,6 +216,36 @@ async function getAlbumReviews(albumId) {
   };
 }
 
+async function getUserReviews(userId) {
+  const router = loadReviewRouter();
+  const route = router.stack.find(
+    (layer) => layer.route?.path === "/review/user/:userId" && layer.route.methods.get,
+  );
+
+  assert.ok(route, "GET /review/user/:userId should be registered");
+
+  const req = { params: { userId } };
+  const res = {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(data) {
+      this.body = data;
+      return this;
+    },
+  };
+
+  await runRouteHandlers(route, req, res);
+
+  return {
+    status: res.statusCode,
+    body: res.body,
+  };
+}
+
 async function postReview(body = {}) {
   const router = loadReviewRouter();
   const route = router.stack.find(
@@ -424,6 +454,43 @@ test("GET /reviews/review/album/:albumId falls back when Clerk lookup fails", as
     username: "albumboxd user",
     imageUrl: "",
   });
+});
+
+test("GET /reviews/review/user/:userId fetches public profile reviews", async () => {
+  foundReviews = [
+    {
+      _id: "review_public_profile",
+      userId: "profile_user_123",
+      spotifyId: "spotify_album_123",
+      title: "Kind of Blue",
+      rating: 5,
+      reviewText: "Public profile review.",
+    },
+  ];
+  clerkUsers = [
+    {
+      id: "profile_user_123",
+      username: "publiclistener",
+      imageUrl: "https://example.com/public-listener.jpg",
+    },
+  ];
+
+  const response = await getUserReviews("profile_user_123");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(findCalls, [{ userId: "profile_user_123" }]);
+  assert.deepEqual(sortCalls, [{ date: -1 }]);
+  assert.deepEqual(getUserListCalls, [{ userId: ["profile_user_123"] }]);
+  assert.deepEqual(response.body, [
+    {
+      ...foundReviews[0],
+      author: {
+        userId: "profile_user_123",
+        username: "publiclistener",
+        imageUrl: "https://example.com/public-listener.jpg",
+      },
+    },
+  ]);
 });
 
 test("POST /reviews/review creates a review and returns the Clerk author", async () => {

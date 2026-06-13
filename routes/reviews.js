@@ -210,18 +210,34 @@ router.post("/review", ensureAuthenticated, async(req, res) =>
         }
     });
 
- router.get("/review/user/", ensureAuthenticated, async(req, res) =>
+router.get("/review/user/", ensureAuthenticated, async(req, res) =>
     {
         const userId = req.userId;
 
         try {
-            const reviews = await Review.find({ userId });
+            const reviews = await Review.find({ userId }).sort({ date: -1 });
             res.json(reviews);
         } catch (error) {
             console.log(error);
             res.status(500).json({ error: "Failed to fetch reviews" });
         }
     });
+
+router.get("/review/user/:userId", async(req, res) => {
+    try {
+        const targetUserId = String(req.params.userId || "").trim();
+
+        if (!targetUserId) {
+            return res.status(400).json({ error: "User id is required" });
+        }
+
+        const reviews = await Review.find({ userId: targetUserId }).sort({ date: -1 });
+        res.json(await addAuthorsToReviews(reviews));
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Failed to fetch reviews" });
+    }
+});
 
 router.delete("/review/user/:id", ensureAuthenticated, async(req, res) => {
     try {
