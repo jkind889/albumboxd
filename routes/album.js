@@ -1,5 +1,6 @@
 const express = require("express");
 const Album = require("../models/Albums");
+const AlbumCatalog = require("../models/AlbumCatalog");
 const { getAuth } = require("@clerk/express");
 const {
     getOrCreateAlbumCatalog,
@@ -17,6 +18,15 @@ function ensureAuthenticated(req, res, next) {
     req.userId = userId;
     next();
 }
+
+router.get("/catalog", async (req, res) => {
+    try {
+        const albums = await AlbumCatalog.find({}).sort({ artist: 1, title: 1 });
+        res.json(albums.map(normalizeCatalogAlbum));
+    } catch (error) {
+        res.status(500).json({ error: "Failed to fetch album catalog" });
+    }
+});
 
 // Album detail pages use the catalog cache before making any Spotify request.
 router.get("/album/:id", async(req, res) =>

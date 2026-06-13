@@ -22,7 +22,7 @@ function Navbar()
                                     <Link to="/viewreviews" className="nav-link active">Reviews</Link>
                                 </li>
                                 <li className="nav-item">
-                                    <Link to="/collection" className="nav-link active">Collection</Link>
+                                    <Link to="/albums" className="nav-link active">Albums</Link>
                                 </li>
                             </ul>
                         </div>

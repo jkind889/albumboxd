@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const albumModelPath = require.resolve("../models/Albums");
+const albumCatalogModelPath = require.resolve("../models/AlbumCatalog");
 const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const clerkPath = require.resolve("@clerk/express");
 const albumRoutePath = require.resolve("../routes/album");
@@ -9,8 +10,11 @@ const albumRoutePath = require.resolve("../routes/album");
 let authUserId = null;
 let createdAlbum = null;
 let catalogAlbum = null;
+let catalogAlbums = [];
 let getOrCreateError = null;
+let catalogFindError = null;
 const createCalls = [];
+const catalogFindCalls = [];
 const getOrCreateCalls = [];
 
 // Loads the album router with mocked database/auth/catalog dependencies.
@@ -34,6 +38,27 @@ function loadAlbumRouter() {
             ...album,
           }
         );
+      },
+    },
+  };
+
+  require.cache[albumCatalogModelPath] = {
+    id: albumCatalogModelPath,
+    filename: albumCatalogModelPath,
+    loaded: true,
+    exports: {
+      find: (query) => {
+        catalogFindCalls.push(query);
+        return {
+          sort: async (sort) => {
+            if (catalogFindError) {
+              throw catalogFindError;
+            }
+
+            catalogFindCalls.push({ sort });
+            return catalogAlbums;
+          },
+        };
       },
     },
   };
@@ -127,6 +152,7 @@ test.beforeEach(() => {
   authUserId = "user_clerk_123";
   createdAlbum = null;
   getOrCreateError = null;
+  catalogFindError = null;
   catalogAlbum = {
     _id: "catalog_album_123",
     spotifyId: "spotify_album_123",
@@ -155,8 +181,44 @@ test.beforeEach(() => {
       },
     ],
   };
+  catalogAlbums = [
+    catalogAlbum,
+    {
+      spotifyId: "spotify_album_456",
+      title: "Blue Train",
+      artist: "John Coltrane",
+      artists: ["John Coltrane"],
+      year: "1958",
+      cover: "https://example.com/blue-train.jpg",
+      totalTracks: 5,
+      tracks: [],
+    },
+  ];
   createCalls.length = 0;
+  catalogFindCalls.length = 0;
   getOrCreateCalls.length = 0;
+});
+
+test("GET /albums/catalog returns all catalog albums in frontend shape", async () => {
+  const response = await callRoute("get", "/catalog");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(catalogFindCalls, [{}, { sort: { artist: 1, title: 1 } }]);
+  assert.deepEqual(response.body.map((album) => album.id), [
+    "spotify_album_123",
+    "spotify_album_456",
+  ]);
+  assert.equal(response.body[0].title, "Kind of Blue");
+  assert.deepEqual(response.body[0].tracks, catalogAlbum.tracks);
+});
+
+test("GET /albums/catalog returns 500 when the catalog lookup fails", async () => {
+  catalogFindError = new Error("database unavailable");
+
+  const response = await callRoute("get", "/catalog");
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(response.body, { error: "Failed to fetch album catalog" });
 });
 
 test("GET /albums/album/:id returns a cached or newly cached catalog album", async () => {

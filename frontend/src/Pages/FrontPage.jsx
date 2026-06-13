@@ -13,8 +13,11 @@ export function FrontPage() {
                     <p className="front-hero-kicker">For You</p>
                     <h1>AlbumBoxd</h1>
                     <p>Cycle through community picks, jump into the album page, and see which records are earning attention right now.</p>
-                    <button className="explore-button" onClick={() => navigate("/collection")}>
-                        Explore Collection
+                    <button
+                        className="explore-button"
+                        onClick={() => navigate("/account", { state: { activeTab: "saved" } })}
+                    >
+                        View Saved Albums
                     </button>
                 </div>
                 <FeaturedAlbums limit={5} />

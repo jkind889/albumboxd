@@ -12,6 +12,9 @@ const tabs = [
   { id: "overview", label: "Overview" },
   { id: "saved", label: "Saved Albums" },
   { id: "reviews", label: "Reviews" },
+  { id: "activity", label: "Activity" },
+  { id: "listenNext", label: "Listen next" },
+  { id: "network", label: "Network" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -29,6 +32,23 @@ function formatDate(value) {
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatMonthYear(value) {
+  if (!value) {
+    return "Month unavailable";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Month unavailable";
+  }
+
+  return date.toLocaleDateString(undefined, {
+    month: "long",
     year: "numeric",
   });
 }
@@ -64,7 +84,9 @@ export function Account() {
   const { userId: publicUserId } = useParams();
   const location = useLocation();
   const isPublicProfile = Boolean(publicUserId);
-  const [activeTab, setActiveTab] = useState("overview");
+  const requestedTab = location.state?.activeTab;
+  const [activeTab, setActiveTab] = useState(requestedTab || "overview");
+  const [savedViewMode, setSavedViewMode] = useState("grid");
   const [savedAlbums, setSavedAlbums] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [profile, setProfile] = useState({
@@ -199,6 +221,12 @@ export function Account() {
     }
   }, [activeTab, availableTabs]);
 
+  useEffect(() => {
+    if (requestedTab && availableTabs.some((tab) => tab.id === requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [availableTabs, requestedTab]);
+
   const averageRating = useMemo(() => {
     if (reviews.length === 0) {
       return "--";
@@ -208,36 +236,13 @@ export function Account() {
     return (total / reviews.length).toFixed(1);
   }, [reviews]);
 
-  const recentActivity = useMemo(() => {
-    const savedActivity = savedAlbums.map((album) => ({
-      id: `saved-${album.spotifyId}`,
-      type: "Saved album",
-      title: album.title || "Untitled album",
-      subtitle: getArtistName(album),
-      cover: album.cover,
-      spotifyId: album.spotifyId,
-      date: album.savedAt,
-    }));
-
-    const reviewActivity = reviews.map((review) => ({
-      id: `review-${review._id}`,
-      type: "Reviewed album",
-      title: review.title || "Untitled album",
-      subtitle: `${review.rating}/5 rating`,
-      cover: review.cover,
-      spotifyId: review.spotifyId,
-      date: review.date,
-    }));
-
-    return [...savedActivity, ...reviewActivity]
-      .sort((first, second) => new Date(second.date) - new Date(first.date))
-      .slice(0, 8);
-  }, [savedAlbums, reviews]);
-
   const sortedReviews = useMemo(() => (
     [...reviews].sort((first, second) => new Date(second.date) - new Date(first.date))
   ), [reviews]);
-  const latestSavedAlbums = useMemo(() => savedAlbums.slice(0, 6), [savedAlbums]);
+  const sortedSavedAlbums = useMemo(() => (
+    [...savedAlbums].sort((first, second) => new Date(second.savedAt) - new Date(first.savedAt))
+  ), [savedAlbums]);
+  const latestSavedAlbums = useMemo(() => sortedSavedAlbums.slice(0, 6), [sortedSavedAlbums]);
   const latestReviews = useMemo(() => sortedReviews.slice(0, 4), [sortedReviews]);
   const favoriteAlbums = profile.favoriteAlbums;
 
@@ -330,11 +335,19 @@ export function Account() {
 
   const displayName = isPublicProfile
     ? publicProfileState.username || profile.userId || "albumboxd user"
-    : user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "Your profile";
+    : user?.username || user?.fullName || user?.primaryEmailAddress?.emailAddress || "Your profile";
   const profileImageUrl = isPublicProfile ? publicProfileState.imageUrl : user?.imageUrl;
-  const joinedDate = !isPublicProfile && user?.createdAt ? formatDate(user.createdAt) : null;
   const profileKicker = isPublicProfile ? "Profile" : "Current user";
   const showFollowButton = isPublicProfile && !profile.isCurrentUser && (!isSignedIn || !isLoading);
+  const profileHandle = displayName;
+  const sidebarFacts = [
+    { label: "Albums", value: savedAlbums.length },
+    { label: "Reviews", value: reviews.length },
+    { label: "Avg. Rating", value: averageRating },
+    { label: "Followers", value: profile.followerCount },
+    { label: "Following", value: profile.followingCount },
+  ];
+  const recentReviewCount = latestReviews.length;
 
   function renderOverview() {
     return (
@@ -371,79 +384,15 @@ export function Account() {
 
         <section className="profile-panel">
           <div className="profile-section-header">
-            <h2>Recent Activity</h2>
-          </div>
-
-          {recentActivity.length === 0 ? (
-            <ProfileEmptyState
-              title="No activity yet"
-              body={canManageProfile
-                ? "Save an album or write a review to start building your profile."
-                : "Public activity is not available for this profile yet."}
-            />
-          ) : (
-            <div className="profile-activity-list">
-              {recentActivity.map((activity) => (
-                <Link
-                  className="profile-activity-item"
-                  key={activity.id}
-                  to={`/album/${activity.spotifyId}`}
-                >
-                  <AlbumCover src={activity.cover} title={activity.title} />
-                  <div>
-                    <span>{activity.type}</span>
-                    <h3>{activity.title}</h3>
-                    <p>{activity.subtitle}</p>
-                  </div>
-                  <time>{formatDate(activity.date)}</time>
-                </Link>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <aside className="profile-panel">
-          <div className="profile-section-header">
-            <h2>Recently Saved</h2>
-          </div>
-
-          {latestSavedAlbums.length === 0 ? (
-            <ProfileEmptyState
-              title="No saved albums"
-              body={canManageProfile
-                ? "Albums you save will show up here."
-                : "Saved albums are not available for this profile yet."}
-            />
-          ) : (
-            <div className="profile-mini-album-list">
-              {latestSavedAlbums.map((album) => (
-                <Link
-                  className="profile-mini-album"
-                  key={album.spotifyId}
-                  to={`/album/${album.spotifyId}`}
-                >
-                  <AlbumCover src={album.cover} title={album.title} />
-                  <div>
-                    <h3>{album.title || "Untitled album"}</h3>
-                    <p>{getArtistName(album)}</p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </aside>
-
-        <section className="profile-panel profile-wide-panel">
-          <div className="profile-section-header">
-            <h2>Latest Reviews</h2>
+            <h2>Recent Reviews</h2>
           </div>
 
           {latestReviews.length === 0 ? (
             <ProfileEmptyState
               title="No reviews yet"
               body={canManageProfile
-                ? "Reviews you write will appear on your profile."
-                : "Reviews are not available on public profiles yet."}
+                ? "Reviews you write will appear here."
+                : "Reviews are not available on this profile yet."}
             />
           ) : (
             <div className="profile-review-list">
@@ -466,6 +415,17 @@ export function Account() {
             </div>
           )}
         </section>
+
+        <section className="profile-panel">
+          <div className="profile-section-header">
+            <h2>Popular Reviews</h2>
+          </div>
+
+          <ProfileEmptyState
+            title="Popular reviews coming soon"
+            body="This space is ready for ranked reviews once review engagement data is available."
+          />
+        </section>
       </div>
     );
   }
@@ -483,27 +443,108 @@ export function Account() {
     }
 
     return (
-      <div className="profile-album-grid">
-        {savedAlbums.map((album) => (
-          <article className="profile-album-card" key={album.spotifyId}>
-            <Link to={`/album/${album.spotifyId}`} className="profile-album-card-link">
-              <AlbumCover src={album.cover} title={album.title} />
-              <h3>{album.title || "Untitled album"}</h3>
-              <p>{getArtistName(album)}</p>
-              <span>{album.year || "Year unknown"}</span>
-            </Link>
-            {canManageProfile && (
-              <button
-                className="profile-secondary-button"
-                type="button"
-                onClick={() => removeSavedAlbum(album.spotifyId)}
-              >
-                Remove
-              </button>
-            )}
-          </article>
-        ))}
-      </div>
+      <section className="profile-saved-section">
+        <div className="profile-saved-toolbar">
+          <div>
+            <h2>Saved Albums</h2>
+            <p>{sortedSavedAlbums.length} albums on this shelf</p>
+          </div>
+          <div className="profile-view-toggle" aria-label="Saved albums view">
+            <button
+              className={savedViewMode === "grid" ? "profile-view-toggle-active" : ""}
+              type="button"
+              onClick={() => setSavedViewMode("grid")}
+            >
+              Grid
+            </button>
+            <button
+              className={savedViewMode === "list" ? "profile-view-toggle-active" : ""}
+              type="button"
+              onClick={() => setSavedViewMode("list")}
+            >
+              List
+            </button>
+          </div>
+        </div>
+
+        {savedViewMode === "grid" ? (
+          <div className="profile-album-grid">
+            {sortedSavedAlbums.map((album) => (
+              <article className="profile-album-card" key={album.spotifyId}>
+                <Link to={`/album/${album.spotifyId}`} className="profile-album-card-link">
+                  <AlbumCover src={album.cover} title={album.title} />
+                  <h3>{album.title || "Untitled album"}</h3>
+                  <p>{getArtistName(album)}</p>
+                  <span>Saved {formatMonthYear(album.savedAt)}</span>
+                </Link>
+                {canManageProfile && (
+                  <button
+                    className="profile-secondary-button"
+                    type="button"
+                    onClick={() => removeSavedAlbum(album.spotifyId)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="profile-saved-list">
+            {sortedSavedAlbums.map((album) => (
+              <article className="profile-saved-row" key={album.spotifyId}>
+                <Link to={`/album/${album.spotifyId}`} className="profile-saved-album">
+                  <AlbumCover src={album.cover} title={album.title} />
+                  <div>
+                    <h3>{album.title || "Untitled album"}</h3>
+                    <p>{getArtistName(album)}</p>
+                  </div>
+                </Link>
+                <div className="profile-saved-date">
+                  <span>Saved</span>
+                  <strong>{formatMonthYear(album.savedAt)}</strong>
+                </div>
+                {canManageProfile && (
+                  <button
+                    className="profile-secondary-button"
+                    type="button"
+                    onClick={() => removeSavedAlbum(album.spotifyId)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function renderActivity() {
+    return (
+      <ProfileEmptyState
+        title="Activity coming soon"
+        body="Saved albums, reviews, and collection updates will appear here as the activity model grows."
+      />
+    );
+  }
+
+  function renderListenNext() {
+    return (
+      <ProfileEmptyState
+        title="Listen next coming soon"
+        body="Recommendations and queue-style picks can live here once that logic is ready."
+      />
+    );
+  }
+
+  function renderNetwork() {
+    return (
+      <ProfileEmptyState
+        title="Network coming soon"
+        body="Followers, following, and social listening updates will live here once the network layer is built."
+      />
     );
   }
 
@@ -578,6 +619,18 @@ export function Account() {
       return renderReviews();
     }
 
+    if (activeTab === "activity") {
+      return renderActivity();
+    }
+
+    if (activeTab === "listenNext") {
+      return renderListenNext();
+    }
+
+    if (activeTab === "network") {
+      return renderNetwork();
+    }
+
     return (
       <div className="profile-settings-panel">
         <UserProfile />
@@ -589,89 +642,179 @@ export function Account() {
     return <RedirectToSignIn />;
   }
 
+  function renderProfileAction(className = "profile-follow-button") {
+    if (!showFollowButton) {
+      return null;
+    }
+
+    if (isSignedIn) {
+      return (
+        <button
+          className={className}
+          type="button"
+          disabled={isFollowSaving || isLoading}
+          onClick={() => updateFollowState(!profile.isFollowing)}
+        >
+          {isFollowSaving ? "Saving..." : profile.isFollowing ? "Following" : "Follow"}
+        </button>
+      );
+    }
+
+    return (
+      <SignInButton mode="modal">
+        <button className={className} type="button">
+          Follow
+        </button>
+      </SignInButton>
+    );
+  }
+
+
   return (
     <>
       <section className="profile-page">
-        <header className="profile-hero">
-          <div className="profile-identity">
-            {isLoaded && profileImageUrl ? (
-              <img className="profile-avatar" src={profileImageUrl} alt={`${displayName} avatar`} />
-            ) : (
-              <div className="profile-avatar profile-avatar-fallback">
-                {displayName.charAt(0).toUpperCase()}
-              </div>
-            )}
-
-            <div>
-              <p className="profile-kicker">{profileKicker}</p>
-              <div className="profile-name-row">
-                <h1>{displayName}</h1>
-                {showFollowButton && (
-                  isSignedIn ? (
-                    <button
-                      className="profile-follow-button"
-                      type="button"
-                      disabled={isFollowSaving || isLoading}
-                      onClick={() => updateFollowState(!profile.isFollowing)}
-                    >
-                      {isFollowSaving ? "Saving..." : profile.isFollowing ? "Following" : "Follow"}
-                    </button>
-                  ) : (
-                    <SignInButton mode="modal">
-                      <button className="profile-follow-button" type="button">
-                        Follow
-                      </button>
-                    </SignInButton>
-                  )
+        <div className="profile-layout">
+          <main className="profile-main">
+            <header className="profile-hero">
+              <div className="profile-identity">
+                {isLoaded && profileImageUrl ? (
+                  <img className="profile-avatar" src={profileImageUrl} alt={`${displayName} avatar`} />
+                ) : (
+                  <div className="profile-avatar profile-avatar-fallback">
+                    {displayName.charAt(0).toUpperCase()}
+                  </div>
                 )}
+
+                <div>
+                  <p className="profile-kicker">{profileKicker}</p>
+                  <div className="profile-name-row">
+                    <h1>{displayName}</h1>
+                    {renderProfileAction()}
+                  </div>
+                  <p className="profile-joined">{profileHandle}</p>
+                  {profile.bio && <p className="profile-bio">{profile.bio}</p>}
+                  {canManageProfile && (
+                    <Link className="profile-edit-link" to="/account/edit">Edit Profile</Link>
+                  )}
+                </div>
               </div>
-              {joinedDate && <p className="profile-joined">Listening since {joinedDate}</p>}
-              {profile.bio && <p className="profile-bio">{profile.bio}</p>}
-              {canManageProfile && (
-                <Link className="profile-edit-link" to="/account/edit">Edit Profile</Link>
-              )}
-            </div>
-          </div>
 
-          <div className="profile-stat-grid" aria-label="Profile stats">
-            <div>
-              <span>Saved</span>
-              <strong>{savedAlbums.length}</strong>
-            </div>
-            <div>
-              <span>Reviews</span>
-              <strong>{reviews.length}</strong>
-            </div>
-            <div>
-              <span>Avg. Rating</span>
-              <strong>{averageRating}</strong>
-            </div>
-            <div>
-              <span>Followers</span>
-              <strong>{profile.followerCount}</strong>
-            </div>
-            <div>
-              <span>Following</span>
-              <strong>{profile.followingCount}</strong>
-            </div>
-          </div>
-        </header>
+              <div className="profile-hero-links" aria-label="Profile links">
+                <button type="button" onClick={() => setActiveTab("saved")}>
+                  <span>Albums</span>
+                  <strong>{savedAlbums.length}</strong>
+                </button>
+                <button type="button" onClick={() => setActiveTab("reviews")}>
+                  <span>Reviews</span>
+                  <strong>{reviews.length}</strong>
+                </button>
+                <Link to="/account/edit">
+                  <span>Social Links</span>
+                  <strong>Future</strong>
+                </Link>
+              </div>
+            </header>
 
-        <nav className="profile-tabs" aria-label="Profile sections">
-          {availableTabs.map((tab) => (
-            <button
-              className={activeTab === tab.id ? "profile-tab profile-tab-active" : "profile-tab"}
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+            <nav className="profile-tabs" aria-label="Profile sections">
+              {availableTabs.map((tab) => (
+                <button
+                  className={activeTab === tab.id ? "profile-tab profile-tab-active" : "profile-tab"}
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
 
-        <div className="profile-tab-panel">
-          {renderActiveTab()}
+            <div className="profile-tab-panel">
+              {renderActiveTab()}
+            </div>
+          </main>
+
+          <aside className="profile-sidebar" aria-label="Profile details">
+            <div className="profile-sidebar-card">
+              <div className="profile-sidebar-banner" />
+              <div className="profile-sidebar-body">
+                <div className="profile-sidebar-heading">
+                  {isLoaded && profileImageUrl ? (
+                    <img className="profile-sidebar-avatar" src={profileImageUrl} alt={`${displayName} avatar`} />
+                  ) : (
+                    <div className="profile-sidebar-avatar profile-avatar-fallback">
+                      {displayName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <h2>{displayName}</h2>
+                    <p>{profileHandle}</p>
+                  </div>
+                </div>
+
+                {profile.bio ? (
+                  <p className="profile-sidebar-bio">{profile.bio}</p>
+                ) : (
+                  <p className="profile-sidebar-bio">
+                    {canManageProfile
+                      ? "Add a bio from edit profile to introduce your listening shelf."
+                      : "This listener has not added a bio yet."}
+                  </p>
+                )}
+
+                <dl className="profile-sidebar-facts">
+                  {sidebarFacts.map((fact) => (
+                    <div key={fact.label}>
+                      <dt>{fact.label}</dt>
+                      <dd>{fact.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+
+                <div className="profile-sidebar-section">
+                  <h3>Log</h3>
+                  {latestSavedAlbums.length === 0 ? (
+                    <p>No saved albums logged yet.</p>
+                  ) : (
+                    <div className="profile-sidebar-log">
+                      {latestSavedAlbums.map((album) => (
+                        <Link key={album.spotifyId} to={`/album/${album.spotifyId}`}>
+                          <span>{formatMonthYear(album.savedAt)}</span>
+                          <strong>{album.title || "Untitled album"}</strong>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="profile-sidebar-section">
+                  <h3>Activity Log</h3>
+                  <div className="profile-sidebar-copy-list">
+                    <p>{savedAlbums.length} saved albums</p>
+                    <p>{reviews.length} reviews</p>
+                    <p>{recentReviewCount} recent reviews</p>
+                  </div>
+                </div>
+
+                <div className="profile-sidebar-section">
+                  <h3>Ratings Scale</h3>
+                  <div className="profile-rating-scale" aria-label="Rating scale">
+                    <span>1</span>
+                    <div />
+                    <span>5</span>
+                  </div>
+                </div>
+
+                <div className="profile-sidebar-section">
+                  <h3>Settings</h3>
+                  {canManageProfile ? (
+                    <Link className="profile-sidebar-button" to="/account/edit">Update Profile</Link>
+                  ) : (
+                    renderProfileAction("profile-sidebar-button")
+                  )}
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
       </section>
     </>

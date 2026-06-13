@@ -1,8 +1,8 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import "./App.css";
 import SearchResults from "./Pages/SearchResults";
+import Albums from "./Pages/Albums";
 import AlbumDetail from "./Components/AlbumDetail";
-import Collection from "./Pages/Collection";
 import ViewReviews from "./Pages/ViewReviews";
 import FrontPage from "./Pages/FrontPage";
 import Layout from "./Layout";
@@ -19,10 +19,11 @@ export function App() {
           <Route element={<Layout />}>
             <Route index element={<FrontPage />} />
             <Route path="/search" element={<SearchResults />} />
-            <Route path="/collection" element={
-              <ProtectedRoute>
-                <Collection />
-             </ProtectedRoute>} />
+            <Route path="/albums" element={<Albums />} />
+            <Route
+              path="/collection"
+              element={<Navigate to="/account" state={{ activeTab: "saved" }} replace />}
+            />
             <Route path="/album/:id" element={<AlbumDetail />} />
             <Route path="/viewreviews" element={
             <ProtectedRoute>

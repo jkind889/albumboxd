@@ -59,12 +59,26 @@ export function ViewReviews()
 
 
     return (
-        <div>
-            <h3>Recent Reviews</h3>
-            <ReviewList reviews={recentReviews} onRemoveReview={removeReview} />
-            <h3>Popular Reviews</h3>
-            <ReviewList reviews={popularReviews} onRemoveReview={removeReview} />
-        </div>
+        <main className="reviews-page">
+            <section className="reviews-section">
+                <div className="reviews-section-header">
+                    <h1>Reviews</h1>
+                    <div className="reviews-filter-row" aria-hidden="true">
+                        <span>Rating</span>
+                        <span>Diary Year</span>
+                        <span>Sort by When Reviewed</span>
+                    </div>
+                </div>
+                <ReviewList reviews={recentReviews} onRemoveReview={removeReview} />
+            </section>
+
+            <section className="reviews-section">
+                <div className="reviews-section-header">
+                    <h2>Highest Rated</h2>
+                </div>
+                <ReviewList reviews={popularReviews} onRemoveReview={removeReview} />
+            </section>
+        </main>
     );
 
 
