@@ -20,7 +20,16 @@ const getSpotifyAccessToken = async () => {
         })
     });
 
+    if (!response.ok) {
+        throw new Error(`Spotify token fetch failed with status ${response.status}`);
+    }
+
     const data = await response.json();
+
+    if (!data.access_token || !data.expires_in) {
+        throw new Error("Spotify token response was missing access token data");
+    }
+
     accessToken = data.access_token;
     tokenExpiration = Date.now() + (data.expires_in * 1000) - 60000; // Refresh 1 minute before expiration
 

@@ -4,6 +4,7 @@ const test = require("node:test");
 const profileModelPath = require.resolve("../models/UserProfile");
 const followModelPath = require.resolve("../models/Follow");
 const reviewModelPath = require.resolve("../models/Reviews");
+const albumModelPath = require.resolve("../models/Albums");
 const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const clerkPath = require.resolve("@clerk/express");
 const profileRoutePath = require.resolve("../routes/profile");
@@ -16,6 +17,7 @@ let getOrCreateError = null;
 let reviewUserIds = new Set();
 let followDocuments = [];
 let activityReviewDocuments = [];
+let activitySavedAlbumDocuments = [];
 let clerkUsers = [];
 let shouldRejectClerkLookup = false;
 const findOneCalls = [];
@@ -26,6 +28,10 @@ const reviewExistsCalls = [];
 const reviewFindCalls = [];
 const reviewSortCalls = [];
 const reviewLimitCalls = [];
+const albumFindCalls = [];
+const albumPopulateCalls = [];
+const albumSortCalls = [];
+const albumLimitCalls = [];
 const followFindCalls = [];
 const followUpdateCalls = [];
 const followDeleteCalls = [];
@@ -148,12 +154,46 @@ function loadProfileRouter() {
             return {
               limit: async (limit) => {
                 reviewLimitCalls.push(limit);
-                const userIds = query.userId?.$in || [];
+                const userIds = query.userId?.$in || [query.userId].filter(Boolean);
 
                 return activityReviewDocuments
                   .filter((review) => userIds.includes(review.userId))
                   .sort((first, second) => new Date(second.date) - new Date(first.date))
                   .slice(0, limit);
+              },
+            };
+          },
+        };
+      },
+    },
+  };
+
+  require.cache[albumModelPath] = {
+    id: albumModelPath,
+    filename: albumModelPath,
+    loaded: true,
+    exports: {
+      find: (query) => {
+        albumFindCalls.push(query);
+
+        return {
+          populate: (path) => {
+            albumPopulateCalls.push(path);
+
+            return {
+              sort: (sortOrder) => {
+                albumSortCalls.push(sortOrder);
+
+                return {
+                  limit: async (limit) => {
+                    albumLimitCalls.push(limit);
+
+                    return activitySavedAlbumDocuments
+                      .filter((album) => album.userId === query.userId)
+                      .sort((first, second) => new Date(second.savedAt) - new Date(first.savedAt))
+                      .slice(0, limit);
+                  },
+                };
               },
             };
           },
@@ -263,6 +303,7 @@ test.beforeEach(() => {
   reviewUserIds = new Set();
   followDocuments = [];
   activityReviewDocuments = [];
+  activitySavedAlbumDocuments = [];
   clerkUsers = [];
   shouldRejectClerkLookup = false;
   findOneCalls.length = 0;
@@ -273,6 +314,10 @@ test.beforeEach(() => {
   reviewFindCalls.length = 0;
   reviewSortCalls.length = 0;
   reviewLimitCalls.length = 0;
+  albumFindCalls.length = 0;
+  albumPopulateCalls.length = 0;
+  albumSortCalls.length = 0;
+  albumLimitCalls.length = 0;
   followFindCalls.length = 0;
   followUpdateCalls.length = 0;
   followDeleteCalls.length = 0;
@@ -484,7 +529,7 @@ test("PUT /profile/me returns 500 when catalog lookup fails", async (t) => {
   assert.equal(updateCalls.length, 0);
 });
 
-test("GET /profile/me/activity returns followed user review activity newest first", async () => {
+test("GET /profile/me/network returns followed user review activity newest first", async () => {
   followDocuments = [
     { followerId: "user_clerk_123", followingId: "review_author_1" },
     { followerId: "user_clerk_123", followingId: "review_author_2" },
@@ -537,7 +582,7 @@ test("GET /profile/me/activity returns followed user review activity newest firs
     },
   ];
 
-  const response = await callRoute("get", "/me/activity");
+  const response = await callRoute("get", "/me/network");
 
   assert.equal(response.status, 200);
   assert.deepEqual(followFindCalls, [{ followerId: "user_clerk_123" }]);
@@ -570,8 +615,8 @@ test("GET /profile/me/activity returns followed user review activity newest firs
   });
 });
 
-test("GET /profile/me/activity returns empty when not following anyone", async () => {
-  const response = await callRoute("get", "/me/activity");
+test("GET /profile/me/network returns empty when not following anyone", async () => {
+  const response = await callRoute("get", "/me/network");
 
   assert.equal(response.status, 200);
   assert.deepEqual(response.body, []);
@@ -580,19 +625,19 @@ test("GET /profile/me/activity returns empty when not following anyone", async (
   assert.equal(getUserListCalls.length, 0);
 });
 
-test("GET /profile/me/activity excludes self-follow rows", async () => {
+test("GET /profile/me/network excludes self-follow rows", async () => {
   followDocuments = [
     { followerId: "user_clerk_123", followingId: "user_clerk_123" },
   ];
 
-  const response = await callRoute("get", "/me/activity");
+  const response = await callRoute("get", "/me/network");
 
   assert.equal(response.status, 200);
   assert.deepEqual(response.body, []);
   assert.equal(reviewFindCalls.length, 0);
 });
 
-test("GET /profile/me/activity falls back when Clerk actor lookup fails", async () => {
+test("GET /profile/me/network falls back when Clerk actor lookup fails", async () => {
   shouldRejectClerkLookup = true;
   followDocuments = [
     { followerId: "user_clerk_123", followingId: "review_author_1" },
@@ -610,7 +655,7 @@ test("GET /profile/me/activity falls back when Clerk actor lookup fails", async 
     },
   ];
 
-  const response = await callRoute("get", "/me/activity");
+  const response = await callRoute("get", "/me/network");
 
   assert.equal(response.status, 200);
   assert.deepEqual(response.body[0].actor, {
@@ -618,6 +663,114 @@ test("GET /profile/me/activity falls back when Clerk actor lookup fails", async 
     username: "albumboxd user",
     imageUrl: "",
   });
+});
+
+test("GET /profile/me/activity returns current user's saved and reviewed activity", async () => {
+  activityReviewDocuments = [
+    {
+      _id: "own_review",
+      userId: "user_clerk_123",
+      spotifyId: "album_1",
+      title: "Kind of Blue",
+      artist: "Miles Davis",
+      cover: "https://example.com/kind-of-blue.jpg",
+      rating: 5,
+      reviewText: "Mine.",
+      date: new Date("2026-06-10T10:00:00.000Z"),
+    },
+  ];
+  activitySavedAlbumDocuments = [
+    {
+      _id: "own_save",
+      userId: "user_clerk_123",
+      spotifyId: "album_2",
+      savedAt: new Date("2026-06-11T10:00:00.000Z"),
+      albumCatalogId: {
+        _id: "catalog_album_2",
+        spotifyId: "album_2",
+        title: "Blue Train",
+        artist: "John Coltrane",
+        cover: "https://example.com/blue-train.jpg",
+      },
+    },
+  ];
+  clerkUsers = [
+    {
+      id: "user_clerk_123",
+      username: "currentlistener",
+      imageUrl: "https://example.com/current.jpg",
+    },
+  ];
+
+  const response = await callRoute("get", "/me/activity");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(reviewFindCalls, [{ userId: "user_clerk_123" }]);
+  assert.deepEqual(albumFindCalls, [{ userId: "user_clerk_123" }]);
+  assert.deepEqual(albumPopulateCalls, ["albumCatalogId"]);
+  assert.deepEqual(
+    response.body.map((activity) => activity.type),
+    ["saved_album", "review"],
+  );
+  assert.deepEqual(response.body[0], {
+    id: "own_save",
+    type: "saved_album",
+    actor: {
+      userId: "user_clerk_123",
+      username: "currentlistener",
+      imageUrl: "https://example.com/current.jpg",
+    },
+    userId: "user_clerk_123",
+    createdAt: new Date("2026-06-11T10:00:00.000Z"),
+    album: {
+      spotifyId: "album_2",
+      title: "Blue Train",
+      artist: "John Coltrane",
+      cover: "https://example.com/blue-train.jpg",
+    },
+  });
+});
+
+test("GET /profile/:userId/activity returns public profile saved and reviewed activity", async () => {
+  reviewUserIds.add("review_author_1");
+  activityReviewDocuments = [
+    {
+      _id: "public_review",
+      userId: "review_author_1",
+      spotifyId: "album_1",
+      title: "Kind of Blue",
+      artist: "Miles Davis",
+      rating: 5,
+      reviewText: "Public review.",
+      date: new Date("2026-06-10T10:00:00.000Z"),
+    },
+  ];
+  activitySavedAlbumDocuments = [
+    {
+      _id: "public_save",
+      userId: "review_author_1",
+      spotifyId: "album_2",
+      savedAt: new Date("2026-06-12T10:00:00.000Z"),
+      albumCatalogId: {
+        _id: "catalog_album_2",
+        spotifyId: "album_2",
+        title: "Blue Train",
+        artist: "John Coltrane",
+        cover: "https://example.com/blue-train.jpg",
+      },
+    },
+  ];
+
+  const response = await callRoute("get", "/:userId/activity", {
+    params: { userId: "review_author_1" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(reviewExistsCalls, [{ userId: "review_author_1" }]);
+  assert.deepEqual(
+    response.body.map((activity) => activity.type),
+    ["saved_album", "review"],
+  );
 });
 
 test("GET /profile/:userId creates and returns a public profile for a reviewed user", async () => {

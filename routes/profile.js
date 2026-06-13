@@ -3,6 +3,7 @@ const { clerkClient, getAuth } = require("@clerk/express");
 const UserProfile = require("../models/UserProfile");
 const Follow = require("../models/Follow");
 const Review = require("../models/Reviews");
+const Album = require("../models/Albums");
 const {
   getOrCreateAlbumCatalog,
   normalizeCatalogAlbum,
@@ -156,6 +157,62 @@ function formatReviewActivity(review, actor) {
   };
 }
 
+function getSavedAlbumActivityAlbum(savedAlbum) {
+  const source = toPlainDocument(savedAlbum);
+  const catalogAlbum = source.albumCatalogId;
+
+  if (catalogAlbum && typeof catalogAlbum === "object" && catalogAlbum.spotifyId) {
+    return normalizeCatalogAlbum(catalogAlbum);
+  }
+
+  return {
+    spotifyId: source.spotifyId,
+    title: "Unknown Album",
+    artist: "Unknown Artist",
+    cover: "",
+  };
+}
+
+function formatSavedAlbumActivity(savedAlbum, actor) {
+  const source = toPlainDocument(savedAlbum);
+  const album = getSavedAlbumActivityAlbum(source);
+
+  return {
+    id: String(source._id || `${source.userId}-${source.spotifyId}`),
+    type: "saved_album",
+    actor,
+    userId: source.userId,
+    createdAt: source.savedAt,
+    album: {
+      spotifyId: album.spotifyId,
+      title: album.title,
+      artist: album.artist || getCatalogAlbum({ spotifyId: album.spotifyId }).artist,
+      cover: album.cover || "",
+    },
+  };
+}
+
+async function getUserActivity(userId, { includeSavedAlbums }) {
+  const authorsByUserId = await getAuthorsByUserId([userId]);
+  const actor = authorsByUserId.get(userId) || getAuthorFromUser(userId);
+  const [reviews, savedAlbums] = await Promise.all([
+    Review.find({ userId }).sort({ date: -1 }).limit(DEFAULT_ACTIVITY_LIMIT),
+    includeSavedAlbums
+      ? Album.find({ userId })
+        .populate("albumCatalogId")
+        .sort({ savedAt: -1 })
+        .limit(DEFAULT_ACTIVITY_LIMIT)
+      : Promise.resolve([]),
+  ]);
+
+  return [
+    ...reviews.map((review) => formatReviewActivity(review, actor)),
+    ...savedAlbums.map((savedAlbum) => formatSavedAlbumActivity(savedAlbum, actor)),
+  ]
+    .sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt))
+    .slice(0, DEFAULT_ACTIVITY_LIMIT);
+}
+
 router.get("/me", ensureAuthenticated, async(req, res) => {
   try {
     const profile = await getOrCreateProfile(req.userId);
@@ -166,7 +223,7 @@ router.get("/me", ensureAuthenticated, async(req, res) => {
   }
 });
 
-router.get("/me/activity", ensureAuthenticated, async(req, res) => {
+router.get("/me/network", ensureAuthenticated, async(req, res) => {
   try {
     const followingRows = await Follow.find({ followerId: req.userId });
     const followedUserIds = [
@@ -194,6 +251,15 @@ router.get("/me/activity", ensureAuthenticated, async(req, res) => {
     });
 
     res.json(activities);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to fetch network activity" });
+  }
+});
+
+router.get("/me/activity", ensureAuthenticated, async(req, res) => {
+  try {
+    res.json(await getUserActivity(req.userId, { includeSavedAlbums: true }));
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Failed to fetch activity" });
@@ -296,6 +362,25 @@ router.put("/:userId/follow", ensureAuthenticated, async(req, res) => {
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Failed to update follow status" });
+  }
+});
+
+router.get("/:userId/activity", async(req, res) => {
+  try {
+    const targetUserId = String(req.params.userId || "").trim();
+
+    if (!targetUserId) {
+      return res.status(400).json({ error: "User id is required" });
+    }
+
+    if (!(await isFollowableUser(targetUserId))) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json(await getUserActivity(targetUserId, { includeSavedAlbums: true }));
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to fetch activity" });
   }
 });
 

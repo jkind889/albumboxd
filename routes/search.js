@@ -7,10 +7,38 @@ const {
     upsertAlbumCatalog,
 } = require("./utils/albumCatalog");
 const router = express.Router()
+const SEARCH_RESULT_LIMIT = 24;
 
 // User search text becomes a regex query, so escape special characters first.
 function escapeRegex(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildRegexSearchQuery(query) {
+    const escapedQuery = escapeRegex(query);
+
+    return {
+        $or: [
+            { title: { $regex: escapedQuery, $options: "i" } },
+            { artist: { $regex: escapedQuery, $options: "i" } },
+            { artists: { $regex: escapedQuery, $options: "i" } },
+        ],
+    };
+}
+
+async function getLocalAlbums(query) {
+    const textAlbums = await AlbumCatalog.find(
+        { $text: { $search: query } },
+        { score: { $meta: "textScore" } },
+    )
+        .sort({ score: { $meta: "textScore" } })
+        .limit(SEARCH_RESULT_LIMIT);
+
+    if (textAlbums.length > 0) {
+        return textAlbums;
+    }
+
+    return AlbumCatalog.find(buildRegexSearchQuery(query)).limit(SEARCH_RESULT_LIMIT);
 }
 
 router.get("/search", async(req, res) =>
@@ -22,19 +50,18 @@ router.get("/search", async(req, res) =>
     }
 
     try {
-        // Return local catalog hits first, then warm the cache with fresh Spotify results.
-        const escapedQuery = escapeRegex(query);
-        const localAlbums = await AlbumCatalog.find({
-            $or: [
-                { title: { $regex: escapedQuery, $options: "i" } },
-                { artist: { $regex: escapedQuery, $options: "i" } },
-                { artists: { $regex: escapedQuery, $options: "i" } },
-            ],
-        }).limit(24);
+        // Return local catalog hits first; only ask Spotify when the cache cannot fill the page.
+        const localAlbums = await getLocalAlbums(query);
+        const localResults = localAlbums.map(toSearchResult);
+
+        if (localResults.length >= SEARCH_RESULT_LIMIT) {
+            return res.json(localResults);
+        }
 
         const token = await getSpotifyAccessToken();
 
-        const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=album&limit=24`, {
+        const spotifyLimit = SEARCH_RESULT_LIMIT - localResults.length;
+        const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=album&limit=${spotifyLimit}`, {
             headers: {
                 "Authorization": `Bearer ${token}`
             }
@@ -45,17 +72,14 @@ router.get("/search", async(req, res) =>
         }
 
         const data = await response.json();
-        const seenAlbums = new Set();
-        const results = [];
+        const seenAlbums = new Set(localResults.map((result) => result.id));
+        const spotifyItems = data.albums.items || [];
+        const spotifyAlbums = await Promise.all(
+            spotifyItems.map((item) => upsertAlbumCatalog(normalizeSpotifyAlbum(item))),
+        );
 
-        for (const album of localAlbums) {
-            const result = toSearchResult(album);
-            seenAlbums.add(result.id);
-            results.push(result);
-        }
-
-        for (const item of data.albums.items || []) {
-            const catalogAlbum = await upsertAlbumCatalog(normalizeSpotifyAlbum(item));
+        const results = [...localResults];
+        for (const catalogAlbum of spotifyAlbums) {
             const result = toSearchResult(catalogAlbum);
 
             if (seenAlbums.has(result.id)) {

@@ -90,6 +90,7 @@ export function Account() {
   const [savedAlbums, setSavedAlbums] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [activityItems, setActivityItems] = useState([]);
+  const [networkItems, setNetworkItems] = useState([]);
   const [profile, setProfile] = useState({
     userId: "",
     bio: "",
@@ -117,6 +118,7 @@ export function Account() {
         setSavedAlbums([]);
         setReviews([]);
         setActivityItems([]);
+        setNetworkItems([]);
         setProfile({
           userId: "",
           bio: "",
@@ -139,40 +141,51 @@ export function Account() {
         let savedData = [];
         let reviewsData = [];
         let activityData = [];
+        let networkData = [];
         let profileData;
 
         if (isPublicProfile) {
           const encodedPublicUserId = encodeURIComponent(publicUserId);
-          const [profileResponse, reviewsResponse] = await Promise.all([
+          const [profileResponse, reviewsResponse, activityResponse] = await Promise.all([
             fetch(`http://localhost:3000/profile/${encodedPublicUserId}`, { headers }),
             fetch(`http://localhost:3000/reviews/review/user/${encodedPublicUserId}`),
+            fetch(`http://localhost:3000/profile/${encodedPublicUserId}/activity`),
           ]);
 
-          if (!profileResponse.ok || !reviewsResponse.ok) {
+          if (!profileResponse.ok || !reviewsResponse.ok || !activityResponse.ok) {
             throw new Error("Failed to load profile data");
           }
 
-          [profileData, reviewsData] = await Promise.all([
+          [profileData, reviewsData, activityData] = await Promise.all([
             profileResponse.json(),
             reviewsResponse.json(),
+            activityResponse.json(),
           ]);
         } else {
-          const [savedResponse, reviewsResponse, profileResponse, activityResponse] = await Promise.all([
+          const [savedResponse, reviewsResponse, profileResponse, activityResponse, networkResponse] = await Promise.all([
             fetch("http://localhost:3000/collections/collection", { headers }),
             fetch("http://localhost:3000/reviews/review/user/", { headers }),
             fetch("http://localhost:3000/profile/me", { headers }),
             fetch("http://localhost:3000/profile/me/activity", { headers }),
+            fetch("http://localhost:3000/profile/me/network", { headers }),
           ]);
 
-          if (!savedResponse.ok || !reviewsResponse.ok || !profileResponse.ok || !activityResponse.ok) {
+          if (
+            !savedResponse.ok
+            || !reviewsResponse.ok
+            || !profileResponse.ok
+            || !activityResponse.ok
+            || !networkResponse.ok
+          ) {
             throw new Error("Failed to load profile data");
           }
 
-          [savedData, reviewsData, profileData, activityData] = await Promise.all([
+          [savedData, reviewsData, profileData, activityData, networkData] = await Promise.all([
             savedResponse.json(),
             reviewsResponse.json(),
             profileResponse.json(),
             activityResponse.json(),
+            networkResponse.json(),
           ]);
         }
 
@@ -183,6 +196,7 @@ export function Account() {
         setSavedAlbums(Array.isArray(savedData) ? savedData : []);
         setReviews(Array.isArray(reviewsData) ? reviewsData : []);
         setActivityItems(Array.isArray(activityData) ? activityData : []);
+        setNetworkItems(Array.isArray(networkData) ? networkData : []);
         setProfile({
           userId: profileData.userId || publicUserId || "",
           bio: typeof profileData.bio === "string" ? profileData.bio : "",
@@ -199,6 +213,7 @@ export function Account() {
           setSavedAlbums([]);
           setReviews([]);
           setActivityItems([]);
+          setNetworkItems([]);
           setProfile({
             userId: publicUserId || "",
             bio: "",
@@ -532,31 +547,24 @@ export function Account() {
     );
   }
 
-  function renderActivity() {
-    if (isPublicProfile) {
+  function renderActivityFeed(items, emptyState) {
+    if (items.length === 0) {
       return (
         <ProfileEmptyState
-          title="Activity is private"
-          body="Following activity is only available from your own profile."
-        />
-      );
-    }
-
-    if (activityItems.length === 0) {
-      return (
-        <ProfileEmptyState
-          title="No activity yet"
-          body="Follow listeners with reviews and their latest activity will show up here."
+          title={emptyState.title}
+          body={emptyState.body}
         />
       );
     }
 
     return (
       <div className="profile-activity-list">
-        {activityItems.map((activity) => {
+        {items.map((activity) => {
           const actor = activity.actor || {};
           const album = activity.album || {};
           const actorName = actor.username || "albumboxd user";
+          const actionLabel = activity.type === "saved_album" ? "Saved" : "Reviewed";
+          const actionText = activity.type === "saved_album" ? "saved" : "reviewed";
           const actorState = {
             profileUser: {
               username: actorName,
@@ -568,12 +576,12 @@ export function Account() {
             <article className="profile-activity-item" key={activity.id}>
               <AlbumCover src={album.cover} title={album.title || "Album"} />
               <div>
-                <span>Reviewed</span>
+                <span>{actionLabel}</span>
                 <h3>
                   <Link to={`/profile/${actor.userId}`} state={actorState}>
                     {actorName}
                   </Link>
-                  {" reviewed "}
+                  {` ${actionText} `}
                   <Link to={`/album/${album.spotifyId}`}>
                     {album.title || "Untitled album"}
                   </Link>
@@ -592,6 +600,15 @@ export function Account() {
     );
   }
 
+  function renderActivity() {
+    return renderActivityFeed(activityItems, {
+      title: "No activity yet",
+      body: canManageProfile
+        ? "Reviews you write and albums you save will show up here."
+        : "This listener has not saved or reviewed anything yet.",
+    });
+  }
+
   function renderListenNext() {
     return (
       <ProfileEmptyState
@@ -602,12 +619,19 @@ export function Account() {
   }
 
   function renderNetwork() {
-    return (
-      <ProfileEmptyState
-        title="Network coming soon"
-        body="Followers, following, and social listening updates will live here once the network layer is built."
-      />
-    );
+    if (isPublicProfile) {
+      return (
+        <ProfileEmptyState
+          title="Network is private"
+          body="Following activity is only available from your own profile."
+        />
+      );
+    }
+
+    return renderActivityFeed(networkItems, {
+      title: "No network activity yet",
+      body: "Follow listeners with reviews and their latest activity will show up here.",
+    });
   }
 
   function renderReviews() {

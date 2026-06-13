@@ -7,9 +7,12 @@ const spotifyUtilPath = require.resolve("../routes/utils/spotify");
 const searchRoutePath = require.resolve("../routes/search");
 
 let localAlbums = [];
+let textLocalAlbums = [];
+let regexLocalAlbums = [];
 let spotifyAlbums = [];
 const findCalls = [];
 const upsertCalls = [];
+const fetchCalls = [];
 
 // Loads the search router with mocked catalog, Spotify token, and helper calls.
 function loadSearchRouter() {
@@ -23,9 +26,19 @@ function loadSearchRouter() {
       find: (query) => {
         findCalls.push(query);
         return {
+          sort: (sortOrder) => {
+            findCalls.push({ sort: sortOrder });
+
+            return {
+              limit: async (limit) => {
+                findCalls.push({ limit });
+                return textLocalAlbums.length > 0 ? textLocalAlbums : localAlbums;
+              },
+            };
+          },
           limit: async (limit) => {
             findCalls.push({ limit });
-            return localAlbums;
+            return regexLocalAlbums.length > 0 ? regexLocalAlbums : localAlbums;
           },
         };
       },
@@ -73,14 +86,18 @@ function loadSearchRouter() {
 
 async function searchAlbums(query) {
   const originalFetch = global.fetch;
-  global.fetch = async () => ({
-    ok: true,
-    json: async () => ({
-      albums: {
-        items: spotifyAlbums,
-      },
-    }),
-  });
+  global.fetch = async (url) => {
+    fetchCalls.push(url);
+
+    return {
+      ok: true,
+      json: async () => ({
+        albums: {
+          items: spotifyAlbums,
+        },
+      }),
+    };
+  };
 
   try {
     const router = loadSearchRouter();
@@ -117,13 +134,16 @@ async function searchAlbums(query) {
 
 test.beforeEach(() => {
   localAlbums = [];
+  textLocalAlbums = [];
+  regexLocalAlbums = [];
   spotifyAlbums = [];
   findCalls.length = 0;
   upsertCalls.length = 0;
+  fetchCalls.length = 0;
 });
 
 test("GET /search returns local catalog matches and upserted Spotify results", async () => {
-  localAlbums = [
+  textLocalAlbums = [
     {
       spotifyId: "local_album_123",
       title: "Kind of Blue",
@@ -145,6 +165,8 @@ test("GET /search returns local catalog matches and upserted Spotify results", a
   const response = await searchAlbums("kind");
 
   assert.equal(response.status, 200);
+  assert.equal(fetchCalls.length, 1);
+  assert.ok(fetchCalls[0].includes("limit=23"));
   assert.deepEqual(response.body, [
     {
       id: "local_album_123",
@@ -166,7 +188,7 @@ test("GET /search returns local catalog matches and upserted Spotify results", a
 });
 
 test("GET /search removes Spotify duplicates already returned from the local catalog", async () => {
-  localAlbums = [
+  textLocalAlbums = [
     {
       spotifyId: "spotify_album_123",
       title: "Kind of Blue",
@@ -198,6 +220,48 @@ test("GET /search removes Spotify duplicates already returned from the local cat
     },
   ]);
   assert.equal(upsertCalls.length, 1);
+});
+
+test("GET /search returns local catalog results without calling Spotify when cache fills the page", async () => {
+  textLocalAlbums = Array.from({ length: 24 }, (_, index) => ({
+    spotifyId: `local_album_${index}`,
+    title: `Local Album ${index}`,
+    artist: "Catalog Artist",
+    year: "2026",
+    cover: "https://example.com/local.jpg",
+  }));
+
+  const response = await searchAlbums("local");
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.length, 24);
+  assert.equal(fetchCalls.length, 0);
+  assert.equal(upsertCalls.length, 0);
+});
+
+test("GET /search falls back to regex catalog search when text search has no matches", async () => {
+  regexLocalAlbums = [
+    {
+      spotifyId: "regex_album_123",
+      title: "Kid A",
+      artist: "Radiohead",
+      year: "2000",
+      cover: "https://example.com/kid-a.jpg",
+    },
+  ];
+
+  const response = await searchAlbums("kid");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(findCalls[0], { $text: { $search: "kid" } });
+  assert.deepEqual(findCalls[3], {
+    $or: [
+      { title: { $regex: "kid", $options: "i" } },
+      { artist: { $regex: "kid", $options: "i" } },
+      { artists: { $regex: "kid", $options: "i" } },
+    ],
+  });
+  assert.equal(response.body[0].id, "regex_album_123");
 });
 
 test("GET /search returns an empty array for a blank query", async () => {
