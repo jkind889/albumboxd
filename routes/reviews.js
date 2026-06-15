@@ -9,6 +9,7 @@ const DEFAULT_AUTHOR_USERNAME = "albumboxd user";
 const MIN_POPULAR_LIMIT = 5;
 const MAX_POPULAR_LIMIT = 10;
 const DEFAULT_POPULAR_LIMIT = 5;
+const MAX_LIST_LIMIT = 12;
 const POPULAR_WINDOW_DAYS = {
     "7d": 7,
     "30d": 30,
@@ -22,6 +23,16 @@ function getPopularLimit(value) {
     }
 
     return Math.min(Math.max(parsedLimit, MIN_POPULAR_LIMIT), MAX_POPULAR_LIMIT);
+}
+
+function getListLimit(value, defaultLimit = DEFAULT_POPULAR_LIMIT) {
+    const parsedLimit = Number.parseInt(value, 10);
+
+    if (Number.isNaN(parsedLimit)) {
+        return defaultLimit;
+    }
+
+    return Math.min(Math.max(parsedLimit, 1), MAX_LIST_LIMIT);
 }
 
 function getPopularDateFilter(timeWindow) {
@@ -91,6 +102,42 @@ function buildPopularAlbumsPipeline({ limit, timeWindow }) {
 
 async function getPopularAlbums({ limit, timeWindow }) {
     return Review.aggregate(buildPopularAlbumsPipeline({ limit, timeWindow }));
+}
+
+function toAlbumPreviewFromReview(review) {
+    return {
+        spotifyId: review.spotifyId,
+        title: review.title,
+        artist: review.artist,
+        cover: review.cover,
+        latestReviewDate: review.date,
+    };
+}
+
+async function getRecentlyReviewedAlbums(limit) {
+    const reviews = await Review.find({}).sort({ date: -1 });
+    const seenSpotifyIds = new Set();
+    const albums = [];
+
+    for (const review of reviews) {
+        if (!review.spotifyId || seenSpotifyIds.has(review.spotifyId)) {
+            continue;
+        }
+
+        seenSpotifyIds.add(review.spotifyId);
+        albums.push(toAlbumPreviewFromReview(toPlainReview(review)));
+
+        if (albums.length >= limit) {
+            break;
+        }
+    }
+
+    return albums;
+}
+
+async function getPopularReviews(limit) {
+    const reviews = await Review.find({}).sort({ rating: -1, date: -1 });
+    return addAuthorsToReviews(reviews.slice(0, limit));
 }
 
 function toPlainReview(review) {
@@ -268,6 +315,30 @@ router.get("/popular", async(req, res) => {
     } catch (error) {
         console.log(error);
         res.status(500).json({ error: "Failed to fetch reviews" });
+    }
+});
+
+router.get("/recent-albums", async(req, res) => {
+    try {
+        const limit = getListLimit(req.query.limit, 6);
+        const albums = await getRecentlyReviewedAlbums(limit);
+
+        res.json(albums);
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Failed to fetch recent albums" });
+    }
+});
+
+router.get("/popular-reviews", async(req, res) => {
+    try {
+        const limit = getListLimit(req.query.limit, 4);
+        const reviews = await getPopularReviews(limit);
+
+        res.json(reviews);
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Failed to fetch popular reviews" });
     }
 });
 

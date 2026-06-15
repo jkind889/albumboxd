@@ -1,6 +1,8 @@
 
 export function ReviewList({reviews, onRemoveReview})
 {
+    const canRemoveReviews = typeof onRemoveReview === "function";
+
     const formatReviewDate = (date) => {
         if (!date) {
             return "Date unavailable";
@@ -53,7 +55,9 @@ export function ReviewList({reviews, onRemoveReview})
                             <span>Reviewed {formatReviewDate(review.date)}</span>
                         </div>
                         <p className="review-card-copy">{review.reviewText}</p>
-                        <button className="review-delete-button" onClick={() => onRemoveReview(review._id)}>Delete Review</button>
+                        {canRemoveReviews && (
+                            <button className="review-delete-button" onClick={() => onRemoveReview(review._id)}>Delete Review</button>
+                        )}
                     </div>
                 </article>
             ))}

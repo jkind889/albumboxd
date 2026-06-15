@@ -5,34 +5,49 @@ import { useSearchParams } from "react-router-dom";
 export function SearchResults()
 {
   const [searchresults, setResults] = useState([])
+  const [hasNextPage, setHasNextPage] = useState(false)
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate();
 
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
+  const page = Math.max(Number.parseInt(searchParams.get("page") || "1", 10) || 1, 1);
   
 
     useEffect(() =>{
       async function fetchResults() {
         if (!query) {
           setResults([])
+          setHasNextPage(false)
           return;
         }
 
         setLoading(true)
 
-        fetch(`http://localhost:3000/search/search?q=${encodeURIComponent(query)}`)
+        fetch(`http://localhost:3000/search/search?q=${encodeURIComponent(query)}&page=${page}`)
         .then(res => res.json())
         .then(data => {
           console.log(data)
-          setResults(data)})
-        .catch(() => setResults([]))
+          const results = Array.isArray(data) ? data : data.results;
+          setResults(Array.isArray(results) ? results : [])
+          setHasNextPage(Boolean(data?.hasNextPage))
+        })
+        .catch(() => {
+          setResults([])
+          setHasNextPage(false)
+        })
         .finally(() => setLoading(false))
       }
 
       fetchResults();
-    }, [query])
+    }, [query, page])
 
+  function updatePage(nextPage) {
+    const nextParams = new URLSearchParams(searchParams);
+
+    nextParams.set("page", String(nextPage));
+    setSearchParams(nextParams);
+  }
 
   
 
@@ -44,7 +59,7 @@ export function SearchResults()
           <p className="search-results-summary">
             {loading
               ? "Loading albums..."
-              : `${searchresults.length} album${searchresults.length === 1 ? "" : "s"} found`}
+              : `${searchresults.length} album${searchresults.length === 1 ? "" : "s"} on page ${page}`}
           </p>
         </div>
 
@@ -65,6 +80,26 @@ export function SearchResults()
             </div>
           )}
         </div>
+
+        {query && (page > 1 || hasNextPage) && (
+          <div className="search-pagination" aria-label="Search pagination">
+            <button
+              type="button"
+              disabled={loading || page <= 1}
+              onClick={() => updatePage(page - 1)}
+            >
+              Previous
+            </button>
+            <span>Page {page}</span>
+            <button
+              type="button"
+              disabled={loading || !hasNextPage}
+              onClick={() => updatePage(page + 1)}
+            >
+              Next
+            </button>
+          </div>
+        )}
     </section>
   )
 

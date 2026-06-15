@@ -34,6 +34,11 @@ const userProfileSchema = new mongoose.Schema(
       maxlength: 280,
       trim: true,
     },
+    spotifyProfileUrl: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     favoriteAlbums: {
       type: [favoriteAlbumSchema],
       default: [],

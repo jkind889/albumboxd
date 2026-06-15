@@ -14,6 +14,8 @@ const MAX_BIO_LENGTH = 280;
 const MAX_FAVORITE_ALBUMS = 5;
 const DEFAULT_AUTHOR_USERNAME = "albumboxd user";
 const DEFAULT_ACTIVITY_LIMIT = 20;
+const SPOTIFY_PROFILE_HOST = "open.spotify.com";
+const SPOTIFY_PROFILE_PATH_PREFIX = "/user/";
 
 function ensureAuthenticated(req, res, next) {
   const { userId } = getAuth(req);
@@ -49,8 +51,31 @@ function formatProfile(profile) {
   return {
     userId: source.userId,
     bio: source.bio || "",
+    spotifyProfileUrl: source.spotifyProfileUrl || "",
     favoriteAlbums,
   };
+}
+
+function normalizeSpotifyProfileUrl(value) {
+  const spotifyProfileUrl = typeof value === "string" ? value.trim() : "";
+
+  if (!spotifyProfileUrl) {
+    return "";
+  }
+
+  try {
+    const url = new URL(spotifyProfileUrl);
+    const hasUserPath = url.pathname.startsWith(SPOTIFY_PROFILE_PATH_PREFIX)
+      && url.pathname.length > SPOTIFY_PROFILE_PATH_PREFIX.length;
+
+    if (url.protocol === "https:" && url.hostname === SPOTIFY_PROFILE_HOST && hasUserPath) {
+      return url.toString();
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 async function getSocialStats(userId, viewerId) {
@@ -91,6 +116,7 @@ async function getOrCreateProfile(userId) {
   return UserProfile.create({
     userId,
     bio: "",
+    spotifyProfileUrl: "",
     favoriteAlbums: [],
   });
 }
@@ -170,6 +196,23 @@ function getSavedAlbumActivityAlbum(savedAlbum) {
     title: "Unknown Album",
     artist: "Unknown Artist",
     cover: "",
+  };
+}
+
+function formatSavedAlbum(savedAlbum) {
+  const source = toPlainDocument(savedAlbum);
+  const catalogAlbum = source.albumCatalogId;
+
+  if (!catalogAlbum || typeof catalogAlbum !== "object" || !catalogAlbum.spotifyId) {
+    return source;
+  }
+
+  return {
+    ...normalizeCatalogAlbum(catalogAlbum),
+    _id: source._id,
+    albumCatalogId: catalogAlbum._id,
+    userId: source.userId,
+    savedAt: source.savedAt,
   };
 }
 
@@ -269,12 +312,17 @@ router.get("/me/activity", ensureAuthenticated, async(req, res) => {
 router.put("/me", ensureAuthenticated, async(req, res) => {
   try {
     const bio = typeof req.body.bio === "string" ? req.body.bio.trim() : "";
+    const spotifyProfileUrl = normalizeSpotifyProfileUrl(req.body.spotifyProfileUrl);
     const favoriteAlbumIds = Array.isArray(req.body.favoriteAlbumIds)
       ? req.body.favoriteAlbumIds.map((id) => String(id).trim()).filter(Boolean)
       : [];
 
     if (bio.length > MAX_BIO_LENGTH) {
       return res.status(400).json({ error: "Bio must be 280 characters or fewer" });
+    }
+
+    if (spotifyProfileUrl === null) {
+      return res.status(400).json({ error: "Spotify profile must be an https://open.spotify.com/user/... URL" });
     }
 
     if (favoriteAlbumIds.length > MAX_FAVORITE_ALBUMS) {
@@ -303,6 +351,7 @@ router.put("/me", ensureAuthenticated, async(req, res) => {
         $set: {
           userId: req.userId,
           bio,
+          spotifyProfileUrl,
           favoriteAlbums,
         },
       },
@@ -381,6 +430,29 @@ router.get("/:userId/activity", async(req, res) => {
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Failed to fetch activity" });
+  }
+});
+
+router.get("/:userId/saved", async(req, res) => {
+  try {
+    const targetUserId = String(req.params.userId || "").trim();
+
+    if (!targetUserId) {
+      return res.status(400).json({ error: "User id is required" });
+    }
+
+    if (!(await isFollowableUser(targetUserId))) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const savedAlbums = await Album.find({ userId: targetUserId })
+      .populate("albumCatalogId")
+      .sort({ savedAt: -1 });
+
+    res.json(savedAlbums.map(formatSavedAlbum));
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to fetch saved albums" });
   }
 });
 

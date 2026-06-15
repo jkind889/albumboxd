@@ -1,4 +1,4 @@
-import {useParams} from "react-router-dom";
+import {Link, useLocation, useParams} from "react-router-dom";
 import {useState, useEffect } from "react";
 import ReviewForm from "./ReviewForm";
 import AlbumReviewFeed from "./AlbumReviewFeed";
@@ -9,7 +9,10 @@ export function AlbumDetail()
     const [album, setAlbum] = useState(null);
     const [reviews, setReviews] = useState([]);
     const [isSaved, setIsSaved] = useState(false);
+    const [activeTab, setActiveTab] = useState("artist");
+    const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
     const { getToken, userId } = useAuth();
+    const location = useLocation();
 
     useEffect(() => {
         async function fetchReviews() {
@@ -83,12 +86,13 @@ export function AlbumDetail()
           });
         if (!res.ok) {
             console.error("Failed to submit review");
-            return;
+            return false;
         }
 
         const newReview = await res.json();
         console.log("Review saved to server:", newReview);
         setReviews((prev) => [newReview, ...prev]);
+        return true;
 
     };
 
@@ -111,15 +115,13 @@ export function AlbumDetail()
      if (!album) return <p>Loading...</p>;
 
     const artistNames = album.artists?.length ? album.artists : [album.artist];
-    const averageRating = reviews.length
-        ? (reviews.reduce((total, item) => total + (Number(item.rating) || 0), 0) / reviews.length).toFixed(1)
+    const userReviews = reviews.filter((review) => review.userId);
+    const averageRating = userReviews.length
+        ? (userReviews.reduce((total, item) => total + (Number(item.rating) || 0), 0) / userReviews.length).toFixed(1)
         : null;
     const albumArt = album.imgs?.[0]?.url;
-    const accentStyle = albumArt
-        ? {
-            "--album-cover": `url(${albumArt})`
-          }
-        : undefined;
+    const isReviewsRoute = location.pathname.endsWith("/reviews");
+    const reviewSort = new URLSearchParams(location.search).get("sort") === "popular" ? "popular" : "recent";
     const releaseDateLabel = album.releaseDate
         ? new Date(`${album.releaseDate}T00:00:00`).toLocaleDateString(undefined, {
             year: "numeric",
@@ -136,6 +138,16 @@ export function AlbumDetail()
         return firstDisc - secondDisc || firstTrack - secondTrack;
     });
     const hasMultipleDiscs = sortedTracks.some((track) => Number(track.discNumber) > 1);
+    const previewTracks = sortedTracks.slice(0, 14);
+    const hasMoreTracks = sortedTracks.length > 14;
+    const recentReviews = [...userReviews].sort((first, second) => {
+        return new Date(second.date || 0).getTime() - new Date(first.date || 0).getTime();
+    });
+    const popularReviews = [...userReviews].sort((first, second) => {
+        return (Number(second.rating) || 0) - (Number(first.rating) || 0)
+            || new Date(second.date || 0).getTime() - new Date(first.date || 0).getTime();
+    });
+    const selectedReviews = reviewSort === "popular" ? popularReviews : recentReviews;
     const formatTrackDuration = (durationMs) => {
         const totalSeconds = Math.floor((Number(durationMs) || 0) / 1000);
 
@@ -189,8 +201,7 @@ export function AlbumDetail()
 
     return (
 
-        <section className="album-detail-page" style={accentStyle}>
-            <div className="album-detail-overlay" />
+        <section className="album-detail-page">
             <div className="album-detail-shell">
                 <aside className="album-detail-sidebar">
                     <div className="album-poster-card">
@@ -205,40 +216,43 @@ export function AlbumDetail()
                         )}
                     </div>
 
-                    <div className="album-sidebar-stats">
-                        <div>
-                            <span className="album-stat-label">Tracks</span>
-                            <strong>{album.totalTracks || "--"}</strong>
-                        </div>
-                        <div>
-                            <span className="album-stat-label">Reviews</span>
-                            <strong>{reviews.length}</strong>
-                        </div>
-                        <div>
-                            <span className="album-stat-label">Avg.</span>
-                            <strong>{averageRating || "--"}</strong>
-                        </div>
-                    </div>
-
-                    <div className="album-spotify-card">
-                        <div className="album-panel-header">
-                            <span>Listen on Spotify</span>
-                        </div>
-                        <p>
-                            {album.spotifyUrl
-                                ? "Open the album on Spotify."
-                                : "Spotify link unavailable for this album."}
-                        </p>
+                    <div className="album-side-actions" aria-label="Album actions">
+                        <button className="album-side-action" disabled={isSaved} onClick={handleSaveToCollection}>
+                            <span aria-hidden="true">+</span>
+                            {isSaved ? "Saved" : "Save"}
+                        </button>
+                        <button className="album-side-action" type="button" onClick={() => setIsReviewModalOpen(true)}>
+                            <span aria-hidden="true">★</span>
+                            Rate
+                        </button>
+                        <button className="album-side-action" type="button" onClick={() => setIsReviewModalOpen(true)}>
+                            Review or log...
+                        </button>
                         {album.spotifyUrl && (
                             <a
-                                className="album-primary-link"
+                                className="album-side-action"
                                 href={album.spotifyUrl}
                                 target="_blank"
                                 rel="noreferrer"
                             >
-                                Open Album
+                                Open in Spotify
                             </a>
                         )}
+                    </div>
+
+                    <div className="album-ratings-panel">
+                        <div className="album-panel-header">
+                            <span>Ratings</span>
+                            <span>{userReviews.length} user review{userReviews.length === 1 ? "" : "s"}</span>
+                        </div>
+                        <div className="album-rating-summary">
+                            <div className="album-rating-bars" aria-hidden="true">
+                                {[2, 4, 6, 8, 10, 7, 3, 3].map((height, index) => (
+                                    <span key={index} style={{"--bar-height": `${height * 4}px`}} />
+                                ))}
+                            </div>
+                            <strong>{averageRating || "--"}</strong>
+                        </div>
                     </div>
                 </aside>
 
@@ -253,40 +267,68 @@ export function AlbumDetail()
                         </div>
                     </div>
 
-                    <div className="album-action-row">
-                        <button className="album-action-button" disabled={isSaved} onClick={handleSaveToCollection}>
-                            {isSaved ? "Saved to Collection" : "Save to Collection"}
-                        </button>
-                    </div>
+                    <nav className="album-tabs" aria-label="Album sections">
+                        {["artist", "release", "format", "tracks"].map((tab) => (
+                            <button
+                                key={tab}
+                                type="button"
+                                className={activeTab === tab ? "album-tab album-tab-active" : "album-tab"}
+                                onClick={() => setActiveTab(tab)}
+                            >
+                                {tab}
+                            </button>
+                        ))}
+                    </nav>
 
-                    <div className="album-detail-grid">
-                        <section className="album-detail-copy">
-                            <div className="album-info-panel">
-                                <h2>Details</h2>
+                    {!isReviewsRoute && (
+                        <section className="album-info-panel">
+                            {activeTab === "artist" && (
                                 <dl className="album-facts">
                                     <div>
                                         <dt>Artist</dt>
                                         <dd>{artistNames.join(", ")}</dd>
                                     </div>
+                                    {album.label && (
+                                        <div>
+                                            <dt>Label</dt>
+                                            <dd>{album.label}</dd>
+                                        </div>
+                                    )}
+                                </dl>
+                            )}
+
+                            {activeTab === "release" && (
+                                <dl className="album-facts">
                                     <div>
                                         <dt>Release</dt>
-                                        <dd>{releaseDateLabel || album.year}</dd>
+                                        <dd>{releaseDateLabel || album.year || "Unknown"}</dd>
                                     </div>
                                     <div>
+                                        <dt>Year</dt>
+                                        <dd>{album.year || "Unknown"}</dd>
+                                    </div>
+                                </dl>
+                            )}
+
+                            {activeTab === "format" && (
+                                <dl className="album-facts">
+                                    <div>
                                         <dt>Format</dt>
-                                        <dd>{album.albumType}</dd>
+                                        <dd>{album.albumType || "Album"}</dd>
                                     </div>
                                     <div>
                                         <dt>Tracks</dt>
-                                        <dd>{album.totalTracks || "Unknown"}</dd>
+                                        <dd>{album.totalTracks || sortedTracks.length || "Unknown"}</dd>
                                     </div>
                                 </dl>
+                            )}
 
-                                {sortedTracks.length > 0 && (
-                                    <div className="album-tracklist">
-                                        <h3>Tracklist</h3>
-                                        <ol>
-                                            {sortedTracks.map((track, index) => {
+                            {activeTab === "tracks" && (
+                                <div className="album-tracklist album-tracklist-tab">
+                                    {sortedTracks.length > 0 ? (
+                                        <>
+                                            <ol>
+                                                {(hasMoreTracks ? previewTracks : sortedTracks).map((track, index) => {
                                                 const trackNumber = Number(track.trackNumber) || index + 1;
                                                 const discNumber = Number(track.discNumber) || 1;
                                                 const trackLabel = hasMultipleDiscs
@@ -301,49 +343,71 @@ export function AlbumDetail()
                                                     </li>
                                                 );
                                             })}
-                                        </ol>
-                                    </div>
-                                )}
-                            </div>
-
-                            {album.genres?.length > 0 && (
-                                <div className="album-info-panel">
-                                    <h2>Genres</h2>
-                                    <div className="album-tag-row">
-                                        {album.genres.map((genre) => (
-                                            <span className="album-tag" key={genre}>{genre}</span>
-                                        ))}
-                                    </div>
+                                            </ol>
+                                            {hasMoreTracks && album.spotifyUrl && (
+                                                <a className="album-more-link" href={album.spotifyUrl} target="_blank" rel="noreferrer">
+                                                    More
+                                                </a>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <p className="album-empty-copy">No tracks available.</p>
+                                    )}
                                 </div>
                             )}
                         </section>
+                    )}
 
-                        <aside className="album-detail-sidepanel">
-                            <div className="album-ratings-panel">
-                                <div className="album-panel-header">
-                                    <span>Ratings</span>
-                                    <span>{reviews.length} review{reviews.length === 1 ? "" : "s"}</span>
-                                </div>
-                                <div className="album-rating-value">{averageRating || "--"}</div>
-                                <p>
-                                    {averageRating
-                                        ? "Community score from saved album reviews."
-                                        : "No ratings yet. Add the first review below."}
-                                </p>
+                    {isReviewsRoute ? (
+                        <section className="album-reviews-section">
+                            <div className="album-section-heading">
+                                <h2>{reviewSort === "popular" ? "Popular Reviews" : "Recent Reviews"}</h2>
+                                <Link className="album-more-link" to={`/album/${id}`}>Back to album</Link>
                             </div>
-                        </aside>
-                    </div>
-
-                    <section className="album-reviews-section">
-                        <ReviewForm album={album} onAddReview={addReview} />
-                        <AlbumReviewFeed
-                            reviews={reviews}
-                            currentUserId={userId}
-                            onRemoveReview={removeReview}
-                        />
-                    </section>
+                            <AlbumReviewFeed
+                                reviews={selectedReviews}
+                                currentUserId={userId}
+                                onRemoveReview={removeReview}
+                            />
+                        </section>
+                    ) : (
+                        <section className="album-review-previews">
+                            <div className="album-review-column">
+                                <div className="album-section-heading">
+                                    <h2>Popular Reviews</h2>
+                                    {popularReviews.length > 2 && <Link className="album-more-link" to={`/album/${id}/reviews?sort=popular`}>More</Link>}
+                                </div>
+                                <AlbumReviewFeed
+                                    reviews={popularReviews.slice(0, 2)}
+                                    currentUserId={userId}
+                                    onRemoveReview={removeReview}
+                                />
+                            </div>
+                            <div className="album-review-column">
+                                <div className="album-section-heading">
+                                    <h2>Recent Reviews</h2>
+                                    {recentReviews.length > 2 && <Link className="album-more-link" to={`/album/${id}/reviews?sort=recent`}>More</Link>}
+                                </div>
+                                <AlbumReviewFeed
+                                    reviews={recentReviews.slice(0, 2)}
+                                    currentUserId={userId}
+                                    onRemoveReview={removeReview}
+                                />
+                            </div>
+                        </section>
+                    )}
                 </div>
             </div>
+            {isReviewModalOpen && (
+                <div className="review-modal-backdrop" role="presentation" onMouseDown={() => setIsReviewModalOpen(false)}>
+                    <div className="review-modal" role="dialog" aria-modal="true" aria-label={`Review ${album.title}`} onMouseDown={(event) => event.stopPropagation()}>
+                        <button className="review-modal-close" type="button" onClick={() => setIsReviewModalOpen(false)} aria-label="Close review form">
+                            ×
+                        </button>
+                        <ReviewForm album={album} onAddReview={addReview} onSubmitted={() => setIsReviewModalOpen(false)} />
+                    </div>
+                </div>
+            )}
         </section>
 
 

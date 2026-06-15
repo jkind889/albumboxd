@@ -276,13 +276,13 @@ async function postReview(body = {}) {
   };
 }
 
-async function getPopularAlbums(query = {}) {
+async function getReviewRoute(path, query = {}) {
   const router = loadReviewRouter();
   const route = router.stack.find(
-    (layer) => layer.route?.path === "/popular" && layer.route.methods.get,
+    (layer) => layer.route?.path === path && layer.route.methods.get,
   );
 
-  assert.ok(route, "GET /popular should be registered");
+  assert.ok(route, `GET ${path} should be registered`);
 
   const req = { query };
   const res = {
@@ -307,35 +307,20 @@ async function getPopularAlbums(query = {}) {
   };
 }
 
+async function getPopularAlbums(query = {}) {
+  return getReviewRoute("/popular", query);
+}
+
+async function getRecentlyReviewedAlbums(query = {}) {
+  return getReviewRoute("/recent-albums", query);
+}
+
+async function getPopularReviews(query = {}) {
+  return getReviewRoute("/popular-reviews", query);
+}
+
 async function getFeaturedAlbums(query = {}) {
-  const router = loadReviewRouter();
-  const route = router.stack.find(
-    (layer) => layer.route?.path === "/featured" && layer.route.methods.get,
-  );
-
-  assert.ok(route, "GET /featured should be registered");
-
-  const req = { query };
-  const res = {
-    statusCode: 200,
-    body: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(data) {
-      this.body = data;
-      return this;
-    },
-  };
-
-  const handler = route.route.stack[0].handle;
-  await handler(req, res);
-
-  return {
-    status: res.statusCode,
-    body: res.body,
-  };
+  return getReviewRoute("/featured", query);
 }
 
 test.beforeEach(() => {
@@ -650,6 +635,75 @@ test("GET /reviews/popular returns an empty array when no reviews are eligible",
 
   assert.equal(response.status, 200);
   assert.deepEqual(response.body, []);
+});
+
+test("GET /reviews/recent-albums returns unique albums from latest reviews", async () => {
+  foundReviews = [
+    {
+      _id: "review_newest",
+      spotifyId: "album_recent",
+      title: "Fresh Listen",
+      artist: "Today Band",
+      cover: "https://example.com/recent.jpg",
+      date: new Date("2026-06-10T12:00:00.000Z"),
+    },
+    {
+      _id: "review_duplicate",
+      spotifyId: "album_recent",
+      title: "Fresh Listen",
+      artist: "Today Band",
+      cover: "https://example.com/recent.jpg",
+      date: new Date("2026-06-09T12:00:00.000Z"),
+    },
+    {
+      _id: "review_next",
+      spotifyId: "album_next",
+      title: "Next Listen",
+      artist: "Tomorrow Band",
+      cover: "https://example.com/next.jpg",
+      date: new Date("2026-06-08T12:00:00.000Z"),
+    },
+  ];
+
+  const response = await getRecentlyReviewedAlbums({ limit: "5" });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(findCalls, [{}]);
+  assert.deepEqual(sortCalls, [{ date: -1 }]);
+  assert.deepEqual(response.body.map((album) => album.spotifyId), ["album_recent", "album_next"]);
+  assert.equal(response.body[0].latestReviewDate, foundReviews[0].date);
+});
+
+test("GET /reviews/popular-reviews returns highest all-time reviews with authors", async () => {
+  foundReviews = [
+    {
+      _id: "review_top",
+      userId: "reviewer_one",
+      spotifyId: "album_top",
+      title: "Five Stars",
+      artist: "Peak Artist",
+      cover: "https://example.com/top.jpg",
+      rating: 5,
+      reviewText: "All timer.",
+      date: new Date("2026-06-10T12:00:00.000Z"),
+    },
+  ];
+  clerkUsers = [
+    {
+      id: "reviewer_one",
+      username: "peaklistener",
+      imageUrl: "https://example.com/reviewer.jpg",
+    },
+  ];
+
+  const response = await getPopularReviews({ limit: "5" });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(findCalls, [{}]);
+  assert.deepEqual(sortCalls, [{ rating: -1, date: -1 }]);
+  assert.deepEqual(getUserListCalls, [{ userId: ["reviewer_one"] }]);
+  assert.equal(response.body[0].author.username, "peaklistener");
+  assert.equal(response.body[0].rating, 5);
 });
 
 test("GET /reviews/featured fills the homepage strip from review activity and catalog albums", async () => {

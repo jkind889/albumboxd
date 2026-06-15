@@ -19,9 +19,6 @@ function Navbar()
                         <div className="navbar-collapse site-navbar-left">
                             <ul className="navbar nav site-nav-links">
                                 <li className="nav-item">
-                                    <Link to="/viewreviews" className="nav-link active">Reviews</Link>
-                                </li>
-                                <li className="nav-item">
                                     <Link to="/albums" className="nav-link active">Albums</Link>
                                 </li>
                             </ul>

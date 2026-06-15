@@ -1,6 +1,7 @@
 import FeaturedAlbums from "../Components/FeaturedAlbums";
+import NewOnAlbumboxd from "../Components/NewOnAlbumboxd";
 import PopularAlbums from "../Components/PopularAlbums";
-import RecentlySaved from "../Components/RecentlySaved";
+import PopularReviews from "../Components/PopularReviews";
 import { useNavigate } from "react-router-dom";
 
 export function FrontPage() {
@@ -24,13 +25,31 @@ export function FrontPage() {
             </section>
 
             <section className="front-section">
-                <h3>Recently Saved</h3>
-                <RecentlySaved />
+                <div className="front-section-heading">
+                    <h3>New on albumboxd</h3>
+                </div>
+                <NewOnAlbumboxd limit={6} />
             </section>
 
             <section className="front-section">
-                <h3>Popular Albums</h3>
+                <div className="front-section-heading">
+                    <h3>Popular Albums</h3>
+                    <button className="front-more-button" type="button" onClick={() => navigate("/albums")}>
+                        More
+                    </button>
+                </div>
                 <PopularAlbums limit={5} window="30d" />
+            </section>
+
+            <section className="front-section">
+                <div className="front-section-heading">
+                    <h3>Popular Reviews</h3>
+                </div>
+                <PopularReviews limit={4} />
+            </section>
+
+            <section className="front-section front-lists-preview">
+                <h3>Popular Lists</h3>
             </section>
         </div>
     );

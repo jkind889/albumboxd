@@ -71,6 +71,7 @@ export function EditProfile() {
   const { getToken, isSignedIn } = useAuth();
   const { user, isLoaded } = useUser();
   const [bio, setBio] = useState("");
+  const [spotifyProfileUrl, setSpotifyProfileUrl] = useState("");
   const [favoriteAlbums, setFavoriteAlbums] = useState([]);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [profileStatus, setProfileStatus] = useState("");
@@ -130,6 +131,7 @@ export function EditProfile() {
         }
 
         setBio(typeof data.bio === "string" ? data.bio : "");
+        setSpotifyProfileUrl(typeof data.spotifyProfileUrl === "string" ? data.spotifyProfileUrl : "");
         setFavoriteAlbums(Array.isArray(data.favoriteAlbums) ? data.favoriteAlbums : []);
       } catch (error) {
         if (isCurrent) {
@@ -332,6 +334,7 @@ export function EditProfile() {
         },
         body: JSON.stringify({
           bio,
+          spotifyProfileUrl,
           favoriteAlbumIds: favoriteAlbums.map(getAlbumId),
         }),
       });
@@ -343,6 +346,7 @@ export function EditProfile() {
       }
 
       setBio(typeof data.bio === "string" ? data.bio : "");
+      setSpotifyProfileUrl(typeof data.spotifyProfileUrl === "string" ? data.spotifyProfileUrl : "");
       setFavoriteAlbums(Array.isArray(data.favoriteAlbums) ? data.favoriteAlbums : []);
       setProfileStatus("Profile saved.");
     } catch (error) {
@@ -386,6 +390,15 @@ export function EditProfile() {
                     rows="4"
                     onChange={(event) => setBio(event.target.value)}
                     placeholder="A little note for your profile..."
+                  />
+                </label>
+
+                <label className="edit-profile-field">
+                  <span>Spotify Profile</span>
+                  <input
+                    value={spotifyProfileUrl}
+                    onChange={(event) => setSpotifyProfileUrl(event.target.value)}
+                    placeholder="https://open.spotify.com/user/..."
                   />
                 </label>
 

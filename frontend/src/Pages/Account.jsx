@@ -94,6 +94,7 @@ export function Account() {
   const [profile, setProfile] = useState({
     userId: "",
     bio: "",
+    spotifyProfileUrl: "",
     favoriteAlbums: [],
     followerCount: 0,
     followingCount: 0,
@@ -106,8 +107,8 @@ export function Account() {
   const publicProfileState = location.state?.profileUser || {};
   const canManageProfile = !isPublicProfile;
   const availableTabs = useMemo(
-    () => (canManageProfile ? tabs : tabs.filter((tab) => tab.id !== "settings")),
-    [canManageProfile],
+    () => tabs.filter((tab) => tab.id !== "settings"),
+    [],
   );
 
   useEffect(() => {
@@ -122,6 +123,7 @@ export function Account() {
         setProfile({
           userId: "",
           bio: "",
+          spotifyProfileUrl: "",
           favoriteAlbums: [],
           followerCount: 0,
           followingCount: 0,
@@ -146,18 +148,20 @@ export function Account() {
 
         if (isPublicProfile) {
           const encodedPublicUserId = encodeURIComponent(publicUserId);
-          const [profileResponse, reviewsResponse, activityResponse] = await Promise.all([
+          const [profileResponse, savedResponse, reviewsResponse, activityResponse] = await Promise.all([
             fetch(`http://localhost:3000/profile/${encodedPublicUserId}`, { headers }),
+            fetch(`http://localhost:3000/profile/${encodedPublicUserId}/saved`),
             fetch(`http://localhost:3000/reviews/review/user/${encodedPublicUserId}`),
             fetch(`http://localhost:3000/profile/${encodedPublicUserId}/activity`),
           ]);
 
-          if (!profileResponse.ok || !reviewsResponse.ok || !activityResponse.ok) {
+          if (!profileResponse.ok || !savedResponse.ok || !reviewsResponse.ok || !activityResponse.ok) {
             throw new Error("Failed to load profile data");
           }
 
-          [profileData, reviewsData, activityData] = await Promise.all([
+          [profileData, savedData, reviewsData, activityData] = await Promise.all([
             profileResponse.json(),
+            savedResponse.json(),
             reviewsResponse.json(),
             activityResponse.json(),
           ]);
@@ -200,6 +204,7 @@ export function Account() {
         setProfile({
           userId: profileData.userId || publicUserId || "",
           bio: typeof profileData.bio === "string" ? profileData.bio : "",
+          spotifyProfileUrl: typeof profileData.spotifyProfileUrl === "string" ? profileData.spotifyProfileUrl : "",
           favoriteAlbums: Array.isArray(profileData.favoriteAlbums) ? profileData.favoriteAlbums : [],
           followerCount: Number(profileData.followerCount) || 0,
           followingCount: Number(profileData.followingCount) || 0,
@@ -217,6 +222,7 @@ export function Account() {
           setProfile({
             userId: publicUserId || "",
             bio: "",
+            spotifyProfileUrl: "",
             favoriteAlbums: [],
             followerCount: 0,
             followingCount: 0,
@@ -268,9 +274,12 @@ export function Account() {
   const sortedSavedAlbums = useMemo(() => (
     [...savedAlbums].sort((first, second) => new Date(second.savedAt) - new Date(first.savedAt))
   ), [savedAlbums]);
-  const latestSavedAlbums = useMemo(() => sortedSavedAlbums.slice(0, 6), [sortedSavedAlbums]);
-  const latestReviews = useMemo(() => sortedReviews.slice(0, 4), [sortedReviews]);
+  const latestReviews = useMemo(() => sortedReviews.slice(0, 2), [sortedReviews]);
+  const latestSidebarActivity = useMemo(() => activityItems.slice(0, 4), [activityItems]);
   const favoriteAlbums = profile.favoriteAlbums;
+  const moreReviewsPath = isPublicProfile
+    ? `/profile/${encodeURIComponent(publicUserId)}/reviews`
+    : "/viewreviews";
 
   async function removeSavedAlbum(spotifyId) {
     const token = await getToken();
@@ -363,9 +372,9 @@ export function Account() {
     ? publicProfileState.username || profile.userId || "albumboxd user"
     : user?.username || user?.fullName || user?.primaryEmailAddress?.emailAddress || "Your profile";
   const profileImageUrl = isPublicProfile ? publicProfileState.imageUrl : user?.imageUrl;
-  const profileKicker = isPublicProfile ? "Profile" : "Current user";
   const showFollowButton = isPublicProfile && !profile.isCurrentUser && (!isSignedIn || !isLoading);
   const profileHandle = displayName;
+  const hasSpotifyProfile = Boolean(profile.spotifyProfileUrl);
   const sidebarFacts = [
     { label: "Albums", value: savedAlbums.length },
     { label: "Reviews", value: reviews.length },
@@ -373,7 +382,6 @@ export function Account() {
     { label: "Followers", value: profile.followerCount },
     { label: "Following", value: profile.followingCount },
   ];
-  const recentReviewCount = latestReviews.length;
 
   function renderOverview() {
     return (
@@ -392,13 +400,12 @@ export function Account() {
             />
           ) : (
             <div className="profile-favorites-grid">
-              {favoriteAlbums.map((album, index) => (
+              {favoriteAlbums.map((album) => (
                 <Link
                   className="profile-favorite-card"
                   key={album.spotifyId}
                   to={`/album/${album.spotifyId}`}
                 >
-                  <span className="profile-favorite-rank">{index + 1}</span>
                   <AlbumCover src={album.cover} title={album.title} />
                   <h3>{album.title || "Untitled album"}</h3>
                   <p>{getArtistName(album)}</p>
@@ -411,6 +418,15 @@ export function Account() {
         <section className="profile-panel">
           <div className="profile-section-header">
             <h2>Recent Reviews</h2>
+            {reviews.length > latestReviews.length && (
+              <Link
+                className="profile-more-link"
+                to={moreReviewsPath}
+                state={{ profileUser: publicProfileState }}
+              >
+                More
+              </Link>
+            )}
           </div>
 
           {latestReviews.length === 0 ? (
@@ -755,7 +771,6 @@ export function Account() {
     );
   }
 
-
   return (
     <>
       <section className="profile-page">
@@ -772,15 +787,20 @@ export function Account() {
                 )}
 
                 <div>
-                  <p className="profile-kicker">{profileKicker}</p>
                   <div className="profile-name-row">
                     <h1>{displayName}</h1>
                     {renderProfileAction()}
                   </div>
-                  <p className="profile-joined">{profileHandle}</p>
                   {profile.bio && <p className="profile-bio">{profile.bio}</p>}
-                  {canManageProfile && (
-                    <Link className="profile-edit-link" to="/account/edit">Edit Profile</Link>
+                  {hasSpotifyProfile && (
+                    <a
+                      className="profile-spotify-inline"
+                      href={profile.spotifyProfileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Spotify
+                    </a>
                   )}
                 </div>
               </div>
@@ -794,11 +814,20 @@ export function Account() {
                   <span>Reviews</span>
                   <strong>{reviews.length}</strong>
                 </button>
-                <Link to="/account/edit">
-                  <span>Social Links</span>
-                  <strong>Future</strong>
-                </Link>
+                <div className="profile-hero-stat">
+                  <span>Followers</span>
+                  <strong>{profile.followerCount}</strong>
+                </div>
+                <div className="profile-hero-stat">
+                  <span>Following</span>
+                  <strong>{profile.followingCount}</strong>
+                </div>
               </div>
+              {canManageProfile && (
+                <div className="profile-hero-actions">
+                  <Link className="profile-edit-link" to="/account/edit">Edit Profile</Link>
+                </div>
+              )}
             </header>
 
             <nav className="profile-tabs" aria-label="Profile sections">
@@ -857,28 +886,32 @@ export function Account() {
                 </dl>
 
                 <div className="profile-sidebar-section">
-                  <h3>Log</h3>
-                  {latestSavedAlbums.length === 0 ? (
-                    <p>No saved albums logged yet.</p>
+                  <h3>Activity Log</h3>
+                  {latestSidebarActivity.length === 0 ? (
+                    <p>No activity logged yet.</p>
                   ) : (
-                    <div className="profile-sidebar-log">
-                      {latestSavedAlbums.map((album) => (
-                        <Link key={album.spotifyId} to={`/album/${album.spotifyId}`}>
-                          <span>{formatMonthYear(album.savedAt)}</span>
-                          <strong>{album.title || "Untitled album"}</strong>
-                        </Link>
-                      ))}
+                    <div className="profile-sidebar-activity">
+                      {latestSidebarActivity.map((activity) => {
+                        const album = activity.album || {};
+                        const actionLabel = activity.type === "saved_album" ? "Saved" : "Reviewed";
+
+                        return (
+                          <Link
+                            className="profile-sidebar-activity-row"
+                            key={activity.id}
+                            to={`/album/${album.spotifyId}`}
+                          >
+                            <AlbumCover src={album.cover} title={album.title || "Album"} />
+                            <div>
+                              <span>{actionLabel}</span>
+                              <strong>{album.title || "Untitled album"}</strong>
+                              <time>{formatDate(activity.createdAt)}</time>
+                            </div>
+                          </Link>
+                        );
+                      })}
                     </div>
                   )}
-                </div>
-
-                <div className="profile-sidebar-section">
-                  <h3>Activity Log</h3>
-                  <div className="profile-sidebar-copy-list">
-                    <p>{savedAlbums.length} saved albums</p>
-                    <p>{reviews.length} reviews</p>
-                    <p>{recentReviewCount} recent reviews</p>
-                  </div>
                 </div>
 
                 <div className="profile-sidebar-section">
@@ -890,14 +923,6 @@ export function Account() {
                   </div>
                 </div>
 
-                <div className="profile-sidebar-section">
-                  <h3>Settings</h3>
-                  {canManageProfile ? (
-                    <Link className="profile-sidebar-button" to="/account/edit">Update Profile</Link>
-                  ) : (
-                    renderProfileAction("profile-sidebar-button")
-                  )}
-                </div>
               </div>
             </div>
           </aside>

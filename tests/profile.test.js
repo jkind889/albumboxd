@@ -183,16 +183,17 @@ function loadProfileRouter() {
             return {
               sort: (sortOrder) => {
                 albumSortCalls.push(sortOrder);
+                const sortedAlbums = activitySavedAlbumDocuments
+                  .filter((album) => album.userId === query.userId)
+                  .sort((first, second) => new Date(second.savedAt) - new Date(first.savedAt));
 
                 return {
                   limit: async (limit) => {
                     albumLimitCalls.push(limit);
 
-                    return activitySavedAlbumDocuments
-                      .filter((album) => album.userId === query.userId)
-                      .sort((first, second) => new Date(second.savedAt) - new Date(first.savedAt))
-                      .slice(0, limit);
+                    return sortedAlbums.slice(0, limit);
                   },
+                  then: (resolve, reject) => Promise.resolve(sortedAlbums).then(resolve, reject),
                 };
               },
             };
@@ -333,12 +334,14 @@ test("GET /profile/me creates and returns an empty current user profile", async 
     {
       userId: "user_clerk_123",
       bio: "",
+      spotifyProfileUrl: "",
       favoriteAlbums: [],
     },
   ]);
   assert.deepEqual(response.body, {
     userId: "user_clerk_123",
     bio: "",
+    spotifyProfileUrl: "",
     favoriteAlbums: [],
     followerCount: 0,
     followingCount: 0,
@@ -351,6 +354,7 @@ test("GET /profile/me returns populated favorite albums in rank order", async ()
   profilesByUserId.set("user_clerk_123", {
     userId: "user_clerk_123",
     bio: "Jazz forever.",
+    spotifyProfileUrl: "https://open.spotify.com/user/currentlistener",
     favoriteAlbums: [
       {
         spotifyId: "album_2",
@@ -388,12 +392,14 @@ test("GET /profile/me returns populated favorite albums in rank order", async ()
     ["album_1", "album_2"],
   );
   assert.equal(response.body.bio, "Jazz forever.");
+  assert.equal(response.body.spotifyProfileUrl, "https://open.spotify.com/user/currentlistener");
 });
 
 test("PUT /profile/me saves bio and ordered favorite albums", async () => {
   updatedProfile = {
     userId: "user_clerk_123",
     bio: "Five records I keep close.",
+    spotifyProfileUrl: "https://open.spotify.com/user/currentlistener",
     favoriteAlbums: [
       {
         spotifyId: "album_1",
@@ -425,6 +431,7 @@ test("PUT /profile/me saves bio and ordered favorite albums", async () => {
   const response = await callRoute("put", "/me", {
     body: {
       bio: "  Five records I keep close.  ",
+      spotifyProfileUrl: " https://open.spotify.com/user/currentlistener ",
       favoriteAlbumIds: ["album_1", "album_2"],
     },
   });
@@ -437,6 +444,7 @@ test("PUT /profile/me saves bio and ordered favorite albums", async () => {
       $set: {
         userId: "user_clerk_123",
         bio: "Five records I keep close.",
+        spotifyProfileUrl: "https://open.spotify.com/user/currentlistener",
         favoriteAlbums: [
           {
             spotifyId: "album_1",
@@ -464,6 +472,40 @@ test("PUT /profile/me saves bio and ordered favorite albums", async () => {
   assert.equal(response.body.followerCount, 0);
   assert.equal(response.body.followingCount, 0);
   assert.equal(response.body.isCurrentUser, true);
+  assert.equal(response.body.spotifyProfileUrl, "https://open.spotify.com/user/currentlistener");
+});
+
+test("PUT /profile/me clears an empty Spotify profile URL", async () => {
+  updatedProfile = {
+    userId: "user_clerk_123",
+    bio: "",
+    spotifyProfileUrl: "",
+    favoriteAlbums: [],
+  };
+
+  const response = await callRoute("put", "/me", {
+    body: {
+      spotifyProfileUrl: "  ",
+      favoriteAlbumIds: [],
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(updateCalls[0].update.$set.spotifyProfileUrl, "");
+  assert.equal(response.body.spotifyProfileUrl, "");
+});
+
+test("PUT /profile/me rejects invalid Spotify profile URLs", async () => {
+  const response = await callRoute("put", "/me", {
+    body: {
+      spotifyProfileUrl: "https://example.com/user/currentlistener",
+      favoriteAlbumIds: [],
+    },
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "Spotify profile must be an https://open.spotify.com/user/... URL" });
+  assert.equal(updateCalls.length, 0);
 });
 
 test("PUT /profile/me rejects more than five favorite albums", async () => {
@@ -773,6 +815,100 @@ test("GET /profile/:userId/activity returns public profile saved and reviewed ac
   );
 });
 
+test("GET /profile/:userId/saved returns public profile saved albums newest first", async () => {
+  reviewUserIds.add("review_author_1");
+  activitySavedAlbumDocuments = [
+    {
+      _id: "older_save",
+      userId: "review_author_1",
+      spotifyId: "album_1",
+      savedAt: new Date("2026-06-10T10:00:00.000Z"),
+      albumCatalogId: {
+        _id: "catalog_album_1",
+        spotifyId: "album_1",
+        title: "Kind of Blue",
+        artist: "Miles Davis",
+        artists: ["Miles Davis"],
+        year: "1959",
+        cover: "https://example.com/kind-of-blue.jpg",
+      },
+    },
+    {
+      _id: "newer_save",
+      userId: "review_author_1",
+      spotifyId: "album_2",
+      savedAt: new Date("2026-06-12T10:00:00.000Z"),
+      albumCatalogId: {
+        _id: "catalog_album_2",
+        spotifyId: "album_2",
+        title: "Blue Train",
+        artist: "John Coltrane",
+        artists: ["John Coltrane"],
+        year: "1958",
+        cover: "https://example.com/blue-train.jpg",
+      },
+    },
+    {
+      _id: "other_user_save",
+      userId: "other_user",
+      spotifyId: "album_3",
+      savedAt: new Date("2026-06-13T10:00:00.000Z"),
+      albumCatalogId: {
+        _id: "catalog_album_3",
+        spotifyId: "album_3",
+        title: "Not This Shelf",
+        artist: "Someone Else",
+      },
+    },
+  ];
+
+  const response = await callRoute("get", "/:userId/saved", {
+    params: { userId: "review_author_1" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(reviewExistsCalls, [{ userId: "review_author_1" }]);
+  assert.deepEqual(albumFindCalls, [{ userId: "review_author_1" }]);
+  assert.deepEqual(albumPopulateCalls, ["albumCatalogId"]);
+  assert.deepEqual(albumSortCalls, [{ savedAt: -1 }]);
+  assert.equal(albumLimitCalls.length, 0);
+  assert.deepEqual(
+    response.body.map((album) => album.spotifyId),
+    ["album_2", "album_1"],
+  );
+  assert.deepEqual(response.body[0], {
+    id: "album_2",
+    spotifyId: "album_2",
+    title: "Blue Train",
+    artist: "John Coltrane",
+    artists: ["John Coltrane"],
+    year: "1958",
+    releaseDate: "",
+    genres: [],
+    imgs: [],
+    cover: "https://example.com/blue-train.jpg",
+    totalTracks: 0,
+    tracks: [],
+    label: "",
+    albumType: "album",
+    spotifyUrl: "",
+    _id: "newer_save",
+    albumCatalogId: "catalog_album_2",
+    userId: "review_author_1",
+    savedAt: new Date("2026-06-12T10:00:00.000Z"),
+  });
+});
+
+test("GET /profile/:userId/saved returns 404 for a user without reviews", async () => {
+  const response = await callRoute("get", "/:userId/saved", {
+    params: { userId: "random_user" },
+  });
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(response.body, { error: "User not found" });
+  assert.equal(albumFindCalls.length, 0);
+});
+
 test("GET /profile/:userId creates and returns a public profile for a reviewed user", async () => {
   reviewUserIds.add("review_author_1");
   followDocuments = [
@@ -792,18 +928,38 @@ test("GET /profile/:userId creates and returns a public profile for a reviewed u
     {
       userId: "review_author_1",
       bio: "",
+      spotifyProfileUrl: "",
       favoriteAlbums: [],
     },
   ]);
   assert.deepEqual(response.body, {
     userId: "review_author_1",
     bio: "",
+    spotifyProfileUrl: "",
     favoriteAlbums: [],
     followerCount: 3,
     followingCount: 1,
     isFollowing: true,
     isCurrentUser: false,
   });
+});
+
+test("GET /profile/:userId exposes a saved Spotify profile URL", async () => {
+  reviewUserIds.add("review_author_1");
+  profilesByUserId.set("review_author_1", {
+    userId: "review_author_1",
+    bio: "A public listener.",
+    spotifyProfileUrl: "https://open.spotify.com/user/publiclistener",
+    favoriteAlbums: [],
+  });
+
+  const response = await callRoute("get", "/:userId", {
+    params: { userId: "review_author_1" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.spotifyProfileUrl, "https://open.spotify.com/user/publiclistener");
+  assert.equal(createCalls.length, 0);
 });
 
 test("GET /profile/:userId returns 404 for a user without reviews", async () => {
