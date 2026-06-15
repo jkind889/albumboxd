@@ -9,8 +9,14 @@ export function AlbumDetail()
     const [album, setAlbum] = useState(null);
     const [reviews, setReviews] = useState([]);
     const [isSaved, setIsSaved] = useState(false);
+    const [savedBoardIds, setSavedBoardIds] = useState([]);
+    const [boards, setBoards] = useState([]);
     const [activeTab, setActiveTab] = useState("artist");
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+    const [isBoardModalOpen, setIsBoardModalOpen] = useState(false);
+    const [newBoardTitle, setNewBoardTitle] = useState("");
+    const [boardSaveMessage, setBoardSaveMessage] = useState("");
+    const [isSavingBoard, setIsSavingBoard] = useState(false);
     const { getToken, userId } = useAuth();
     const location = useLocation();
 
@@ -43,7 +49,7 @@ export function AlbumDetail()
             const token = await getToken();
 
             const res = await fetch(
-            `http://localhost:3000/collections/collection/${id}`,
+            `http://localhost:3000/boards/album/${id}`,
             {
                 headers: {
                 Authorization: `Bearer ${token}`,
@@ -53,11 +59,13 @@ export function AlbumDetail()
 
             if (!res.ok) {
                 setIsSaved(false);
+                setSavedBoardIds([]);
                 return;
             }
 
             const data = await res.json();
             setIsSaved(data.saved);
+            setSavedBoardIds(Array.isArray(data.boards) ? data.boards.map((board) => String(board._id)) : []);
         }
 
         if (id) {
@@ -166,7 +174,7 @@ export function AlbumDetail()
         const token = await getToken();
         
 
-        const res = await fetch("http://localhost:3000/albums/album", {
+        const res = await fetch("http://localhost:3000/boards/default/albums", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -179,11 +187,6 @@ export function AlbumDetail()
         });
         const data = await res.json();
 
-        if (res.status === 409) {
-            alert("This album is already in your collection.");
-            return;
-        }
-        
         if (!res.ok) {
             console.error("Failed to save album to collection");
             alert("Failed to save album to collection. Please try again.");
@@ -191,10 +194,113 @@ export function AlbumDetail()
         }
         if (res.ok) {
             setIsSaved(true);
+            if (data.board?._id) {
+                setSavedBoardIds((currentIds) => [...new Set([...currentIds, String(data.board._id)])]);
+            }
         }
 
 
         console.log("Album saved to collection:", data);
+    }
+
+    async function fetchBoards() {
+        const token = await getToken();
+        const res = await fetch("http://localhost:3000/boards", {
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+        });
+
+        if (!res.ok) {
+            throw new Error("Failed to fetch boards");
+        }
+
+        const data = await res.json();
+        setBoards(Array.isArray(data) ? data : []);
+    }
+
+    async function openBoardModal() {
+        try {
+            await fetchBoards();
+            setBoardSaveMessage("");
+            setIsBoardModalOpen(true);
+        } catch (error) {
+            console.error(error);
+            alert("Failed to load boards. Please try again.");
+        }
+    }
+
+    async function saveAlbumToBoard(boardId) {
+        if (isSavingBoard) {
+            return;
+        }
+
+        try {
+            setIsSavingBoard(true);
+            const token = await getToken();
+            const res = await fetch(`http://localhost:3000/boards/${boardId}/albums`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ spotifyId: album.id }),
+            });
+
+            if (!res.ok) {
+                throw new Error("Failed to save album to board");
+            }
+
+            const data = await res.json();
+            setIsSaved(true);
+            if (data.board?._id) {
+                setSavedBoardIds((currentIds) => [...new Set([...currentIds, String(data.board._id)])]);
+            }
+            setBoardSaveMessage(`Saved to ${data.board?.title || "board"}.`);
+            await fetchBoards();
+        } catch (error) {
+            console.error(error);
+            setBoardSaveMessage("Could not save to that board.");
+        } finally {
+            setIsSavingBoard(false);
+        }
+    }
+
+    async function createBoardAndSave(event) {
+        event.preventDefault();
+
+        const title = newBoardTitle.trim();
+
+        if (!title || isSavingBoard) {
+            return;
+        }
+
+        try {
+            setIsSavingBoard(true);
+            const token = await getToken();
+            const createResponse = await fetch("http://localhost:3000/boards", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ title }),
+            });
+
+            if (!createResponse.ok) {
+                throw new Error("Failed to create board");
+            }
+
+            const createdBoard = await createResponse.json();
+            setBoards((currentBoards) => [createdBoard, ...currentBoards]);
+            setNewBoardTitle("");
+            setIsSavingBoard(false);
+            await saveAlbumToBoard(createdBoard._id);
+        } catch (error) {
+            console.error(error);
+            setBoardSaveMessage("Could not create that board.");
+            setIsSavingBoard(false);
+        }
     }
 
 
@@ -220,6 +326,9 @@ export function AlbumDetail()
                         <button className="album-side-action" disabled={isSaved} onClick={handleSaveToCollection}>
                             <span aria-hidden="true">+</span>
                             {isSaved ? "Saved" : "Save"}
+                        </button>
+                        <button className="album-side-action" type="button" onClick={openBoardModal}>
+                            Boards...
                         </button>
                         <button className="album-side-action" type="button" onClick={() => setIsReviewModalOpen(true)}>
                             <span aria-hidden="true">★</span>
@@ -405,6 +514,50 @@ export function AlbumDetail()
                             ×
                         </button>
                         <ReviewForm album={album} onAddReview={addReview} onSubmitted={() => setIsReviewModalOpen(false)} />
+                    </div>
+                </div>
+            )}
+            {isBoardModalOpen && (
+                <div className="review-modal-backdrop" role="presentation" onMouseDown={() => setIsBoardModalOpen(false)}>
+                    <div className="review-modal board-save-modal" role="dialog" aria-modal="true" aria-label={`Save ${album.title} to a board`} onMouseDown={(event) => event.stopPropagation()}>
+                        <button className="review-modal-close" type="button" onClick={() => setIsBoardModalOpen(false)} aria-label="Close board picker">
+                            ×
+                        </button>
+                        <div className="board-save-modal-header">
+                            <h2>Save to board</h2>
+                            <p>{album.title}</p>
+                        </div>
+                        <div className="board-save-list">
+                            {boards.map((board) => {
+                                const boardId = String(board._id);
+                                const alreadySaved = savedBoardIds.includes(boardId);
+
+                                return (
+                                    <button
+                                        className="board-save-option"
+                                        key={board._id}
+                                        type="button"
+                                        onClick={() => saveAlbumToBoard(board._id)}
+                                        disabled={alreadySaved || isSavingBoard}
+                                    >
+                                        <span>{board.title}</span>
+                                        <small>{alreadySaved ? "Saved" : `${board.itemCount || 0} albums`}</small>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <form className="board-save-create" onSubmit={createBoardAndSave}>
+                            <input
+                                value={newBoardTitle}
+                                onChange={(event) => setNewBoardTitle(event.target.value)}
+                                placeholder="Create a new board"
+                                maxLength={80}
+                            />
+                            <button type="submit" disabled={!newBoardTitle.trim() || isSavingBoard}>
+                                Create
+                            </button>
+                        </form>
+                        {boardSaveMessage && <p className="board-save-message">{boardSaveMessage}</p>}
                     </div>
                 </div>
             )}

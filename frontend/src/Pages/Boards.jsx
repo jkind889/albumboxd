@@ -1,0 +1,153 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "@clerk/react";
+
+function BoardPreview({ albums }) {
+  const previewAlbums = albums.slice(0, 4);
+
+  return (
+    <div className="board-preview-grid" aria-hidden="true">
+      {Array.from({ length: 4 }).map((_, index) => {
+        const album = previewAlbums[index];
+
+        return album?.cover ? (
+          <img key={album.spotifyId || index} src={album.cover} alt="" />
+        ) : (
+          <span key={index} />
+        );
+      })}
+    </div>
+  );
+}
+
+export function Boards() {
+  const { getToken, isSignedIn } = useAuth();
+  const [boards, setBoards] = useState([]);
+  const [newTitle, setNewTitle] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState("");
+
+  const fetchBoards = useCallback(async function fetchBoards() {
+    if (!isSignedIn) {
+      setBoards([]);
+      return;
+    }
+
+    try {
+      const token = await getToken();
+      const response = await fetch("http://localhost:3000/boards", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch boards");
+      }
+
+      const data = await response.json();
+      setBoards(Array.isArray(data) ? data : []);
+      setError("");
+    } catch (boardsError) {
+      console.error(boardsError);
+      setBoards([]);
+      setError("Could not load your boards.");
+    }
+  }, [getToken, isSignedIn]);
+
+  useEffect(() => {
+    fetchBoards();
+  }, [fetchBoards]);
+
+  const sortedBoards = useMemo(() => (
+    [...boards].sort((first, second) => Number(second.isDefault) - Number(first.isDefault)
+      || new Date(second.updatedAt || 0) - new Date(first.updatedAt || 0))
+  ), [boards]);
+
+  async function createBoard(event) {
+    event.preventDefault();
+
+    const title = newTitle.trim();
+
+    if (!title || isCreating) {
+      return;
+    }
+
+    try {
+      setIsCreating(true);
+      const token = await getToken();
+      const response = await fetch("http://localhost:3000/boards", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create board");
+      }
+
+      const board = await response.json();
+      setBoards((currentBoards) => [board, ...currentBoards]);
+      setNewTitle("");
+      setError("");
+    } catch (createError) {
+      console.error(createError);
+      setError("Could not create that board.");
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  if (!isSignedIn) {
+    return (
+      <section className="boards-page">
+        <div className="boards-empty">
+          <h1>Boards</h1>
+          <p>Sign in to save albums into boards.</p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="boards-page">
+      <div className="boards-header">
+        <div>
+          <p className="boards-kicker">Your library</p>
+          <h1>Boards</h1>
+        </div>
+        <form className="board-create-form" onSubmit={createBoard}>
+          <input
+            value={newTitle}
+            onChange={(event) => setNewTitle(event.target.value)}
+            placeholder="New board name"
+            maxLength={80}
+          />
+          <button type="submit" disabled={!newTitle.trim() || isCreating}>
+            Create
+          </button>
+        </form>
+      </div>
+
+      {error && <p className="boards-error">{error}</p>}
+
+      <div className="boards-grid">
+        {sortedBoards.map((board) => (
+          <Link className="board-card" key={board._id} to={`/boards/${board._id}`}>
+            <BoardPreview albums={board.previewAlbums || []} />
+            <h2>{board.title}</h2>
+            <p>
+              {board.itemCount} album{board.itemCount === 1 ? "" : "s"}
+              {board.isDefault ? " · Default" : ""}
+            </p>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export default Boards;

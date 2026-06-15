@@ -8,6 +8,8 @@ import FrontPage from "./Pages/FrontPage";
 import Layout from "./Layout";
 import Account from "./Pages/Account";
 import EditProfile from "./Pages/EditProfile";
+import Boards from "./Pages/Boards";
+import BoardDetail from "./Pages/BoardDetail";
 import ProtectedRoute from "./Components/ProtectedRoute";
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -20,6 +22,8 @@ export function App() {
             <Route index element={<FrontPage />} />
             <Route path="/search" element={<SearchResults />} />
             <Route path="/albums" element={<Albums />} />
+            <Route path="/boards" element={<Boards />} />
+            <Route path="/boards/:boardId" element={<BoardDetail />} />
             <Route
               path="/collection"
               element={<Navigate to="/account" state={{ activeTab: "saved" }} replace />}

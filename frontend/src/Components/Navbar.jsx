@@ -21,6 +21,9 @@ function Navbar()
                                 <li className="nav-item">
                                     <Link to="/albums" className="nav-link active">Albums</Link>
                                 </li>
+                                <li className="nav-item">
+                                    <Link to="/boards" className="nav-link active">Boards</Link>
+                                </li>
                             </ul>
                         </div>
                         <div className="site-navbar-search">
