@@ -1,34 +1,58 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+
+const CATALOG_PAGE_LIMIT = 24;
 
 export function Albums() {
   const [albums, setAlbums] = useState([]);
-  const [query, setQuery] = useState("");
+  const [totalAlbums, setTotalAlbums] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const listRef = useRef(null);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get("q") || "";
+  const page = Math.max(Number.parseInt(searchParams.get("page") || "1", 10) || 1, 1);
 
   useEffect(() => {
     let shouldIgnore = false;
 
     async function fetchCatalog() {
       try {
-        const response = await fetch("http://localhost:3000/albums/catalog");
+        setLoading(true);
+        setError("");
+
+        const catalogParams = new URLSearchParams({
+          page: String(page),
+          limit: String(CATALOG_PAGE_LIMIT),
+        });
+        const trimmedQuery = query.trim();
+
+        if (trimmedQuery) {
+          catalogParams.set("q", trimmedQuery);
+        }
+
+        const response = await fetch(`http://localhost:3000/albums/catalog?${catalogParams.toString()}`);
 
         if (!response.ok) {
           throw new Error("Catalog request failed");
         }
 
         const data = await response.json();
+        const results = Array.isArray(data) ? data : data.results;
 
         if (!shouldIgnore) {
-          setAlbums(Array.isArray(data) ? data : []);
+          setAlbums(Array.isArray(results) ? results : []);
+          setTotalAlbums(Number(data?.total) || 0);
+          setHasNextPage(Boolean(data?.hasNextPage));
         }
       } catch {
         if (!shouldIgnore) {
           setError("Unable to load the album catalog.");
           setAlbums([]);
+          setTotalAlbums(0);
+          setHasNextPage(false);
         }
       } finally {
         if (!shouldIgnore) {
@@ -42,27 +66,28 @@ export function Albums() {
     return () => {
       shouldIgnore = true;
     };
-  }, []);
+  }, [page, query]);
 
-  const filteredAlbums = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+  function updateQuery(nextQuery) {
+    const nextParams = new URLSearchParams(searchParams);
+    const trimmedQuery = nextQuery.trim();
 
-    if (!normalizedQuery) {
-      return albums;
+    if (trimmedQuery) {
+      nextParams.set("q", nextQuery);
+    } else {
+      nextParams.delete("q");
     }
 
-    return albums.filter((album) => {
-      const searchableText = [
-        album.title,
-        album.artist,
-        ...(album.artists || []),
-        album.year,
-        album.label,
-      ].join(" ").toLowerCase();
+    nextParams.set("page", "1");
+    setSearchParams(nextParams);
+  }
 
-      return searchableText.includes(normalizedQuery);
-    });
-  }, [albums, query]);
+  function updatePage(nextPage) {
+    const nextParams = new URLSearchParams(searchParams);
+
+    nextParams.set("page", String(nextPage));
+    setSearchParams(nextParams);
+  }
 
   useEffect(() => {
     const rows = listRef.current?.querySelectorAll(".catalog-row");
@@ -86,10 +111,22 @@ export function Albums() {
     rows.forEach((row) => observer.observe(row));
 
     return () => observer.disconnect();
-  }, [filteredAlbums]);
+  }, [albums]);
+
+  const catalogSummary = loading
+    ? "Loading albums..."
+    : query.trim()
+      ? `${totalAlbums} matching album${totalAlbums === 1 ? "" : "s"}`
+      : `${albums.length} of ${totalAlbums} albums`;
 
   return (
     <section className="catalog-page">
+      <div className="catalog-header">
+        <p className="catalog-kicker">Album catalog</p>
+        <h1>Albums</h1>
+        <p>{catalogSummary} · Page {page}</p>
+      </div>
+
       <div className="catalog-toolbar">
         <label className="catalog-search-label" htmlFor="catalog-search">
           Search album catalog
@@ -99,13 +136,11 @@ export function Albums() {
             id="catalog-search"
             className="catalog-search-input"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => updateQuery(event.target.value)}
             placeholder="Search by album, artist, year, or label"
           />
           <span className="catalog-count">
-            {loading
-              ? "Loading"
-              : `${filteredAlbums.length} / ${albums.length}`}
+            {loading ? "Loading" : `${albums.length} shown`}
           </span>
         </div>
       </div>
@@ -118,7 +153,7 @@ export function Albums() {
           <span>Tracks</span>
         </div>
 
-        {filteredAlbums.map((album) => (
+        {albums.map((album) => (
           <button
             className="catalog-row"
             type="button"
@@ -142,12 +177,32 @@ export function Albums() {
           </button>
         ))}
 
-        {!loading && !error && filteredAlbums.length === 0 && (
+        {!loading && !error && albums.length === 0 && (
           <div className="catalog-empty">No albums matched that search.</div>
         )}
 
         {error && <div className="catalog-empty">{error}</div>}
       </div>
+
+      {(page > 1 || hasNextPage) && (
+        <div className="search-pagination catalog-pagination" aria-label="Album catalog pagination">
+          <button
+            type="button"
+            disabled={loading || page <= 1}
+            onClick={() => updatePage(page - 1)}
+          >
+            Previous
+          </button>
+          <span>Page {page}</span>
+          <button
+            type="button"
+            disabled={loading || !hasNextPage}
+            onClick={() => updatePage(page + 1)}
+          >
+            Next
+          </button>
+        </div>
+      )}
     </section>
   );
 }

@@ -15,6 +15,7 @@ let getOrCreateError = null;
 let catalogFindError = null;
 const createCalls = [];
 const catalogFindCalls = [];
+const catalogCountCalls = [];
 const getOrCreateCalls = [];
 
 // Loads the album router with mocked database/auth/catalog dependencies.
@@ -49,16 +50,44 @@ function loadAlbumRouter() {
     exports: {
       find: (query) => {
         catalogFindCalls.push(query);
+        const findState = {
+          query,
+          sort: null,
+          skip: 0,
+          limit: catalogAlbums.length,
+        };
+
         return {
-          sort: async (sort) => {
+          sort(sort) {
+            findState.sort = sort;
+            catalogFindCalls.push({ sort });
+            return this;
+          },
+          skip(skip) {
+            findState.skip = skip;
+            catalogFindCalls.push({ skip });
+            return this;
+          },
+          async limit(limit) {
+            findState.limit = limit;
+            catalogFindCalls.push({ limit });
+
             if (catalogFindError) {
               throw catalogFindError;
             }
 
-            catalogFindCalls.push({ sort });
-            return catalogAlbums;
+            return catalogAlbums.slice(findState.skip, findState.skip + findState.limit);
           },
         };
+      },
+      countDocuments: async (query) => {
+        catalogCountCalls.push(query);
+
+        if (catalogFindError) {
+          throw catalogFindError;
+        }
+
+        return catalogAlbums.length;
       },
     },
   };
@@ -107,7 +136,7 @@ function loadAlbumRouter() {
   return require("../routes/album");
 }
 
-async function callRoute(method, path, { body = {}, params = {} } = {}) {
+async function callRoute(method, path, { body = {}, params = {}, query = {} } = {}) {
   const router = loadAlbumRouter();
   const route = router.stack.find(
     (layer) => layer.route?.path === path && layer.route.methods[method],
@@ -115,7 +144,7 @@ async function callRoute(method, path, { body = {}, params = {} } = {}) {
 
   assert.ok(route, `${method.toUpperCase()} ${path} should be registered`);
 
-  const req = { body, params };
+  const req = { body, params, query };
   const res = {
     statusCode: 200,
     body: null,
@@ -196,20 +225,107 @@ test.beforeEach(() => {
   ];
   createCalls.length = 0;
   catalogFindCalls.length = 0;
+  catalogCountCalls.length = 0;
   getOrCreateCalls.length = 0;
 });
 
-test("GET /albums/catalog returns all catalog albums in frontend shape", async () => {
+test("GET /albums/catalog returns the first paginated catalog page in frontend shape", async () => {
+  catalogAlbums = Array.from({ length: 30 }, (_, index) => ({
+    spotifyId: `spotify_album_${index + 1}`,
+    title: `Album ${index + 1}`,
+    artist: "Catalog Artist",
+    artists: ["Catalog Artist"],
+    year: "2026",
+    cover: `https://example.com/album-${index + 1}.jpg`,
+    totalTracks: 10,
+    tracks: [],
+  }));
+
   const response = await callRoute("get", "/catalog");
 
   assert.equal(response.status, 200);
-  assert.deepEqual(catalogFindCalls, [{}, { sort: { artist: 1, title: 1 } }]);
-  assert.deepEqual(response.body.map((album) => album.id), [
-    "spotify_album_123",
-    "spotify_album_456",
+  assert.deepEqual(catalogCountCalls, [{}]);
+  assert.deepEqual(catalogFindCalls, [
+    {},
+    { sort: { artist: 1, title: 1 } },
+    { skip: 0 },
+    { limit: 24 },
   ]);
-  assert.equal(response.body[0].title, "Kind of Blue");
-  assert.deepEqual(response.body[0].tracks, catalogAlbum.tracks);
+  assert.equal(response.body.results.length, 24);
+  assert.equal(response.body.results[0].id, "spotify_album_1");
+  assert.equal(response.body.page, 1);
+  assert.equal(response.body.limit, 24);
+  assert.equal(response.body.total, 30);
+  assert.equal(response.body.hasPreviousPage, false);
+  assert.equal(response.body.hasNextPage, true);
+});
+
+test("GET /albums/catalog page 2 applies skip and limit", async () => {
+  catalogAlbums = Array.from({ length: 30 }, (_, index) => ({
+    spotifyId: `spotify_album_${index + 1}`,
+    title: `Album ${index + 1}`,
+    artist: "Catalog Artist",
+    artists: ["Catalog Artist"],
+    year: "2026",
+    cover: `https://example.com/album-${index + 1}.jpg`,
+    totalTracks: 10,
+    tracks: [],
+  }));
+
+  const response = await callRoute("get", "/catalog", {
+    query: { page: "2", limit: "24" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(catalogFindCalls, [
+    {},
+    { sort: { artist: 1, title: 1 } },
+    { skip: 24 },
+    { limit: 24 },
+  ]);
+  assert.equal(response.body.results.length, 6);
+  assert.equal(response.body.results[0].id, "spotify_album_25");
+  assert.equal(response.body.page, 2);
+  assert.equal(response.body.hasPreviousPage, true);
+  assert.equal(response.body.hasNextPage, false);
+});
+
+test("GET /albums/catalog filters catalog search in MongoDB", async () => {
+  const response = await callRoute("get", "/catalog", {
+    query: { q: "blue" },
+  });
+
+  const expectedQuery = {
+    $or: [
+      { title: { $regex: "blue", $options: "i" } },
+      { artist: { $regex: "blue", $options: "i" } },
+      { artists: { $regex: "blue", $options: "i" } },
+      { year: { $regex: "blue", $options: "i" } },
+      { label: { $regex: "blue", $options: "i" } },
+      { albumType: { $regex: "blue", $options: "i" } },
+    ],
+  };
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(catalogCountCalls, [expectedQuery]);
+  assert.deepEqual(catalogFindCalls[0], expectedQuery);
+  assert.equal(response.body.results.length, 2);
+});
+
+test("GET /albums/catalog safely falls back for invalid pagination params", async () => {
+  const response = await callRoute("get", "/catalog", {
+    query: { page: "not-a-page", limit: "500" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(catalogFindCalls, [
+    {},
+    { sort: { artist: 1, title: 1 } },
+    { skip: 0 },
+    { limit: 24 },
+  ]);
+  assert.equal(response.body.page, 1);
+  assert.equal(response.body.limit, 24);
 });
 
 test("GET /albums/catalog returns 500 when the catalog lookup fails", async () => {

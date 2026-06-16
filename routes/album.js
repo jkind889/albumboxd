@@ -7,6 +7,8 @@ const {
     normalizeCatalogAlbum,
 } = require("./utils/albumCatalog");
 const router = express.Router();
+const CATALOG_PAGE_LIMIT = 24;
+const MAX_CATALOG_PAGE_LIMIT = 24;
 
 function ensureAuthenticated(req, res, next) {
     const { userId } = getAuth(req);
@@ -19,10 +21,67 @@ function ensureAuthenticated(req, res, next) {
     next();
 }
 
+function escapeRegex(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getPositiveInteger(value, fallback) {
+    const parsedValue = Number.parseInt(value, 10);
+
+    if (Number.isNaN(parsedValue) || parsedValue < 1) {
+        return fallback;
+    }
+
+    return parsedValue;
+}
+
+function getCatalogLimit(value) {
+    return Math.min(getPositiveInteger(value, CATALOG_PAGE_LIMIT), MAX_CATALOG_PAGE_LIMIT);
+}
+
+function buildCatalogQuery(query) {
+    const trimmedQuery = query?.trim();
+
+    if (!trimmedQuery) {
+        return {};
+    }
+
+    const escapedQuery = escapeRegex(trimmedQuery);
+
+    return {
+        $or: [
+            { title: { $regex: escapedQuery, $options: "i" } },
+            { artist: { $regex: escapedQuery, $options: "i" } },
+            { artists: { $regex: escapedQuery, $options: "i" } },
+            { year: { $regex: escapedQuery, $options: "i" } },
+            { label: { $regex: escapedQuery, $options: "i" } },
+            { albumType: { $regex: escapedQuery, $options: "i" } },
+        ],
+    };
+}
+
 router.get("/catalog", async (req, res) => {
     try {
-        const albums = await AlbumCatalog.find({}).sort({ artist: 1, title: 1 });
-        res.json(albums.map(normalizeCatalogAlbum));
+        const page = getPositiveInteger(req.query.page, 1);
+        const limit = getCatalogLimit(req.query.limit);
+        const skip = (page - 1) * limit;
+        const catalogQuery = buildCatalogQuery(req.query.q);
+        const [total, albums] = await Promise.all([
+            AlbumCatalog.countDocuments(catalogQuery),
+            AlbumCatalog.find(catalogQuery)
+                .sort({ artist: 1, title: 1 })
+                .skip(skip)
+                .limit(limit),
+        ]);
+
+        res.json({
+            results: albums.map(normalizeCatalogAlbum),
+            page,
+            limit,
+            total,
+            hasPreviousPage: page > 1,
+            hasNextPage: skip + albums.length < total,
+        });
     } catch (error) {
         res.status(500).json({ error: "Failed to fetch album catalog" });
     }

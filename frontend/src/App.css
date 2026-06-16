@@ -10,6 +10,7 @@
 .app-shell:has(.front-page),
 .app-shell:has(.search-results-page),
 .app-shell:has(.reviews-page),
+.app-shell:has(.catalog-page),
 .app-shell:has(.boards-page),
 .app-shell:has(.board-detail-page) {
   max-width: none;
@@ -32,6 +33,9 @@ body:has(.search-results-page),
 html:has(.reviews-page),
 body:has(.reviews-page),
 #root:has(.reviews-page),
+html:has(.catalog-page),
+body:has(.catalog-page),
+#root:has(.catalog-page),
 html:has(.boards-page),
 body:has(.boards-page),
 #root:has(.boards-page),
@@ -720,21 +724,47 @@ body:has(.board-detail-page),
 }
 
 .catalog-page {
-  margin: 0 calc(50% - 50vw) -1.5rem;
-  min-height: calc(100vh - 50px);
-  padding: 2rem max(1rem, calc((100vw - 1200px) / 2)) 4rem;
-  background: #f3eeee;
-  color: #0f0f10;
+  width: min(calc(100vw - (var(--app-shell-padding) * 2)), 1180px);
+  margin: 0 auto;
+  padding: 2.2rem 0 4rem;
+  background: #000000;
+  color: #f8fafc;
+}
+
+.catalog-header {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 1.6rem;
+}
+
+.catalog-header h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(2.2rem, 6vw, 4.2rem);
+  line-height: 0.95;
+}
+
+.catalog-header p {
+  margin: 0;
+  color: #9f9fa6;
+}
+
+.catalog-kicker {
+  color: #ffffff !important;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .catalog-toolbar {
   display: grid;
   gap: 0.55rem;
-  margin-bottom: 2.2rem;
+  margin-bottom: 1.4rem;
 }
 
 .catalog-search-label {
-  color: #202024;
+  color: #a8b3c2;
   font-size: 0.85rem;
   font-weight: 900;
 }
@@ -743,7 +773,8 @@ body:has(.board-detail-page),
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  border-bottom: 2px solid #0f0f10;
+  gap: 0.75rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
 }
 
 .catalog-search-input {
@@ -751,19 +782,18 @@ body:has(.board-detail-page),
   min-height: 46px;
   border: 0;
   background: transparent;
-  color: #0f0f10;
+  color: #ffffff;
   font-size: 1.15rem;
   font-weight: 800;
   outline: none;
 }
 
 .catalog-search-input::placeholder {
-  color: #696364;
+  color: #9f9fa6;
 }
 
 .catalog-count {
-  padding-left: 1rem;
-  color: #3f3a3b;
+  color: #a8b3c2;
   font-size: 0.9rem;
   font-weight: 900;
   white-space: nowrap;
@@ -771,7 +801,11 @@ body:has(.board-detail-page),
 
 .catalog-list {
   display: grid;
-  border-top: 2px solid #0f0f10;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.82);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
 }
 
 .catalog-header-row,
@@ -784,22 +818,27 @@ body:has(.board-detail-page),
 
 .catalog-header-row {
   min-height: 38px;
-  border-bottom: 2px solid #0f0f10;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  color: #a8b3c2;
   font-size: 0.8rem;
   font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 0 1rem;
+  text-transform: uppercase;
 }
 
 .catalog-row {
   width: 100%;
   min-height: 62px;
   border: 0;
-  border-bottom: 1.5px solid #0f0f10;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
   background: transparent;
-  color: #0f0f10;
+  color: #f8fafc;
   font: inherit;
   text-align: left;
   opacity: 0;
   transform: translateY(18px);
+  padding: 0 1rem;
   transition:
     opacity 220ms ease,
     transform 180ms ease,
@@ -815,9 +854,8 @@ body:has(.board-detail-page),
 .catalog-row:hover,
 .catalog-row:focus-visible {
   z-index: 1;
-  padding-left: 0.8rem;
-  background: #0f0f10;
-  color: #f3eeee;
+  background: rgba(248, 250, 252, 0.08);
+  color: #ffffff;
   outline: none;
   transform: translateY(-2px);
 }
@@ -868,7 +906,7 @@ body:has(.board-detail-page),
 }
 
 .catalog-label {
-  color: #60595b;
+  color: #9f9fa6;
   font-size: 0.78rem;
   font-weight: 800;
 }
@@ -879,10 +917,14 @@ body:has(.board-detail-page),
 }
 
 .catalog-empty {
-  padding: 2.5rem 0;
-  border-bottom: 1.5px solid #0f0f10;
-  color: #3f3a3b;
+  padding: 2.5rem 1rem;
+  color: #cbd5e1;
   font-weight: 900;
+  text-align: center;
+}
+
+.catalog-pagination {
+  margin-top: 1.5rem;
 }
 
 .boards-page,
@@ -1184,10 +1226,8 @@ body:has(.board-detail-page),
 
 @media (max-width: 760px) {
   .catalog-page {
-    margin-left: -1rem;
-    margin-right: -1rem;
-    margin-bottom: -1rem;
-    padding: 1.25rem 0.75rem 3rem;
+    width: 100%;
+    padding: 1.5rem 0 3rem;
   }
 
   .catalog-search-wrap {
@@ -1208,12 +1248,12 @@ body:has(.board-detail-page),
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.2rem 0.75rem;
     min-height: 72px;
-    padding: 0.55rem 0;
+    padding: 0.65rem;
   }
 
   .catalog-row:hover,
   .catalog-row:focus-visible {
-    padding-left: 0.55rem;
+    padding-left: 0.65rem;
   }
 
   .catalog-album-cell {
@@ -1226,7 +1266,7 @@ body:has(.board-detail-page),
 
   .catalog-row > .catalog-cell:nth-child(3),
   .catalog-row > .catalog-cell:nth-child(4) {
-    color: #60595b;
+    color: #9f9fa6;
     font-size: 0.85rem;
   }
 
