@@ -3,11 +3,14 @@ import {useState, useEffect } from "react";
 import ReviewForm from "./ReviewForm";
 import AlbumReviewFeed from "./AlbumReviewFeed";
 import LikeButton from "./LikeButton";
+import AsyncState from "./Loading/AsyncState";
 import { useAuth } from "@clerk/react";
 export function AlbumDetail()
 {
     const {id} = useParams();
     const [album, setAlbum] = useState(null);
+    const [isAlbumLoading, setIsAlbumLoading] = useState(true);
+    const [albumError, setAlbumError] = useState("");
     const [reviews, setReviews] = useState([]);
     const [isSaved, setIsSaved] = useState(false);
     const [savedBoardIds, setSavedBoardIds] = useState([]);
@@ -108,11 +111,45 @@ export function AlbumDetail()
         
 
     useEffect(() => {
-        // Fetch album details from the backend API
-        // Use the album ID from the URL parameters
-        fetch(`http://localhost:3000/albums/album/${id}`)
-        .then(res => res.json())
-        .then(data => setAlbum(data))
+        let shouldIgnore = false;
+
+        async function fetchAlbum() {
+            try {
+                setIsAlbumLoading(true);
+                setAlbumError("");
+
+                const res = await fetch(`http://localhost:3000/albums/album/${id}`);
+
+                if (!res.ok) {
+                    throw new Error("Failed to fetch album");
+                }
+
+                const data = await res.json();
+
+                if (!shouldIgnore) {
+                    setAlbum(data);
+                }
+            } catch (error) {
+                console.error("Failed to fetch album", error);
+
+                if (!shouldIgnore) {
+                    setAlbum(null);
+                    setAlbumError("Could not load this album.");
+                }
+            } finally {
+                if (!shouldIgnore) {
+                    setIsAlbumLoading(false);
+                }
+            }
+        }
+
+        if (id) {
+            fetchAlbum();
+        }
+
+        return () => {
+            shouldIgnore = true;
+        };
     }, [id])
 
     async function addReview(review) {
@@ -250,8 +287,20 @@ export function AlbumDetail()
         }
     }
 
-
-     if (!album) return <p>Loading...</p>;
+     if (isAlbumLoading || albumError || !album) {
+        return (
+            <AsyncState
+                isLoading={isAlbumLoading}
+                error={albumError}
+                isEmpty={!isAlbumLoading && !albumError && !album}
+                loadingVariant="detail"
+                loadingMessage="Loading album"
+                errorTitle="Album unavailable"
+                emptyTitle="Album unavailable"
+                emptyBody="This album could not be found."
+            />
+        );
+     }
 
     const artistNames = album.artists?.length ? album.artists : [album.artist];
     const userReviews = reviews.filter((review) => review.userId);

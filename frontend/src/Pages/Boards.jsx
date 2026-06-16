@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@clerk/react";
+import AsyncState from "../Components/Loading/AsyncState";
 
 function BoardPreview({ albums }) {
   const previewAlbums = albums.slice(0, 4);
@@ -25,15 +26,21 @@ export function Boards() {
   const [boards, setBoards] = useState([]);
   const [newTitle, setNewTitle] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
 
   const fetchBoards = useCallback(async function fetchBoards() {
     if (!isSignedIn) {
       setBoards([]);
+      setLoadError("");
+      setIsLoading(false);
       return;
     }
 
     try {
+      setIsLoading(true);
+      setLoadError("");
       const token = await getToken();
       const response = await fetch("http://localhost:3000/boards", {
         headers: {
@@ -47,11 +54,13 @@ export function Boards() {
 
       const data = await response.json();
       setBoards(Array.isArray(data) ? data : []);
-      setError("");
+      setLoadError("");
     } catch (boardsError) {
       console.error(boardsError);
       setBoards([]);
-      setError("Could not load your boards.");
+      setLoadError("Could not load your boards.");
+    } finally {
+      setIsLoading(false);
     }
   }, [getToken, isSignedIn]);
 
@@ -75,6 +84,7 @@ export function Boards() {
 
     try {
       setIsCreating(true);
+      setActionError("");
       const token = await getToken();
       const response = await fetch("http://localhost:3000/boards", {
         method: "POST",
@@ -92,10 +102,10 @@ export function Boards() {
       const board = await response.json();
       setBoards((currentBoards) => [board, ...currentBoards]);
       setNewTitle("");
-      setError("");
+      setActionError("");
     } catch (createError) {
       console.error(createError);
-      setError("Could not create that board.");
+      setActionError("Could not create that board.");
     } finally {
       setIsCreating(false);
     }
@@ -132,20 +142,31 @@ export function Boards() {
         </form>
       </div>
 
-      {error && <p className="boards-error">{error}</p>}
+      {actionError && <p className="boards-error">{actionError}</p>}
 
-      <div className="boards-grid">
-        {sortedBoards.map((board) => (
-          <Link className="board-card" key={board._id} to={`/boards/${board._id}`}>
-            <BoardPreview albums={board.previewAlbums || []} />
-            <h2>{board.title}</h2>
-            <p>
-              {board.itemCount} album{board.itemCount === 1 ? "" : "s"}
-              {board.isDefault ? " · Default" : ""}
-            </p>
-          </Link>
-        ))}
-      </div>
+      <AsyncState
+        isLoading={isLoading}
+        error={loadError}
+        isEmpty={!isLoading && !loadError && sortedBoards.length === 0}
+        loadingVariant="grid"
+        loadingMessage="Loading boards"
+        errorTitle="Boards unavailable"
+        emptyTitle="No boards yet"
+        emptyBody="Create a board to start grouping albums."
+      >
+        <div className="boards-grid">
+          {sortedBoards.map((board) => (
+            <Link className="board-card" key={board._id} to={`/boards/${board._id}`}>
+              <BoardPreview albums={board.previewAlbums || []} />
+              <h2>{board.title}</h2>
+              <p>
+                {board.itemCount} album{board.itemCount === 1 ? "" : "s"}
+                {board.isDefault ? " · Default" : ""}
+              </p>
+            </Link>
+          ))}
+        </div>
+      </AsyncState>
     </section>
   );
 }

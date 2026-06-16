@@ -8,6 +8,7 @@ import {
   useUser,
 } from "@clerk/react";
 import LikeButton from "../Components/LikeButton";
+import AsyncState from "../Components/Loading/AsyncState";
 
 const tabs = [
   { id: "overview", label: "Overview" },
@@ -957,9 +958,10 @@ export function Account() {
   function renderActiveTab() {
     if (isLoading) {
       return (
-        <ProfileEmptyState
-          title="Loading profile"
-          body={canManageProfile
+        <AsyncState
+          isLoading
+          loadingVariant="profile"
+          loadingMessage={canManageProfile
             ? "Pulling together your saved albums and reviews."
             : "Pulling together this listener's profile."}
         />
@@ -967,7 +969,7 @@ export function Account() {
     }
 
     if (error) {
-      return <ProfileEmptyState title="Profile unavailable" body={error} />;
+      return <AsyncState error={error} errorTitle="Profile unavailable" />;
     }
 
     if (activeTab === "overview") {

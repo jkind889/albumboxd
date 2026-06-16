@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import AsyncState from "../Components/Loading/AsyncState";
 
 const CATALOG_PAGE_LIMIT = 24;
 
@@ -153,35 +154,39 @@ export function Albums() {
           <span>Tracks</span>
         </div>
 
-        {albums.map((album) => (
-          <button
-            className="catalog-row"
-            type="button"
-            key={album.id}
-            onClick={() => navigate(`/album/${album.id}`)}
-          >
-            <span className="catalog-cell catalog-album-cell">
-              <img
-                className="catalog-cover"
-                src={album.cover || album.imgs?.[0]?.url || "/favicon.svg"}
-                alt=""
-              />
-              <span className="catalog-title-wrap">
-                <span className="catalog-title">{album.title}</span>
-                <span className="catalog-label">{album.label || album.albumType}</span>
+        <AsyncState
+          isLoading={loading}
+          error={error}
+          isEmpty={!loading && !error && albums.length === 0}
+          loadingVariant="list"
+          loadingMessage="Loading album catalog"
+          errorTitle="Catalog unavailable"
+          emptyTitle="No albums matched that search."
+        >
+          {albums.map((album) => (
+            <button
+              className="catalog-row"
+              type="button"
+              key={album.id}
+              onClick={() => navigate(`/album/${album.id}`)}
+            >
+              <span className="catalog-cell catalog-album-cell">
+                <img
+                  className="catalog-cover"
+                  src={album.cover || album.imgs?.[0]?.url || "/favicon.svg"}
+                  alt=""
+                />
+                <span className="catalog-title-wrap">
+                  <span className="catalog-title">{album.title}</span>
+                  <span className="catalog-label">{album.label || album.albumType}</span>
+                </span>
               </span>
-            </span>
-            <span className="catalog-cell">{album.artist}</span>
-            <span className="catalog-cell">{album.year || "unknown"}</span>
-            <span className="catalog-cell">{album.totalTracks || album.tracks?.length || 0}</span>
-          </button>
-        ))}
-
-        {!loading && !error && albums.length === 0 && (
-          <div className="catalog-empty">No albums matched that search.</div>
-        )}
-
-        {error && <div className="catalog-empty">{error}</div>}
+              <span className="catalog-cell">{album.artist}</span>
+              <span className="catalog-cell">{album.year || "unknown"}</span>
+              <span className="catalog-cell">{album.totalTracks || album.tracks?.length || 0}</span>
+            </button>
+          ))}
+        </AsyncState>
       </div>
 
       {(page > 1 || hasNextPage) && (

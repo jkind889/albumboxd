@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@clerk/react";
+import AsyncState from "../Components/Loading/AsyncState";
 
 function getArtistName(album) {
   if (Array.isArray(album.artists) && album.artists.length > 0) {
@@ -18,16 +19,22 @@ export function BoardDetail() {
   const [title, setTitle] = useState("");
   const [query, setQuery] = useState("");
   const [viewMode, setViewMode] = useState("grid");
-  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
   const [isSavingTitle, setIsSavingTitle] = useState(false);
 
   const fetchBoard = useCallback(async function fetchBoard() {
     if (!isSignedIn || !boardId) {
       setBoard(null);
+      setLoadError("");
+      setIsLoading(false);
       return;
     }
 
     try {
+      setIsLoading(true);
+      setLoadError("");
       const token = await getToken();
       const response = await fetch(`http://localhost:3000/boards/${boardId}`, {
         headers: {
@@ -42,11 +49,13 @@ export function BoardDetail() {
       const data = await response.json();
       setBoard(data);
       setTitle(data.title || "");
-      setError("");
+      setLoadError("");
     } catch (boardError) {
       console.error(boardError);
       setBoard(null);
-      setError("Could not load this board.");
+      setLoadError("Could not load this board.");
+    } finally {
+      setIsLoading(false);
     }
   }, [boardId, getToken, isSignedIn]);
 
@@ -81,6 +90,7 @@ export function BoardDetail() {
 
     try {
       setIsSavingTitle(true);
+      setActionError("");
       const token = await getToken();
       const response = await fetch(`http://localhost:3000/boards/${board._id}`, {
         method: "PATCH",
@@ -98,10 +108,10 @@ export function BoardDetail() {
       const updatedBoard = await response.json();
       setBoard((currentBoard) => ({ ...currentBoard, ...updatedBoard }));
       setTitle(updatedBoard.title);
-      setError("");
+      setActionError("");
     } catch (renameError) {
       console.error(renameError);
-      setError("Could not rename this board.");
+      setActionError("Could not rename this board.");
     } finally {
       setIsSavingTitle(false);
     }
@@ -113,6 +123,7 @@ export function BoardDetail() {
     }
 
     try {
+      setActionError("");
       const token = await getToken();
       const response = await fetch(`http://localhost:3000/boards/${board._id}`, {
         method: "DELETE",
@@ -128,7 +139,7 @@ export function BoardDetail() {
       navigate("/boards");
     } catch (deleteError) {
       console.error(deleteError);
-      setError("Could not delete this board.");
+      setActionError("Could not delete this board.");
     }
   }
 
@@ -138,6 +149,7 @@ export function BoardDetail() {
     }
 
     try {
+      setActionError("");
       const token = await getToken();
       const response = await fetch(`http://localhost:3000/boards/${board._id}/albums/${spotifyId}`, {
         method: "DELETE",
@@ -157,7 +169,7 @@ export function BoardDetail() {
       }));
     } catch (removeError) {
       console.error(removeError);
-      setError("Could not remove that album.");
+      setActionError("Could not remove that album.");
     }
   }
 
@@ -172,13 +184,20 @@ export function BoardDetail() {
     );
   }
 
-  if (!board) {
+  if (isLoading || loadError || !board) {
     return (
       <section className="board-detail-page">
-        <div className="boards-empty">
-          <h1>{error || "Loading board..."}</h1>
-          <Link to="/boards">Back to boards</Link>
-        </div>
+        <AsyncState
+          isLoading={isLoading}
+          error={loadError}
+          isEmpty={!isLoading && !loadError && !board}
+          loadingVariant="detail"
+          loadingMessage="Loading board"
+          errorTitle="Board unavailable"
+          emptyTitle="Board unavailable"
+          emptyBody="This board could not be found."
+        />
+        <Link className="board-back-link" to="/boards">Back to boards</Link>
       </section>
     );
   }
@@ -231,7 +250,7 @@ export function BoardDetail() {
         </div>
       </div>
 
-      {error && <p className="boards-error">{error}</p>}
+      {actionError && <p className="boards-error">{actionError}</p>}
 
       {filteredAlbums.length === 0 ? (
         <div className="boards-empty">
