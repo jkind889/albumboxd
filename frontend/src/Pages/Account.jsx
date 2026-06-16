@@ -119,6 +119,9 @@ export function Account() {
     bio: "",
     spotifyProfileUrl: "",
     favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReview: null,
+    pinnedBoard: null,
     followerCount: 0,
     followingCount: 0,
     isFollowing: false,
@@ -150,6 +153,9 @@ export function Account() {
           bio: "",
           spotifyProfileUrl: "",
           favoriteAlbums: [],
+          listeningNextAlbum: null,
+          pinnedReview: null,
+          pinnedBoard: null,
           followerCount: 0,
           followingCount: 0,
           isFollowing: false,
@@ -243,6 +249,9 @@ export function Account() {
           bio: typeof profileData.bio === "string" ? profileData.bio : "",
           spotifyProfileUrl: typeof profileData.spotifyProfileUrl === "string" ? profileData.spotifyProfileUrl : "",
           favoriteAlbums: Array.isArray(profileData.favoriteAlbums) ? profileData.favoriteAlbums : [],
+          listeningNextAlbum: profileData.listeningNextAlbum || null,
+          pinnedReview: profileData.pinnedReview || null,
+          pinnedBoard: profileData.pinnedBoard || null,
           followerCount: Number(profileData.followerCount) || 0,
           followingCount: Number(profileData.followingCount) || 0,
           isFollowing: Boolean(profileData.isFollowing),
@@ -262,6 +271,9 @@ export function Account() {
             bio: "",
             spotifyProfileUrl: "",
             favoriteAlbums: [],
+            listeningNextAlbum: null,
+            pinnedReview: null,
+            pinnedBoard: null,
             followerCount: 0,
             followingCount: 0,
             isFollowing: false,
@@ -326,9 +338,13 @@ export function Account() {
   const latestReviews = useMemo(() => sortedReviews.slice(0, 2), [sortedReviews]);
   const latestSidebarActivity = useMemo(() => activityItems.slice(0, 4), [activityItems]);
   const favoriteAlbums = profile.favoriteAlbums;
+  const profileUserId = profile.userId || publicUserId || user?.id || "";
   const moreReviewsPath = isPublicProfile
     ? `/profile/${encodeURIComponent(publicUserId)}/reviews`
     : "/viewreviews";
+  const socialPath = isPublicProfile && profileUserId
+    ? `/profile/${encodeURIComponent(profileUserId)}/network`
+    : "/account/network";
 
   async function removeSavedAlbum(spotifyId) {
     const token = await getToken();
@@ -542,9 +558,72 @@ export function Account() {
 
   function renderOverview() {
     const previewPopularReviews = popularReviews.slice(0, 2);
+    const pinnedBoardPath = profile.pinnedBoard?._id
+      ? isPublicProfile
+        ? `/profile/${encodeURIComponent(profileUserId)}/boards/${profile.pinnedBoard._id}`
+        : `/boards/${profile.pinnedBoard._id}`
+      : "";
 
     return (
       <div className="profile-overview-grid">
+        <section className="profile-panel profile-wide-panel">
+          <div className="profile-section-header">
+            <h2>Profile Pins</h2>
+          </div>
+          <div className="profile-pin-grid">
+            {profile.listeningNextAlbum ? (
+              <Link className="profile-pin-card profile-listening-next-card" to={`/album/${profile.listeningNextAlbum.spotifyId}`}>
+                <AlbumCover src={profile.listeningNextAlbum.cover} title={profile.listeningNextAlbum.title} />
+                <div>
+                  <span>Listening Next</span>
+                  <h3>{profile.listeningNextAlbum.title || "Untitled album"}</h3>
+                  <p>{getArtistName(profile.listeningNextAlbum)}</p>
+                </div>
+              </Link>
+            ) : (
+              <div className="profile-pin-card profile-pin-empty">
+                <span>Listening Next</span>
+                <h3>No album queued</h3>
+                <p>{canManageProfile ? "Choose an album from edit profile." : "This listener has not picked one yet."}</p>
+              </div>
+            )}
+
+            {profile.pinnedReview ? (
+              <Link className="profile-pin-card" to={`/album/${profile.pinnedReview.spotifyId}`}>
+                <AlbumCover src={profile.pinnedReview.cover} title={profile.pinnedReview.title} />
+                <div>
+                  <span>Pinned Review</span>
+                  <h3>{profile.pinnedReview.title || "Untitled album"}</h3>
+                  <p>{profile.pinnedReview.reviewText || `${profile.pinnedReview.rating}/5`}</p>
+                </div>
+              </Link>
+            ) : (
+              <div className="profile-pin-card profile-pin-empty">
+                <span>Pinned Review</span>
+                <h3>No review pinned</h3>
+                <p>{canManageProfile ? "Pin one of your reviews from edit profile." : "This listener has not pinned a review yet."}</p>
+              </div>
+            )}
+
+            {profile.pinnedBoard ? (
+              <Link className="profile-pin-card" to={pinnedBoardPath}>
+                <BoardPreview albums={profile.pinnedBoard.previewAlbums || []} />
+                <div>
+                  <span>Pinned Board</span>
+                  <h3>{profile.pinnedBoard.title || "Untitled board"}</h3>
+                  <p>{profile.pinnedBoard.itemCount || 0} album{profile.pinnedBoard.itemCount === 1 ? "" : "s"}</p>
+                </div>
+              </Link>
+            ) : (
+              <div className="profile-pin-card profile-pin-empty">
+                <span>Pinned Board</span>
+                <h3>No board pinned</h3>
+                <p>{canManageProfile ? "Pin one of your boards from edit profile." : "This listener has not pinned a board yet."}</p>
+              </div>
+            )}
+          </div>
+        </section>
+
         <section className="profile-panel profile-wide-panel">
           <div className="profile-section-header">
             <h2>Favorite Albums</h2>
@@ -1077,14 +1156,20 @@ export function Account() {
                   <span>Reviews</span>
                   <strong>{reviews.length}</strong>
                 </button>
-                <div className="profile-hero-stat">
+                <Link
+                  to={`${socialPath}?tab=followers`}
+                  state={{ profileUser: publicProfileState, activeTab: "followers" }}
+                >
                   <span>Followers</span>
                   <strong>{profile.followerCount}</strong>
-                </div>
-                <div className="profile-hero-stat">
+                </Link>
+                <Link
+                  to={`${socialPath}?tab=following`}
+                  state={{ profileUser: publicProfileState, activeTab: "following" }}
+                >
                   <span>Following</span>
                   <strong>{profile.followingCount}</strong>
-                </div>
+                </Link>
               </div>
               {canManageProfile && (
                 <div className="profile-hero-actions">

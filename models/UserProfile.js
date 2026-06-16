@@ -21,6 +21,21 @@ const favoriteAlbumSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const profileAlbumSchema = new mongoose.Schema(
+  {
+    spotifyId: {
+      type: String,
+      required: true,
+    },
+    albumCatalogId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AlbumCatalog",
+      required: true,
+    },
+  },
+  { _id: false },
+);
+
 const userProfileSchema = new mongoose.Schema(
   {
     userId: {
@@ -48,6 +63,20 @@ const userProfileSchema = new mongoose.Schema(
         },
         message: "A profile can have at most five favorite albums.",
       },
+    },
+    listeningNextAlbum: {
+      type: profileAlbumSchema,
+      default: null,
+    },
+    pinnedReviewId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Review",
+      default: null,
+    },
+    pinnedBoardId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Board",
+      default: null,
     },
   },
   { timestamps: true },

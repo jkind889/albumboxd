@@ -8,6 +8,7 @@ import FrontPage from "./Pages/FrontPage";
 import Layout from "./Layout";
 import Account from "./Pages/Account";
 import EditProfile from "./Pages/EditProfile";
+import ProfileNetwork from "./Pages/ProfileNetwork";
 import Boards from "./Pages/Boards";
 import BoardDetail from "./Pages/BoardDetail";
 import ProtectedRoute from "./Components/ProtectedRoute";
@@ -35,7 +36,10 @@ export function App() {
               <ViewReviews />
             </ProtectedRoute>} />
             <Route path="/account" element={<Account />} />
+            <Route path="/account/network" element={<ProfileNetwork />} />
             <Route path="/profile/:userId/reviews" element={<ViewReviews />} />
+            <Route path="/profile/:userId/network" element={<ProfileNetwork />} />
+            <Route path="/profile/:userId/boards/:boardId" element={<BoardDetail />} />
             <Route path="/profile/:userId" element={<Account />} />
             <Route path="/account/edit" element={
               <ProtectedRoute>

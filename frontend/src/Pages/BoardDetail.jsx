@@ -12,9 +12,10 @@ function getArtistName(album) {
 }
 
 export function BoardDetail() {
-  const { boardId } = useParams();
+  const { boardId, userId } = useParams();
   const navigate = useNavigate();
   const { getToken, isSignedIn } = useAuth();
+  const isPublicBoard = Boolean(userId);
   const [board, setBoard] = useState(null);
   const [title, setTitle] = useState("");
   const [query, setQuery] = useState("");
@@ -25,7 +26,7 @@ export function BoardDetail() {
   const [isSavingTitle, setIsSavingTitle] = useState(false);
 
   const fetchBoard = useCallback(async function fetchBoard() {
-    if (!isSignedIn || !boardId) {
+    if ((!isSignedIn && !isPublicBoard) || !boardId) {
       setBoard(null);
       setLoadError("");
       setIsLoading(false);
@@ -35,11 +36,12 @@ export function BoardDetail() {
     try {
       setIsLoading(true);
       setLoadError("");
-      const token = await getToken();
-      const response = await fetch(`http://localhost:3000/boards/${boardId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const token = isSignedIn ? await getToken() : null;
+      const boardUrl = isPublicBoard
+        ? `http://localhost:3000/profile/${encodeURIComponent(userId)}/boards/${boardId}`
+        : `http://localhost:3000/boards/${boardId}`;
+      const response = await fetch(boardUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (!response.ok) {
@@ -57,7 +59,7 @@ export function BoardDetail() {
     } finally {
       setIsLoading(false);
     }
-  }, [boardId, getToken, isSignedIn]);
+  }, [boardId, getToken, isPublicBoard, isSignedIn, userId]);
 
   useEffect(() => {
     fetchBoard();
@@ -173,7 +175,7 @@ export function BoardDetail() {
     }
   }
 
-  if (!isSignedIn) {
+  if (!isSignedIn && !isPublicBoard) {
     return (
       <section className="board-detail-page">
         <div className="boards-empty">
@@ -197,7 +199,9 @@ export function BoardDetail() {
           emptyTitle="Board unavailable"
           emptyBody="This board could not be found."
         />
-        <Link className="board-back-link" to="/boards">Back to boards</Link>
+        <Link className="board-back-link" to={isPublicBoard ? `/profile/${userId}` : "/boards"}>
+          {isPublicBoard ? "Back to profile" : "Back to boards"}
+        </Link>
       </section>
     );
   }
@@ -205,18 +209,24 @@ export function BoardDetail() {
   return (
     <section className="board-detail-page">
       <div className="board-detail-header">
-        <Link className="board-back-link" to="/boards">Boards</Link>
-        <form className="board-title-form" onSubmit={renameBoard}>
-          <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            maxLength={80}
-            aria-label="Board title"
-          />
-          <button type="submit" disabled={!title.trim() || title.trim() === board.title || isSavingTitle}>
-            Rename
-          </button>
-        </form>
+        <Link className="board-back-link" to={isPublicBoard ? `/profile/${userId}` : "/boards"}>
+          {isPublicBoard ? "Profile" : "Boards"}
+        </Link>
+        {isPublicBoard ? (
+          <h1>{board.title}</h1>
+        ) : (
+          <form className="board-title-form" onSubmit={renameBoard}>
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              maxLength={80}
+              aria-label="Board title"
+            />
+            <button type="submit" disabled={!title.trim() || title.trim() === board.title || isSavingTitle}>
+              Rename
+            </button>
+          </form>
+        )}
         <p>
           {board.isDefault ? "Default board" : "Board"} · {board.itemCount} album{board.itemCount === 1 ? "" : "s"}
         </p>
@@ -242,7 +252,7 @@ export function BoardDetail() {
               List
             </button>
           </div>
-          {!board.isDefault && (
+          {!isPublicBoard && !board.isDefault && (
             <button className="board-danger-button" type="button" onClick={deleteBoard}>
               Delete
             </button>
@@ -266,7 +276,9 @@ export function BoardDetail() {
                 <h2>{album.title || "Untitled album"}</h2>
                 <p>{getArtistName(album)}</p>
               </Link>
-              <button type="button" onClick={() => removeAlbum(album.spotifyId)}>Remove</button>
+              {!isPublicBoard && (
+                <button type="button" onClick={() => removeAlbum(album.spotifyId)}>Remove</button>
+              )}
             </article>
           ))}
         </div>
@@ -279,7 +291,9 @@ export function BoardDetail() {
                 <strong>{album.title || "Untitled album"}</strong>
                 <em>{getArtistName(album)}</em>
               </Link>
-              <button type="button" onClick={() => removeAlbum(album.spotifyId)}>Remove</button>
+              {!isPublicBoard && (
+                <button type="button" onClick={() => removeAlbum(album.spotifyId)}>Remove</button>
+              )}
             </article>
           ))}
         </div>

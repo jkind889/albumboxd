@@ -4,6 +4,8 @@ const UserProfile = require("../models/UserProfile");
 const Follow = require("../models/Follow");
 const Review = require("../models/Reviews");
 const Album = require("../models/Albums");
+const Board = require("../models/Board");
+const BoardItem = require("../models/BoardItem");
 const Like = require("../models/Like");
 const {
   getOrCreateAlbumCatalog,
@@ -15,6 +17,7 @@ const MAX_BIO_LENGTH = 280;
 const MAX_FAVORITE_ALBUMS = 5;
 const DEFAULT_AUTHOR_USERNAME = "albumboxd user";
 const DEFAULT_ACTIVITY_LIMIT = 20;
+const BOARD_PREVIEW_LIMIT = 4;
 const SPOTIFY_PROFILE_HOST = "open.spotify.com";
 const SPOTIFY_PROFILE_PATH_PREFIX = "/user/";
 
@@ -43,17 +46,109 @@ function getCatalogAlbum(favoriteAlbum) {
   };
 }
 
-function formatProfile(profile) {
+function getProfileAlbum(profileAlbum) {
+  if (!profileAlbum) {
+    return null;
+  }
+
+  const catalogAlbum = profileAlbum.albumCatalogId;
+
+  if (catalogAlbum && typeof catalogAlbum === "object" && catalogAlbum.spotifyId) {
+    return catalogAlbum;
+  }
+
+  return {
+    spotifyId: profileAlbum.spotifyId,
+    title: "Unknown Album",
+    artist: "Unknown Artist",
+  };
+}
+
+function formatPinnedReview(review) {
+  if (!review || typeof review !== "object") {
+    return null;
+  }
+
+  const source = toPlainDocument(review);
+
+  if (!source.spotifyId) {
+    return null;
+  }
+
+  return {
+    _id: source._id,
+    userId: source.userId,
+    spotifyId: source.spotifyId,
+    title: source.title,
+    artist: source.artist,
+    cover: source.cover || "",
+    reviewText: source.reviewText || "",
+    rating: source.rating,
+    date: source.date,
+  };
+}
+
+async function formatPinnedBoard(board) {
+  if (!board || typeof board !== "object") {
+    return null;
+  }
+
+  const source = toPlainDocument(board);
+
+  if (!source._id) {
+    return null;
+  }
+
+  const [items, count] = await Promise.all([
+    BoardItem.find({ boardId: source._id })
+      .populate("albumCatalogId")
+      .sort({ savedAt: -1 })
+      .limit(BOARD_PREVIEW_LIMIT),
+    BoardItem.countDocuments({ boardId: source._id }),
+  ]);
+
+  return {
+    _id: source._id,
+    userId: source.userId,
+    title: source.title,
+    isDefault: Boolean(source.isDefault),
+    createdAt: source.createdAt,
+    updatedAt: source.updatedAt,
+    itemCount: count,
+    previewAlbums: items.map(formatSavedAlbum),
+  };
+}
+
+async function formatBoardDetail(board) {
+  const source = toPlainDocument(board);
+  const items = await BoardItem.find({ boardId: source._id })
+    .populate("albumCatalogId")
+    .sort({ savedAt: -1 });
+  const summary = await formatPinnedBoard(board);
+
+  return {
+    ...summary,
+    albums: items.map(formatSavedAlbum),
+  };
+}
+
+async function formatProfile(profile) {
   const source = typeof profile.toObject === "function" ? profile.toObject() : profile;
   const favoriteAlbums = [...(source.favoriteAlbums || [])]
     .sort((first, second) => first.rank - second.rank)
     .map((favoriteAlbum) => normalizeCatalogAlbum(getCatalogAlbum(favoriteAlbum)));
+  const listeningNextAlbum = source.listeningNextAlbum
+    ? normalizeCatalogAlbum(getProfileAlbum(source.listeningNextAlbum))
+    : null;
 
   return {
     userId: source.userId,
     bio: source.bio || "",
     spotifyProfileUrl: source.spotifyProfileUrl || "",
     favoriteAlbums,
+    listeningNextAlbum,
+    pinnedReview: formatPinnedReview(source.pinnedReviewId),
+    pinnedBoard: await formatPinnedBoard(source.pinnedBoardId),
   };
 }
 
@@ -97,7 +192,7 @@ async function getSocialStats(userId, viewerId) {
 }
 
 async function formatProfileWithSocial(profile, viewerId) {
-  const formattedProfile = formatProfile(profile);
+  const formattedProfile = await formatProfile(profile);
   const socialStats = await getSocialStats(formattedProfile.userId, viewerId);
 
   return {
@@ -108,7 +203,10 @@ async function formatProfileWithSocial(profile, viewerId) {
 
 async function getOrCreateProfile(userId) {
   const existingProfile = await UserProfile.findOne({ userId })
-    .populate("favoriteAlbums.albumCatalogId");
+    .populate("favoriteAlbums.albumCatalogId")
+    .populate("listeningNextAlbum.albumCatalogId")
+    .populate("pinnedReviewId")
+    .populate("pinnedBoardId");
 
   if (existingProfile) {
     return existingProfile;
@@ -119,6 +217,9 @@ async function getOrCreateProfile(userId) {
     bio: "",
     spotifyProfileUrl: "",
     favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReviewId: null,
+    pinnedBoardId: null,
   });
 }
 
@@ -308,6 +409,27 @@ async function getUserActivity(userId, { includeSavedAlbums, viewerId = "" }) {
     .slice(0, DEFAULT_ACTIVITY_LIMIT);
 }
 
+function getProfileUserFromAuthor(author) {
+  return {
+    userId: author.userId,
+    username: author.username,
+    imageUrl: author.imageUrl,
+  };
+}
+
+async function getSocialUsers(rows, key) {
+  const userIds = [...new Set(
+    rows
+      .map((follow) => toPlainDocument(follow)[key])
+      .filter(Boolean),
+  )];
+  const authorsByUserId = await getAuthorsByUserId(userIds);
+
+  return userIds.map((userId) => getProfileUserFromAuthor(
+    authorsByUserId.get(userId) || getAuthorFromUser(userId),
+  ));
+}
+
 router.get("/me", ensureAuthenticated, async(req, res) => {
   try {
     const profile = await getOrCreateProfile(req.userId);
@@ -354,6 +476,30 @@ router.get("/me/network", ensureAuthenticated, async(req, res) => {
   }
 });
 
+router.get("/me/social", ensureAuthenticated, async(req, res) => {
+  try {
+    const [followerRows, followingRows] = await Promise.all([
+      Follow.find({ followingId: req.userId }),
+      Follow.find({ followerId: req.userId }),
+    ]);
+    const [followers, following] = await Promise.all([
+      getSocialUsers(followerRows, "followerId"),
+      getSocialUsers(followingRows, "followingId"),
+    ]);
+
+    res.json({
+      userId: req.userId,
+      followers,
+      following,
+      followerCount: followers.length,
+      followingCount: following.length,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to fetch network" });
+  }
+});
+
 router.get("/me/activity", ensureAuthenticated, async(req, res) => {
   try {
     res.json(await getUserActivity(req.userId, { includeSavedAlbums: true, viewerId: req.userId }));
@@ -370,6 +516,15 @@ router.put("/me", ensureAuthenticated, async(req, res) => {
     const favoriteAlbumIds = Array.isArray(req.body.favoriteAlbumIds)
       ? req.body.favoriteAlbumIds.map((id) => String(id).trim()).filter(Boolean)
       : [];
+    const listeningNextAlbumId = typeof req.body.listeningNextAlbumId === "string"
+      ? req.body.listeningNextAlbumId.trim()
+      : "";
+    const pinnedReviewId = typeof req.body.pinnedReviewId === "string"
+      ? req.body.pinnedReviewId.trim()
+      : "";
+    const pinnedBoardId = typeof req.body.pinnedBoardId === "string"
+      ? req.body.pinnedBoardId.trim()
+      : "";
 
     if (bio.length > MAX_BIO_LENGTH) {
       return res.status(400).json({ error: "Bio must be 280 characters or fewer" });
@@ -398,6 +553,21 @@ router.put("/me", ensureAuthenticated, async(req, res) => {
         };
       }),
     );
+    const listeningNextCatalogAlbum = listeningNextAlbumId
+      ? await getOrCreateAlbumCatalog(listeningNextAlbumId)
+      : null;
+    const [pinnedReview, pinnedBoard] = await Promise.all([
+      pinnedReviewId ? Review.findOne({ _id: pinnedReviewId, userId: req.userId }) : Promise.resolve(null),
+      pinnedBoardId ? Board.findOne({ _id: pinnedBoardId, userId: req.userId }) : Promise.resolve(null),
+    ]);
+
+    if (pinnedReviewId && !pinnedReview) {
+      return res.status(400).json({ error: "Pinned review must belong to your profile" });
+    }
+
+    if (pinnedBoardId && !pinnedBoard) {
+      return res.status(400).json({ error: "Pinned board must belong to your profile" });
+    }
 
     const profile = await UserProfile.findOneAndUpdate(
       { userId: req.userId },
@@ -407,6 +577,14 @@ router.put("/me", ensureAuthenticated, async(req, res) => {
           bio,
           spotifyProfileUrl,
           favoriteAlbums,
+          listeningNextAlbum: listeningNextCatalogAlbum
+            ? {
+              spotifyId: listeningNextAlbumId,
+              albumCatalogId: listeningNextCatalogAlbum._id,
+            }
+            : null,
+          pinnedReviewId: pinnedReviewId || null,
+          pinnedBoardId: pinnedBoardId || null,
         },
       },
       {
@@ -414,7 +592,11 @@ router.put("/me", ensureAuthenticated, async(req, res) => {
         upsert: true,
         setDefaultsOnInsert: true,
       },
-    ).populate("favoriteAlbums.albumCatalogId");
+    )
+      .populate("favoriteAlbums.albumCatalogId")
+      .populate("listeningNextAlbum.albumCatalogId")
+      .populate("pinnedReviewId")
+      .populate("pinnedBoardId");
 
     res.json(await formatProfileWithSocial(profile, req.userId));
   } catch (error) {
@@ -465,6 +647,67 @@ router.put("/:userId/follow", ensureAuthenticated, async(req, res) => {
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Failed to update follow status" });
+  }
+});
+
+router.get("/:userId/boards/:boardId", async(req, res) => {
+  try {
+    const targetUserId = String(req.params.userId || "").trim();
+    const boardId = String(req.params.boardId || "").trim();
+
+    if (!targetUserId || !boardId) {
+      return res.status(400).json({ error: "User id and board id are required" });
+    }
+
+    if (!(await isFollowableUser(targetUserId))) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const board = await Board.findOne({ _id: boardId, userId: targetUserId });
+
+    if (!board) {
+      return res.status(404).json({ error: "Board not found" });
+    }
+
+    res.json(await formatBoardDetail(board));
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to fetch board" });
+  }
+});
+
+router.get("/:userId/network", async(req, res) => {
+  try {
+    const targetUserId = String(req.params.userId || "").trim();
+
+    if (!targetUserId) {
+      return res.status(400).json({ error: "User id is required" });
+    }
+
+    if (!(await isFollowableUser(targetUserId))) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const [followerRows, followingRows] = await Promise.all([
+      Follow.find({ followingId: targetUserId }),
+      Follow.find({ followerId: targetUserId }),
+    ]);
+
+    const [followers, following] = await Promise.all([
+      getSocialUsers(followerRows, "followerId"),
+      getSocialUsers(followingRows, "followingId"),
+    ]);
+
+    res.json({
+      userId: targetUserId,
+      followers,
+      following,
+      followerCount: followers.length,
+      followingCount: following.length,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to fetch network" });
   }
 });
 
