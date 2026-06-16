@@ -5,6 +5,7 @@ const profileModelPath = require.resolve("../models/UserProfile");
 const followModelPath = require.resolve("../models/Follow");
 const reviewModelPath = require.resolve("../models/Reviews");
 const albumModelPath = require.resolve("../models/Albums");
+const likeModelPath = require.resolve("../models/Like");
 const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const clerkPath = require.resolve("@clerk/express");
 const profileRoutePath = require.resolve("../routes/profile");
@@ -18,6 +19,7 @@ let reviewUserIds = new Set();
 let followDocuments = [];
 let activityReviewDocuments = [];
 let activitySavedAlbumDocuments = [];
+let likeDocuments = [];
 let clerkUsers = [];
 let shouldRejectClerkLookup = false;
 const findOneCalls = [];
@@ -36,6 +38,7 @@ const followFindCalls = [];
 const followUpdateCalls = [];
 const followDeleteCalls = [];
 const getUserListCalls = [];
+const likeFindCalls = [];
 
 function chainResult(result) {
   return {
@@ -71,6 +74,7 @@ function normalizeCatalogAlbum(album) {
 
 function loadProfileRouter() {
   delete require.cache[profileRoutePath];
+  delete require.cache[likeModelPath];
 
   require.cache[profileModelPath] = {
     id: profileModelPath,
@@ -203,6 +207,23 @@ function loadProfileRouter() {
     },
   };
 
+  require.cache[likeModelPath] = {
+    id: likeModelPath,
+    filename: likeModelPath,
+    loaded: true,
+    exports: {
+      find: async (query) => {
+        likeFindCalls.push(query);
+        const reviewIds = query.reviewId?.$in?.map(String) || [];
+
+        return likeDocuments.filter((like) => (
+          like.targetType === query.targetType
+          && reviewIds.includes(String(like.reviewId))
+        ));
+      },
+    },
+  };
+
   require.cache[albumCatalogHelperPath] = {
     id: albumCatalogHelperPath,
     filename: albumCatalogHelperPath,
@@ -305,6 +326,7 @@ test.beforeEach(() => {
   followDocuments = [];
   activityReviewDocuments = [];
   activitySavedAlbumDocuments = [];
+  likeDocuments = [];
   clerkUsers = [];
   shouldRejectClerkLookup = false;
   findOneCalls.length = 0;
@@ -323,6 +345,7 @@ test.beforeEach(() => {
   followUpdateCalls.length = 0;
   followDeleteCalls.length = 0;
   getUserListCalls.length = 0;
+  likeFindCalls.length = 0;
 });
 
 test("GET /profile/me creates and returns an empty current user profile", async () => {
@@ -623,6 +646,18 @@ test("GET /profile/me/network returns followed user review activity newest first
       imageUrl: "https://example.com/bill.jpg",
     },
   ];
+  likeDocuments = [
+    {
+      userId: "user_clerk_123",
+      targetType: "review",
+      reviewId: "newer_review",
+    },
+    {
+      userId: "other_listener",
+      targetType: "review",
+      reviewId: "newer_review",
+    },
+  ];
 
   const response = await callRoute("get", "/me/network");
 
@@ -654,6 +689,8 @@ test("GET /profile/me/network returns followed user review activity newest first
     },
     rating: 4,
     reviewText: "Hard bop glow.",
+    likeCount: 2,
+    likedByViewer: true,
   });
 });
 

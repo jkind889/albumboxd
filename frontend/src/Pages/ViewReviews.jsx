@@ -8,6 +8,7 @@ export function ViewReviews()
     const [reviews, setReviews] = useState([]);
     const [error, setError] = useState("");
     const [likeMessage, setLikeMessage] = useState("");
+    const [reviewDateSort, setReviewDateSort] = useState("latest");
     const  { getToken, userId: viewerId } = useAuth();
     const { userId } = useParams();
     const isPublicReviewList = Boolean(userId);
@@ -116,10 +117,12 @@ export function ViewReviews()
 
 
     const recentReviews = useMemo(() => {
+        const sortDirection = reviewDateSort === "earliest" ? 1 : -1;
+
         return [...reviews]
-            .sort((a, b) => new Date(b.date) - new Date(a.date)) 
+            .sort((a, b) => sortDirection * (new Date(a.date) - new Date(b.date)))
             .slice(0, 5);
-    }, [reviews]);
+    }, [reviews, reviewDateSort]);
 
     const popularReviews = useMemo(() => {
         return [...reviews]
@@ -137,11 +140,20 @@ export function ViewReviews()
         <main className="reviews-page">
             <section className="reviews-section">
                 <div className="reviews-section-header">
-                    <h1>Reviews</h1>
-                    <div className="reviews-filter-row" aria-hidden="true">
-                        <span>Rating</span>
-                        <span>Diary Year</span>
-                        <span>Sort by When Reviewed</span>
+                    <div>
+                        <p className="reviews-kicker">Review shelf</p>
+                        <h1>Reviews</h1>
+                    </div>
+                    <div className="reviews-sort-control">
+                        <label htmlFor="review-date-sort">When reviewed</label>
+                        <select
+                            id="review-date-sort"
+                            value={reviewDateSort}
+                            onChange={(event) => setReviewDateSort(event.target.value)}
+                        >
+                            <option value="latest">Latest first</option>
+                            <option value="earliest">Earliest first</option>
+                        </select>
                     </div>
                 </div>
                 {error && <p className="review-list-error">{error}</p>}

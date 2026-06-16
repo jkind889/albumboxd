@@ -14,7 +14,7 @@ const tabs = [
   { id: "saved", label: "Saved Albums" },
   { id: "reviews", label: "Reviews" },
   { id: "activity", label: "Activity" },
-  { id: "listenNext", label: "Listen next" },
+  { id: "boards", label: "Boards" },
   { id: "network", label: "Network" },
   { id: "settings", label: "Settings" },
 ];
@@ -79,6 +79,24 @@ function AlbumCover({ src, title }) {
   return <img className="profile-cover" src={src} alt={`${title} cover`} />;
 }
 
+function BoardPreview({ albums }) {
+  const previewAlbums = albums.slice(0, 4);
+
+  return (
+    <div className="board-preview-grid" aria-hidden="true">
+      {Array.from({ length: 4 }).map((_, index) => {
+        const album = previewAlbums[index];
+
+        return album?.cover ? (
+          <img key={album.spotifyId || index} src={album.cover} alt="" />
+        ) : (
+          <span key={index} />
+        );
+      })}
+    </div>
+  );
+}
+
 export function Account() {
   const { getToken, isSignedIn } = useAuth();
   const { user, isLoaded } = useUser();
@@ -92,6 +110,9 @@ export function Account() {
   const [reviews, setReviews] = useState([]);
   const [activityItems, setActivityItems] = useState([]);
   const [networkItems, setNetworkItems] = useState([]);
+  const [boards, setBoards] = useState([]);
+  const [newBoardTitle, setNewBoardTitle] = useState("");
+  const [isCreatingBoard, setIsCreatingBoard] = useState(false);
   const [profile, setProfile] = useState({
     userId: "",
     bio: "",
@@ -122,6 +143,7 @@ export function Account() {
         setReviews([]);
         setActivityItems([]);
         setNetworkItems([]);
+        setBoards([]);
         setProfile({
           userId: "",
           bio: "",
@@ -146,6 +168,7 @@ export function Account() {
         let reviewsData = [];
         let activityData = [];
         let networkData = [];
+        let boardsData = [];
         let profileData;
 
         if (isPublicProfile) {
@@ -154,7 +177,7 @@ export function Account() {
             fetch(`http://localhost:3000/profile/${encodedPublicUserId}`, { headers }),
             fetch(`http://localhost:3000/profile/${encodedPublicUserId}/saved`),
             fetch(`http://localhost:3000/reviews/review/user/${encodedPublicUserId}`, { headers }),
-            fetch(`http://localhost:3000/profile/${encodedPublicUserId}/activity`),
+            fetch(`http://localhost:3000/profile/${encodedPublicUserId}/activity`, { headers }),
           ]);
 
           if (!profileResponse.ok || !savedResponse.ok || !reviewsResponse.ok || !activityResponse.ok) {
@@ -168,12 +191,20 @@ export function Account() {
             activityResponse.json(),
           ]);
         } else {
-          const [savedResponse, reviewsResponse, profileResponse, activityResponse, networkResponse] = await Promise.all([
+          const [
+            savedResponse,
+            reviewsResponse,
+            profileResponse,
+            activityResponse,
+            networkResponse,
+            boardsResponse,
+          ] = await Promise.all([
             fetch("http://localhost:3000/collections/collection", { headers }),
             fetch("http://localhost:3000/reviews/review/user/", { headers }),
             fetch("http://localhost:3000/profile/me", { headers }),
             fetch("http://localhost:3000/profile/me/activity", { headers }),
             fetch("http://localhost:3000/profile/me/network", { headers }),
+            fetch("http://localhost:3000/boards", { headers }),
           ]);
 
           if (
@@ -182,16 +213,18 @@ export function Account() {
             || !profileResponse.ok
             || !activityResponse.ok
             || !networkResponse.ok
+            || !boardsResponse.ok
           ) {
             throw new Error("Failed to load profile data");
           }
 
-          [savedData, reviewsData, profileData, activityData, networkData] = await Promise.all([
+          [savedData, reviewsData, profileData, activityData, networkData, boardsData] = await Promise.all([
             savedResponse.json(),
             reviewsResponse.json(),
             profileResponse.json(),
             activityResponse.json(),
             networkResponse.json(),
+            boardsResponse.json(),
           ]);
         }
 
@@ -203,6 +236,7 @@ export function Account() {
         setReviews(Array.isArray(reviewsData) ? reviewsData : []);
         setActivityItems(Array.isArray(activityData) ? activityData : []);
         setNetworkItems(Array.isArray(networkData) ? networkData : []);
+        setBoards(Array.isArray(boardsData) ? boardsData : []);
         setProfile({
           userId: profileData.userId || publicUserId || "",
           bio: typeof profileData.bio === "string" ? profileData.bio : "",
@@ -221,6 +255,7 @@ export function Account() {
           setReviews([]);
           setActivityItems([]);
           setNetworkItems([]);
+          setBoards([]);
           setProfile({
             userId: publicUserId || "",
             bio: "",
@@ -283,6 +318,10 @@ export function Account() {
   const sortedSavedAlbums = useMemo(() => (
     [...savedAlbums].sort((first, second) => new Date(second.savedAt) - new Date(first.savedAt))
   ), [savedAlbums]);
+  const sortedBoards = useMemo(() => (
+    [...boards].sort((first, second) => Number(second.isDefault) - Number(first.isDefault)
+      || new Date(second.updatedAt || 0) - new Date(first.updatedAt || 0))
+  ), [boards]);
   const latestReviews = useMemo(() => sortedReviews.slice(0, 2), [sortedReviews]);
   const latestSidebarActivity = useMemo(() => activityItems.slice(0, 4), [activityItems]);
   const favoriteAlbums = profile.favoriteAlbums;
@@ -340,6 +379,16 @@ export function Account() {
         review._id === reviewId ? { ...review, ...nextState } : review
       ))
     ));
+    setActivityItems((currentItems) => (
+      currentItems.map((activity) => (
+        activity.type === "review" && activity.id === reviewId ? { ...activity, ...nextState } : activity
+      ))
+    ));
+    setNetworkItems((currentItems) => (
+      currentItems.map((activity) => (
+        activity.type === "review" && activity.id === reviewId ? { ...activity, ...nextState } : activity
+      ))
+    ));
   }
 
   async function toggleReviewLike(review) {
@@ -348,7 +397,12 @@ export function Account() {
       return;
     }
 
-    const reviewId = review._id;
+    const reviewId = review._id || review.id;
+
+    if (!reviewId) {
+      return;
+    }
+
     const nextLiked = !review.likedByViewer;
     const previousLikeCount = Number(review.likeCount) || 0;
     const nextLikeCount = Math.max(0, previousLikeCount + (nextLiked ? 1 : -1));
@@ -386,6 +440,44 @@ export function Account() {
         likeCount: previousLikeCount,
       });
       setLikeMessage("Could not update that like.");
+    }
+  }
+
+  async function createBoard(event) {
+    event.preventDefault();
+
+    const title = newBoardTitle.trim();
+
+    if (!title || isCreatingBoard || isPublicProfile) {
+      return;
+    }
+
+    try {
+      setIsCreatingBoard(true);
+      setError("");
+
+      const token = await getToken();
+      const response = await fetch("http://localhost:3000/boards", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create board");
+      }
+
+      const board = await response.json();
+      setBoards((currentBoards) => [board, ...currentBoards]);
+      setNewBoardTitle("");
+    } catch (boardError) {
+      console.error(boardError);
+      setError("Could not create that board.");
+    } finally {
+      setIsCreatingBoard(false);
     }
   }
 
@@ -709,6 +801,17 @@ export function Account() {
                 </h3>
                 <p>{album.artist || "Artist unknown"}</p>
                 {activity.reviewText && <p className="profile-review-copy">{activity.reviewText}</p>}
+                {activity.type === "review" && (
+                  <div className="review-card-actions">
+                    <LikeButton
+                      liked={Boolean(activity.likedByViewer)}
+                      count={activity.likeCount}
+                      label="review"
+                      message={likeMessage}
+                      onToggle={() => toggleReviewLike(activity)}
+                    />
+                  </div>
+                )}
               </div>
               <div className="profile-activity-meta">
                 {activity.rating && <strong>{activity.rating}/5</strong>}
@@ -730,12 +833,56 @@ export function Account() {
     });
   }
 
-  function renderListenNext() {
+  function renderBoards() {
+    if (isPublicProfile) {
+      return (
+        <ProfileEmptyState
+          title="Boards are private"
+          body="Boards are only available from your own profile right now."
+        />
+      );
+    }
+
     return (
-      <ProfileEmptyState
-        title="Listen next coming soon"
-        body="Recommendations and queue-style picks can live here once that logic is ready."
-      />
+      <section className="profile-saved-section">
+        <div className="profile-saved-toolbar">
+          <div>
+            <h2>Boards</h2>
+            <p>{sortedBoards.length} board{sortedBoards.length === 1 ? "" : "s"} in your library</p>
+          </div>
+          <form className="board-create-form profile-board-create" onSubmit={createBoard}>
+            <input
+              value={newBoardTitle}
+              onChange={(event) => setNewBoardTitle(event.target.value)}
+              placeholder="New board name"
+              maxLength={80}
+            />
+            <button type="submit" disabled={!newBoardTitle.trim() || isCreatingBoard}>
+              Create
+            </button>
+          </form>
+        </div>
+
+        {sortedBoards.length === 0 ? (
+          <ProfileEmptyState
+            title="No boards yet"
+            body="Create boards to group albums from their detail pages."
+          />
+        ) : (
+          <div className="boards-grid profile-boards-grid">
+            {sortedBoards.map((board) => (
+              <Link className="board-card" key={board._id} to={`/boards/${board._id}`}>
+                <BoardPreview albums={board.previewAlbums || []} />
+                <h2>{board.title}</h2>
+                <p>
+                  {board.itemCount} album{board.itemCount === 1 ? "" : "s"}
+                  {board.isDefault ? " · Default" : ""}
+                </p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
     );
   }
 
@@ -839,8 +986,8 @@ export function Account() {
       return renderActivity();
     }
 
-    if (activeTab === "listenNext") {
-      return renderListenNext();
+    if (activeTab === "boards") {
+      return renderBoards();
     }
 
     if (activeTab === "network") {

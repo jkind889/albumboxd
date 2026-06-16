@@ -4,6 +4,7 @@ const UserProfile = require("../models/UserProfile");
 const Follow = require("../models/Follow");
 const Review = require("../models/Reviews");
 const Album = require("../models/Albums");
+const Like = require("../models/Like");
 const {
   getOrCreateAlbumCatalog,
   normalizeCatalogAlbum,
@@ -129,6 +130,48 @@ function toPlainDocument(document) {
   return typeof document?.toObject === "function" ? document.toObject() : document;
 }
 
+function getDocumentId(document) {
+  return String(document._id || document.id || "");
+}
+
+async function getLikeStatsByReviewId(reviews, viewerId) {
+  const reviewIds = [...new Set(reviews.map(getDocumentId).filter(Boolean))];
+  const statsByReviewId = new Map();
+
+  for (const reviewId of reviewIds) {
+    statsByReviewId.set(reviewId, {
+      likeCount: 0,
+      likedByViewer: false,
+    });
+  }
+
+  if (reviewIds.length === 0) {
+    return statsByReviewId;
+  }
+
+  const likes = await Like.find({
+    targetType: "review",
+    reviewId: { $in: reviewIds },
+  });
+
+  for (const like of likes.map(toPlainDocument)) {
+    const reviewId = String(like.reviewId || "");
+    const stats = statsByReviewId.get(reviewId);
+
+    if (!stats) {
+      continue;
+    }
+
+    stats.likeCount += 1;
+
+    if (viewerId && like.userId === viewerId) {
+      stats.likedByViewer = true;
+    }
+  }
+
+  return statsByReviewId;
+}
+
 function getAuthorFromUser(userId, user) {
   return {
     userId,
@@ -163,7 +206,7 @@ async function getAuthorsByUserId(userIds) {
   return authorsByUserId;
 }
 
-function formatReviewActivity(review, actor) {
+function formatReviewActivity(review, actor, likeStats = {}) {
   const source = toPlainDocument(review);
 
   return {
@@ -180,6 +223,8 @@ function formatReviewActivity(review, actor) {
     },
     rating: source.rating,
     reviewText: source.reviewText,
+    likeCount: likeStats.likeCount || 0,
+    likedByViewer: Boolean(likeStats.likedByViewer),
   };
 }
 
@@ -235,7 +280,7 @@ function formatSavedAlbumActivity(savedAlbum, actor) {
   };
 }
 
-async function getUserActivity(userId, { includeSavedAlbums }) {
+async function getUserActivity(userId, { includeSavedAlbums, viewerId = "" }) {
   const authorsByUserId = await getAuthorsByUserId([userId]);
   const actor = authorsByUserId.get(userId) || getAuthorFromUser(userId);
   const [reviews, savedAlbums] = await Promise.all([
@@ -248,8 +293,15 @@ async function getUserActivity(userId, { includeSavedAlbums }) {
       : Promise.resolve([]),
   ]);
 
+  const plainReviews = reviews.map(toPlainDocument);
+  const likeStatsByReviewId = await getLikeStatsByReviewId(plainReviews, viewerId);
+
   return [
-    ...reviews.map((review) => formatReviewActivity(review, actor)),
+    ...plainReviews.map((review) => formatReviewActivity(
+      review,
+      actor,
+      likeStatsByReviewId.get(getDocumentId(review)),
+    )),
     ...savedAlbums.map((savedAlbum) => formatSavedAlbumActivity(savedAlbum, actor)),
   ]
     .sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt))
@@ -285,11 +337,13 @@ router.get("/me/network", ensureAuthenticated, async(req, res) => {
       .sort({ date: -1 })
       .limit(DEFAULT_ACTIVITY_LIMIT);
     const authorsByUserId = await getAuthorsByUserId(reviews.map((review) => toPlainDocument(review).userId));
-    const activities = reviews.map((review) => {
-      const source = toPlainDocument(review);
+    const plainReviews = reviews.map(toPlainDocument);
+    const likeStatsByReviewId = await getLikeStatsByReviewId(plainReviews, req.userId);
+    const activities = plainReviews.map((source) => {
       return formatReviewActivity(
         source,
         authorsByUserId.get(source.userId) || getAuthorFromUser(source.userId),
+        likeStatsByReviewId.get(getDocumentId(source)),
       );
     });
 
@@ -302,7 +356,7 @@ router.get("/me/network", ensureAuthenticated, async(req, res) => {
 
 router.get("/me/activity", ensureAuthenticated, async(req, res) => {
   try {
-    res.json(await getUserActivity(req.userId, { includeSavedAlbums: true }));
+    res.json(await getUserActivity(req.userId, { includeSavedAlbums: true, viewerId: req.userId }));
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Failed to fetch activity" });
@@ -417,6 +471,7 @@ router.put("/:userId/follow", ensureAuthenticated, async(req, res) => {
 router.get("/:userId/activity", async(req, res) => {
   try {
     const targetUserId = String(req.params.userId || "").trim();
+    const { userId: viewerId } = getAuth(req);
 
     if (!targetUserId) {
       return res.status(400).json({ error: "User id is required" });
@@ -426,7 +481,7 @@ router.get("/:userId/activity", async(req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    res.json(await getUserActivity(targetUserId, { includeSavedAlbums: true }));
+    res.json(await getUserActivity(targetUserId, { includeSavedAlbums: true, viewerId }));
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Failed to fetch activity" });
