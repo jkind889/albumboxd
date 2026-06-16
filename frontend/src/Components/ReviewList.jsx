@@ -1,5 +1,6 @@
+import LikeButton from "./LikeButton";
 
-export function ReviewList({reviews, onRemoveReview})
+export function ReviewList({reviews, onRemoveReview, onToggleReviewLike, likeMessage})
 {
     const canRemoveReviews = typeof onRemoveReview === "function";
 
@@ -55,6 +56,15 @@ export function ReviewList({reviews, onRemoveReview})
                             <span>Reviewed {formatReviewDate(review.date)}</span>
                         </div>
                         <p className="review-card-copy">{review.reviewText}</p>
+                        <div className="review-card-actions">
+                            <LikeButton
+                                liked={Boolean(review.likedByViewer)}
+                                count={review.likeCount}
+                                label="review"
+                                message={likeMessage}
+                                onToggle={() => onToggleReviewLike?.(review)}
+                            />
+                        </div>
                         {canRemoveReviews && (
                             <button className="review-delete-button" onClick={() => onRemoveReview(review._id)}>Delete Review</button>
                         )}

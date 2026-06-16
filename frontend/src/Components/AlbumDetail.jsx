@@ -2,6 +2,7 @@ import {Link, useLocation, useParams} from "react-router-dom";
 import {useState, useEffect } from "react";
 import ReviewForm from "./ReviewForm";
 import AlbumReviewFeed from "./AlbumReviewFeed";
+import LikeButton from "./LikeButton";
 import { useAuth } from "@clerk/react";
 export function AlbumDetail()
 {
@@ -17,13 +18,17 @@ export function AlbumDetail()
     const [newBoardTitle, setNewBoardTitle] = useState("");
     const [boardSaveMessage, setBoardSaveMessage] = useState("");
     const [isSavingBoard, setIsSavingBoard] = useState(false);
+    const [albumLike, setAlbumLike] = useState({ likeCount: 0, likedByViewer: false });
+    const [likeMessage, setLikeMessage] = useState("");
     const { getToken, userId } = useAuth();
     const location = useLocation();
 
     useEffect(() => {
         async function fetchReviews() {
             try {
-                const res = await fetch(`http://localhost:3000/reviews/review/album/${id}`);
+                const token = userId ? await getToken() : null;
+                const headers = token ? { Authorization: `Bearer ${token}` } : {};
+                const res = await fetch(`http://localhost:3000/reviews/review/album/${id}`, { headers });
 
                 if (!res.ok) {
                     console.error("Failed to fetch reviews");
@@ -42,7 +47,35 @@ export function AlbumDetail()
         if (id) {
             fetchReviews();
         }
-    }, [id])
+    }, [getToken, id, userId])
+
+    useEffect(() => {
+        async function fetchAlbumLike() {
+            try {
+                const token = userId ? await getToken() : null;
+                const headers = token ? { Authorization: `Bearer ${token}` } : {};
+                const res = await fetch(`http://localhost:3000/likes/album/${id}`, { headers });
+
+                if (!res.ok) {
+                    setAlbumLike({ likeCount: 0, likedByViewer: false });
+                    return;
+                }
+
+                const data = await res.json();
+                setAlbumLike({
+                    likeCount: Number(data.likeCount) || 0,
+                    likedByViewer: Boolean(data.likedByViewer),
+                });
+            } catch (error) {
+                console.error("Failed to fetch album likes", error);
+                setAlbumLike({ likeCount: 0, likedByViewer: false });
+            }
+        }
+
+        if (id) {
+            fetchAlbumLike();
+        }
+    }, [getToken, id, userId]);
 
     useEffect(() => {
         async function checkIfSaved() {
@@ -119,6 +152,104 @@ export function AlbumDetail()
         setReviews((prev) => prev.filter((review) => review._id !== id));
     };
 
+    function updateReviewLikeState(reviewId, nextState) {
+        setReviews((currentReviews) => (
+            currentReviews.map((review) => (
+                review._id === reviewId ? { ...review, ...nextState } : review
+            ))
+        ));
+    }
+
+    async function toggleReviewLike(review) {
+        if (!userId) {
+            setLikeMessage("Sign in to like reviews.");
+            return;
+        }
+
+        const reviewId = review._id;
+        const nextLiked = !review.likedByViewer;
+        const previousLikeCount = Number(review.likeCount) || 0;
+        const nextLikeCount = Math.max(0, previousLikeCount + (nextLiked ? 1 : -1));
+
+        setLikeMessage("");
+        updateReviewLikeState(reviewId, {
+            likedByViewer: nextLiked,
+            likeCount: nextLikeCount,
+        });
+
+        try {
+            const token = await getToken();
+            const response = await fetch(`http://localhost:3000/likes/review/${reviewId}`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ liked: nextLiked }),
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to update review like");
+            }
+
+            const data = await response.json();
+            updateReviewLikeState(reviewId, {
+                likedByViewer: Boolean(data.likedByViewer),
+                likeCount: Number(data.likeCount) || 0,
+            });
+        } catch (error) {
+            console.error(error);
+            updateReviewLikeState(reviewId, {
+                likedByViewer: Boolean(review.likedByViewer),
+                likeCount: previousLikeCount,
+            });
+            setLikeMessage("Could not update that like.");
+        }
+    }
+
+    async function toggleAlbumLike() {
+        if (!userId) {
+            setLikeMessage("Sign in to like albums.");
+            return;
+        }
+
+        const nextLiked = !albumLike.likedByViewer;
+        const previousAlbumLike = albumLike;
+        const nextLikeCount = Math.max(0, (Number(albumLike.likeCount) || 0) + (nextLiked ? 1 : -1));
+
+        setLikeMessage("");
+        setAlbumLike({
+            likedByViewer: nextLiked,
+            likeCount: nextLikeCount,
+        });
+
+        try {
+            const token = await getToken();
+            const response = await fetch(`http://localhost:3000/likes/album/${id}`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ liked: nextLiked }),
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to update album like");
+            }
+
+            const data = await response.json();
+            setAlbumLike({
+                likedByViewer: Boolean(data.likedByViewer),
+                likeCount: Number(data.likeCount) || 0,
+            });
+        } catch (error) {
+            console.error(error);
+            setAlbumLike(previousAlbumLike);
+            setLikeMessage("Could not update that like.");
+        }
+    }
+
 
      if (!album) return <p>Loading...</p>;
 
@@ -152,7 +283,8 @@ export function AlbumDetail()
         return new Date(second.date || 0).getTime() - new Date(first.date || 0).getTime();
     });
     const popularReviews = [...userReviews].sort((first, second) => {
-        return (Number(second.rating) || 0) - (Number(first.rating) || 0)
+        return (Number(second.likeCount) || 0) - (Number(first.likeCount) || 0)
+            || (Number(second.rating) || 0) - (Number(first.rating) || 0)
             || new Date(second.date || 0).getTime() - new Date(first.date || 0).getTime();
     });
     const selectedReviews = reviewSort === "popular" ? popularReviews : recentReviews;
@@ -330,6 +462,15 @@ export function AlbumDetail()
                         <button className="album-side-action" type="button" onClick={openBoardModal}>
                             Boards...
                         </button>
+                        <div className="album-side-action album-like-action">
+                            <LikeButton
+                                liked={albumLike.likedByViewer}
+                                count={albumLike.likeCount}
+                                label="album"
+                                message={likeMessage}
+                                onToggle={toggleAlbumLike}
+                            />
+                        </div>
                         <button className="album-side-action" type="button" onClick={() => setIsReviewModalOpen(true)}>
                             <span aria-hidden="true">★</span>
                             Rate
@@ -477,6 +618,8 @@ export function AlbumDetail()
                                 reviews={selectedReviews}
                                 currentUserId={userId}
                                 onRemoveReview={removeReview}
+                                onToggleReviewLike={toggleReviewLike}
+                                likeMessage={likeMessage}
                             />
                         </section>
                     ) : (
@@ -490,6 +633,8 @@ export function AlbumDetail()
                                     reviews={popularReviews.slice(0, 2)}
                                     currentUserId={userId}
                                     onRemoveReview={removeReview}
+                                    onToggleReviewLike={toggleReviewLike}
+                                    likeMessage={likeMessage}
                                 />
                             </div>
                             <div className="album-review-column">
@@ -501,6 +646,8 @@ export function AlbumDetail()
                                     reviews={recentReviews.slice(0, 2)}
                                     currentUserId={userId}
                                     onRemoveReview={removeReview}
+                                    onToggleReviewLike={toggleReviewLike}
+                                    likeMessage={likeMessage}
                                 />
                             </div>
                         </section>

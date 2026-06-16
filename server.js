@@ -44,6 +44,7 @@ const reviewRoutes = require("./routes/reviews");
 const collectionRoutes = require("./routes/collections")
 const profileRoutes = require("./routes/profile")
 const boardRoutes = require("./routes/boards")
+const likeRoutes = require("./routes/likes")
 
 app.use("/auth", authRoutes);
 app.use("/search", searchRoutes);
@@ -52,6 +53,7 @@ app.use("/reviews", reviewRoutes);
 app.use("/collections", collectionRoutes)
 app.use("/profile", profileRoutes)
 app.use("/boards", boardRoutes)
+app.use("/likes", likeRoutes)
 
 app.listen(3000, () =>
 {

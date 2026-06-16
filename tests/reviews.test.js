@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const reviewModelPath = require.resolve("../models/Reviews");
+const likeModelPath = require.resolve("../models/Like");
 const albumCatalogModelPath = require.resolve("../models/AlbumCatalog");
 const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const clerkPath = require.resolve("@clerk/express");
@@ -15,12 +16,15 @@ const catalogFindCalls = [];
 const catalogSortCalls = [];
 const catalogLimitCalls = [];
 const getUserListCalls = [];
+const likeFindCalls = [];
 let foundReviews = [];
 let createdReview = null;
 let reviewDocuments = [];
+let likeDocuments = [];
 let catalogDocuments = [];
 let clerkUsers = [];
 let shouldRejectClerkLookup = false;
+let authUserId = "user_clerk_123";
 
 function roundTo(value, decimals) {
   const multiplier = 10 ** decimals;
@@ -88,6 +92,7 @@ async function aggregatePopularReviews(pipeline) {
 function loadReviewRouter() {
   delete require.cache[reviewRoutePath];
   delete require.cache[albumCatalogHelperPath];
+  delete require.cache[likeModelPath];
 
   require.cache[reviewModelPath] = {
     id: reviewModelPath,
@@ -133,6 +138,23 @@ function loadReviewRouter() {
     },
   };
 
+  require.cache[likeModelPath] = {
+    id: likeModelPath,
+    filename: likeModelPath,
+    loaded: true,
+    exports: {
+      find: async (query) => {
+        likeFindCalls.push(query);
+        const reviewIds = query.reviewId?.$in?.map(String) || [];
+
+        return likeDocuments.filter((like) => (
+          like.targetType === query.targetType
+          && reviewIds.includes(String(like.reviewId))
+        ));
+      },
+    },
+  };
+
   require.cache[albumCatalogHelperPath] = {
     id: albumCatalogHelperPath,
     filename: albumCatalogHelperPath,
@@ -153,7 +175,7 @@ function loadReviewRouter() {
     filename: clerkPath,
     loaded: true,
     exports: {
-      getAuth: () => ({ userId: "user_clerk_123" }),
+      getAuth: () => ({ userId: authUserId }),
       clerkClient: {
         users: {
           getUserList: async (query) => {
@@ -332,12 +354,15 @@ test.beforeEach(() => {
   catalogSortCalls.length = 0;
   catalogLimitCalls.length = 0;
   getUserListCalls.length = 0;
+  likeFindCalls.length = 0;
   foundReviews = [];
   createdReview = null;
   reviewDocuments = [];
+  likeDocuments = [];
   catalogDocuments = [];
   clerkUsers = [];
   shouldRejectClerkLookup = false;
+  authUserId = "user_clerk_123";
 });
 
 test("GET /reviews/review/album/:albumId fetches reviews by Spotify album id and adds Clerk authors", async () => {
@@ -370,6 +395,8 @@ test("GET /reviews/review/album/:albumId fetches reviews by Spotify album id and
   assert.deepEqual(response.body, [
     {
       ...foundReviews[0],
+      likeCount: 0,
+      likedByViewer: false,
       author: {
         userId: "user_one",
         username: "kindofkaren",
@@ -377,6 +404,64 @@ test("GET /reviews/review/album/:albumId fetches reviews by Spotify album id and
       },
     },
   ]);
+});
+
+test("GET /reviews/review/album/:albumId includes review like counts and viewer state", async () => {
+  foundReviews = [
+    {
+      _id: "review_liked",
+      userId: "user_one",
+      spotifyId: "spotify_album_123",
+      title: "Kind of Blue",
+      rating: 5,
+      reviewText: "Still blue.",
+    },
+  ];
+  likeDocuments = [
+    {
+      userId: "other_user",
+      targetType: "review",
+      reviewId: "review_liked",
+    },
+    {
+      userId: "user_clerk_123",
+      targetType: "review",
+      reviewId: "review_liked",
+    },
+  ];
+
+  const response = await getAlbumReviews("spotify_album_123");
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body[0].likeCount, 2);
+  assert.equal(response.body[0].likedByViewer, true);
+});
+
+test("GET /reviews/review/album/:albumId defaults viewer like state to false without auth", async () => {
+  authUserId = "";
+  foundReviews = [
+    {
+      _id: "review_public",
+      userId: "user_one",
+      spotifyId: "spotify_album_123",
+      title: "Kind of Blue",
+      rating: 5,
+      reviewText: "Still blue.",
+    },
+  ];
+  likeDocuments = [
+    {
+      userId: "other_user",
+      targetType: "review",
+      reviewId: "review_public",
+    },
+  ];
+
+  const response = await getAlbumReviews("spotify_album_123");
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body[0].likeCount, 1);
+  assert.equal(response.body[0].likedByViewer, false);
 });
 
 test("GET /reviews/review/album/:albumId returns an empty array when no reviews exist", async () => {
@@ -469,6 +554,8 @@ test("GET /reviews/review/user/:userId fetches public profile reviews", async ()
   assert.deepEqual(response.body, [
     {
       ...foundReviews[0],
+      likeCount: 0,
+      likedByViewer: false,
       author: {
         userId: "profile_user_123",
         username: "publiclistener",
@@ -687,6 +774,34 @@ test("GET /reviews/popular-reviews returns highest all-time reviews with authors
       reviewText: "All timer.",
       date: new Date("2026-06-10T12:00:00.000Z"),
     },
+    {
+      _id: "review_more_liked",
+      userId: "reviewer_two",
+      spotifyId: "album_liked",
+      title: "Four Stars",
+      artist: "Loved Artist",
+      cover: "https://example.com/liked.jpg",
+      rating: 4,
+      reviewText: "People love this.",
+      date: new Date("2026-06-09T12:00:00.000Z"),
+    },
+  ];
+  likeDocuments = [
+    {
+      userId: "listener_one",
+      targetType: "review",
+      reviewId: "review_more_liked",
+    },
+    {
+      userId: "listener_two",
+      targetType: "review",
+      reviewId: "review_more_liked",
+    },
+    {
+      userId: "listener_three",
+      targetType: "review",
+      reviewId: "review_top",
+    },
   ];
   clerkUsers = [
     {
@@ -694,16 +809,22 @@ test("GET /reviews/popular-reviews returns highest all-time reviews with authors
       username: "peaklistener",
       imageUrl: "https://example.com/reviewer.jpg",
     },
+    {
+      id: "reviewer_two",
+      username: "likedlistener",
+      imageUrl: "https://example.com/liked-listener.jpg",
+    },
   ];
 
   const response = await getPopularReviews({ limit: "5" });
 
   assert.equal(response.status, 200);
   assert.deepEqual(findCalls, [{}]);
-  assert.deepEqual(sortCalls, [{ rating: -1, date: -1 }]);
-  assert.deepEqual(getUserListCalls, [{ userId: ["reviewer_one"] }]);
-  assert.equal(response.body[0].author.username, "peaklistener");
-  assert.equal(response.body[0].rating, 5);
+  assert.deepEqual(sortCalls, [{ date: -1 }]);
+  assert.deepEqual(getUserListCalls, [{ userId: ["reviewer_two", "reviewer_one"] }]);
+  assert.equal(response.body[0]._id, "review_more_liked");
+  assert.equal(response.body[0].author.username, "likedlistener");
+  assert.equal(response.body[0].likeCount, 2);
 });
 
 test("GET /reviews/featured fills the homepage strip from review activity and catalog albums", async () => {

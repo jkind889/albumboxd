@@ -7,6 +7,7 @@ import {
   useAuth,
   useUser,
 } from "@clerk/react";
+import LikeButton from "../Components/LikeButton";
 
 const tabs = [
   { id: "overview", label: "Overview" },
@@ -103,6 +104,7 @@ export function Account() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isFollowSaving, setIsFollowSaving] = useState(false);
+  const [likeMessage, setLikeMessage] = useState("");
   const [error, setError] = useState("");
   const publicProfileState = location.state?.profileUser || {};
   const canManageProfile = !isPublicProfile;
@@ -151,7 +153,7 @@ export function Account() {
           const [profileResponse, savedResponse, reviewsResponse, activityResponse] = await Promise.all([
             fetch(`http://localhost:3000/profile/${encodedPublicUserId}`, { headers }),
             fetch(`http://localhost:3000/profile/${encodedPublicUserId}/saved`),
-            fetch(`http://localhost:3000/reviews/review/user/${encodedPublicUserId}`),
+            fetch(`http://localhost:3000/reviews/review/user/${encodedPublicUserId}`, { headers }),
             fetch(`http://localhost:3000/profile/${encodedPublicUserId}/activity`),
           ]);
 
@@ -271,6 +273,13 @@ export function Account() {
   const sortedReviews = useMemo(() => (
     [...reviews].sort((first, second) => new Date(second.date) - new Date(first.date))
   ), [reviews]);
+  const popularReviews = useMemo(() => (
+    [...reviews].sort((first, second) => (
+      (Number(second.likeCount) || 0) - (Number(first.likeCount) || 0)
+      || (Number(second.rating) || 0) - (Number(first.rating) || 0)
+      || new Date(second.date) - new Date(first.date)
+    ))
+  ), [reviews]);
   const sortedSavedAlbums = useMemo(() => (
     [...savedAlbums].sort((first, second) => new Date(second.savedAt) - new Date(first.savedAt))
   ), [savedAlbums]);
@@ -323,6 +332,61 @@ export function Account() {
     setReviews((currentReviews) => (
       currentReviews.filter((review) => review._id !== reviewId)
     ));
+  }
+
+  function updateReviewLikeState(reviewId, nextState) {
+    setReviews((currentReviews) => (
+      currentReviews.map((review) => (
+        review._id === reviewId ? { ...review, ...nextState } : review
+      ))
+    ));
+  }
+
+  async function toggleReviewLike(review) {
+    if (!isSignedIn) {
+      setLikeMessage("Sign in to like reviews.");
+      return;
+    }
+
+    const reviewId = review._id;
+    const nextLiked = !review.likedByViewer;
+    const previousLikeCount = Number(review.likeCount) || 0;
+    const nextLikeCount = Math.max(0, previousLikeCount + (nextLiked ? 1 : -1));
+
+    setLikeMessage("");
+    updateReviewLikeState(reviewId, {
+      likedByViewer: nextLiked,
+      likeCount: nextLikeCount,
+    });
+
+    try {
+      const token = await getToken();
+      const response = await fetch(`http://localhost:3000/likes/review/${reviewId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ liked: nextLiked }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update review like");
+      }
+
+      const data = await response.json();
+      updateReviewLikeState(reviewId, {
+        likedByViewer: Boolean(data.likedByViewer),
+        likeCount: Number(data.likeCount) || 0,
+      });
+    } catch (likeError) {
+      console.error(likeError);
+      updateReviewLikeState(reviewId, {
+        likedByViewer: Boolean(review.likedByViewer),
+        likeCount: previousLikeCount,
+      });
+      setLikeMessage("Could not update that like.");
+    }
   }
 
   async function updateFollowState(nextFollowing) {
@@ -384,6 +448,8 @@ export function Account() {
   ];
 
   function renderOverview() {
+    const previewPopularReviews = popularReviews.slice(0, 2);
+
     return (
       <div className="profile-overview-grid">
         <section className="profile-panel profile-wide-panel">
@@ -452,6 +518,15 @@ export function Account() {
                     <time>{formatDate(review.date)}</time>
                   </div>
                   <p className="profile-review-copy">{review.reviewText}</p>
+                  <div className="review-card-actions">
+                    <LikeButton
+                      liked={Boolean(review.likedByViewer)}
+                      count={review.likeCount}
+                      label="review"
+                      message={likeMessage}
+                      onToggle={() => toggleReviewLike(review)}
+                    />
+                  </div>
                 </article>
               ))}
             </div>
@@ -463,10 +538,40 @@ export function Account() {
             <h2>Popular Reviews</h2>
           </div>
 
-          <ProfileEmptyState
-            title="Popular reviews coming soon"
-            body="This space is ready for ranked reviews once review engagement data is available."
-          />
+          {previewPopularReviews.length === 0 ? (
+            <ProfileEmptyState
+              title="No popular reviews yet"
+              body="Liked reviews will appear here once listeners engage with them."
+            />
+          ) : (
+            <div className="profile-review-list">
+              {previewPopularReviews.map((review) => (
+                <article className="profile-review-card" key={review._id}>
+                  <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
+                    <AlbumCover src={review.cover} title={review.title} />
+                    <div>
+                      <h3>{review.title || "Untitled album"}</h3>
+                      <p>{review.artist || "Artist unknown"}</p>
+                    </div>
+                  </Link>
+                  <div className="profile-review-meta">
+                    <span>{review.rating}/5</span>
+                    <time>{formatDate(review.date)}</time>
+                  </div>
+                  <p className="profile-review-copy">{review.reviewText}</p>
+                  <div className="review-card-actions">
+                    <LikeButton
+                      liked={Boolean(review.likedByViewer)}
+                      count={review.likeCount}
+                      label="review"
+                      message={likeMessage}
+                      onToggle={() => toggleReviewLike(review)}
+                    />
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     );
@@ -678,6 +783,15 @@ export function Account() {
               <time>{formatDate(review.date)}</time>
             </div>
             <p className="profile-review-copy">{review.reviewText}</p>
+            <div className="review-card-actions">
+              <LikeButton
+                liked={Boolean(review.likedByViewer)}
+                count={review.likeCount}
+                label="review"
+                message={likeMessage}
+                onToggle={() => toggleReviewLike(review)}
+              />
+            </div>
             {canManageProfile && (
               <button
                 className="profile-secondary-button"

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import LikeButton from "./LikeButton";
 
 const DEFAULT_USERNAME = "albumboxd user";
 
@@ -22,7 +23,13 @@ function getAvatarInitial(username) {
     return trimmedUsername ? trimmedUsername[0].toUpperCase() : "A";
 }
 
-function AlbumReviewCard({ review, currentUserId, onRemoveReview }) {
+function AlbumReviewCard({
+    review,
+    currentUserId,
+    onRemoveReview,
+    onToggleReviewLike,
+    likeMessage,
+}) {
     const username = getReviewUsername(review);
     const imageUrl = review.author?.imageUrl;
     const canDelete = currentUserId && review.userId === currentUserId;
@@ -61,6 +68,16 @@ function AlbumReviewCard({ review, currentUserId, onRemoveReview }) {
 
                 <p className="album-review-copy">{review.reviewText}</p>
 
+                <div className="review-card-actions">
+                    <LikeButton
+                        liked={Boolean(review.likedByViewer)}
+                        count={review.likeCount}
+                        label="review"
+                        message={likeMessage}
+                        onToggle={() => onToggleReviewLike?.(review)}
+                    />
+                </div>
+
                 {canDelete && (
                     <button
                         className="review-delete-button album-review-delete"
@@ -75,7 +92,13 @@ function AlbumReviewCard({ review, currentUserId, onRemoveReview }) {
     );
 }
 
-export function AlbumReviewFeed({ reviews, currentUserId, onRemoveReview })
+export function AlbumReviewFeed({
+    reviews,
+    currentUserId,
+    onRemoveReview,
+    onToggleReviewLike,
+    likeMessage,
+})
 {
     if (reviews.length === 0) {
         return (
@@ -93,6 +116,8 @@ export function AlbumReviewFeed({ reviews, currentUserId, onRemoveReview })
                     review={review}
                     currentUserId={currentUserId}
                     onRemoveReview={onRemoveReview}
+                    onToggleReviewLike={onToggleReviewLike}
+                    likeMessage={likeMessage}
                 />
             ))}
         </div>

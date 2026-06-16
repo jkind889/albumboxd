@@ -1,6 +1,7 @@
 const express = require("express");
 const Review = require("../models/Reviews");
 const AlbumCatalog = require("../models/AlbumCatalog");
+const Like = require("../models/Like");
 const { clerkClient, getAuth } = require("@clerk/express");
 const { normalizeCatalogAlbum } = require("./utils/albumCatalog");
 
@@ -136,12 +137,88 @@ async function getRecentlyReviewedAlbums(limit) {
 }
 
 async function getPopularReviews(limit) {
-    const reviews = await Review.find({}).sort({ rating: -1, date: -1 });
-    return addAuthorsToReviews(reviews.slice(0, limit));
+    const reviews = await addLikesToReviews(await Review.find({}).sort({ date: -1 }));
+    const popularReviews = reviews
+        .sort((first, second) => (
+            (Number(second.likeCount) || 0) - (Number(first.likeCount) || 0)
+            || (Number(second.rating) || 0) - (Number(first.rating) || 0)
+            || new Date(second.date || 0).getTime() - new Date(first.date || 0).getTime()
+        ))
+        .slice(0, limit);
+
+    return addAuthorsToReviews(popularReviews);
 }
 
 function toPlainReview(review) {
     return typeof review?.toObject === "function" ? review.toObject() : review;
+}
+
+function getViewerId(req) {
+    try {
+        return getAuth(req).userId || "";
+    } catch {
+        return "";
+    }
+}
+
+function getReviewId(review) {
+    return String(review._id || review.id || "");
+}
+
+async function getLikeStatsByReviewId(reviews, viewerId) {
+    const reviewIds = [...new Set(reviews.map(getReviewId).filter(Boolean))];
+    const statsByReviewId = new Map();
+
+    for (const reviewId of reviewIds) {
+        statsByReviewId.set(reviewId, {
+            likeCount: 0,
+            likedByViewer: false,
+        });
+    }
+
+    if (reviewIds.length === 0) {
+        return statsByReviewId;
+    }
+
+    const likes = await Like.find({
+        targetType: "review",
+        reviewId: { $in: reviewIds },
+    });
+
+    for (const like of likes.map(toPlainReview)) {
+        const reviewId = String(like.reviewId || "");
+        const stats = statsByReviewId.get(reviewId);
+
+        if (!stats) {
+            continue;
+        }
+
+        stats.likeCount += 1;
+
+        if (viewerId && like.userId === viewerId) {
+            stats.likedByViewer = true;
+        }
+    }
+
+    return statsByReviewId;
+}
+
+async function addLikesToReviews(reviews, viewerId = "") {
+    const plainReviews = reviews.map(toPlainReview);
+    const statsByReviewId = await getLikeStatsByReviewId(plainReviews, viewerId);
+
+    return plainReviews.map((review) => {
+        const stats = statsByReviewId.get(getReviewId(review)) || {
+            likeCount: 0,
+            likedByViewer: false,
+        };
+
+        return {
+            ...review,
+            likeCount: stats.likeCount,
+            likedByViewer: stats.likedByViewer,
+        };
+    });
 }
 
 function getAuthorFromUser(userId, user) {
@@ -178,11 +255,11 @@ async function getAuthorsByUserId(userIds) {
     return authorsByUserId;
 }
 
-async function addAuthorsToReviews(reviews) {
-    const plainReviews = reviews.map(toPlainReview);
-    const authorsByUserId = await getAuthorsByUserId(plainReviews.map((review) => review.userId));
+async function addAuthorsToReviews(reviews, viewerId = "") {
+    const reviewsWithLikes = await addLikesToReviews(reviews, viewerId);
+    const authorsByUserId = await getAuthorsByUserId(reviewsWithLikes.map((review) => review.userId));
 
-    return plainReviews.map((review) => ({
+    return reviewsWithLikes.map((review) => ({
         ...review,
         author: authorsByUserId.get(review.userId) || getAuthorFromUser(review.userId),
     }));
@@ -249,7 +326,7 @@ router.post("/review", ensureAuthenticated, async(req, res) =>
             const review = await Review.create(
                 { ...req.body, userId }
             );
-            const [reviewWithAuthor] = await addAuthorsToReviews([review]);
+            const [reviewWithAuthor] = await addAuthorsToReviews([review], userId);
             res.status(201).json(reviewWithAuthor);
         } catch (error) {
             console.log(error);
@@ -263,7 +340,7 @@ router.get("/review/user/", ensureAuthenticated, async(req, res) =>
 
         try {
             const reviews = await Review.find({ userId }).sort({ date: -1 });
-            res.json(reviews);
+            res.json(await addAuthorsToReviews(reviews, userId));
         } catch (error) {
             console.log(error);
             res.status(500).json({ error: "Failed to fetch reviews" });
@@ -273,13 +350,14 @@ router.get("/review/user/", ensureAuthenticated, async(req, res) =>
 router.get("/review/user/:userId", async(req, res) => {
     try {
         const targetUserId = String(req.params.userId || "").trim();
+        const viewerId = getViewerId(req);
 
         if (!targetUserId) {
             return res.status(400).json({ error: "User id is required" });
         }
 
         const reviews = await Review.find({ userId: targetUserId }).sort({ date: -1 });
-        res.json(await addAuthorsToReviews(reviews));
+        res.json(await addAuthorsToReviews(reviews, viewerId));
     } catch (error) {
         console.log(error);
         res.status(500).json({ error: "Failed to fetch reviews" });
@@ -298,8 +376,9 @@ router.delete("/review/user/:id", ensureAuthenticated, async(req, res) => {
 
 router.get("/review/album/:albumId", async(req, res) => {
     try {
+        const viewerId = getViewerId(req);
         const reviews = await Review.find({ spotifyId: req.params.albumId }).sort({ date: -1 });
-        res.json(await addAuthorsToReviews(reviews));
+        res.json(await addAuthorsToReviews(reviews, viewerId));
     } catch (error) {
         console.log(error);
         res.status(500).json({ error: "Failed to fetch review" });
