@@ -11,6 +11,7 @@ const reviewRoutePath = require.resolve("../routes/reviews");
 const findCalls = [];
 const sortCalls = [];
 const createCalls = [];
+const findOneAndUpdateCalls = [];
 const aggregateCalls = [];
 const catalogFindCalls = [];
 const catalogSortCalls = [];
@@ -19,6 +20,7 @@ const getUserListCalls = [];
 const likeFindCalls = [];
 let foundReviews = [];
 let createdReview = null;
+let updatedReview = null;
 let reviewDocuments = [];
 let likeDocuments = [];
 let catalogDocuments = [];
@@ -111,6 +113,10 @@ function loadReviewRouter() {
       create: async (review) => {
         createCalls.push(review);
         return createdReview || { _id: "created_review", ...review };
+      },
+      findOneAndUpdate: async (query, update, options) => {
+        findOneAndUpdateCalls.push({ query, update, options });
+        return updatedReview;
       },
       aggregate: aggregatePopularReviews,
     },
@@ -298,6 +304,36 @@ async function postReview(body = {}) {
   };
 }
 
+async function patchReview(reviewId, body = {}) {
+  const router = loadReviewRouter();
+  const route = router.stack.find(
+    (layer) => layer.route?.path === "/review/user/:id" && layer.route.methods.patch,
+  );
+
+  assert.ok(route, "PATCH /review/user/:id should be registered");
+
+  const req = { params: { id: reviewId }, body };
+  const res = {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(data) {
+      this.body = data;
+      return this;
+    },
+  };
+
+  await runRouteHandlers(route, req, res);
+
+  return {
+    status: res.statusCode,
+    body: res.body,
+  };
+}
+
 async function getReviewRoute(path, query = {}) {
   const router = loadReviewRouter();
   const route = router.stack.find(
@@ -349,6 +385,7 @@ test.beforeEach(() => {
   findCalls.length = 0;
   sortCalls.length = 0;
   createCalls.length = 0;
+  findOneAndUpdateCalls.length = 0;
   aggregateCalls.length = 0;
   catalogFindCalls.length = 0;
   catalogSortCalls.length = 0;
@@ -357,6 +394,7 @@ test.beforeEach(() => {
   likeFindCalls.length = 0;
   foundReviews = [];
   createdReview = null;
+  updatedReview = null;
   reviewDocuments = [];
   likeDocuments = [];
   catalogDocuments = [];
@@ -590,6 +628,103 @@ test("POST /reviews/review creates a review and returns the Clerk author", async
     username: "loggedinlistener",
     imageUrl: "https://example.com/current-user.jpg",
   });
+});
+
+test("PATCH /reviews/review/user/:id updates an owned review and returns the Clerk author", async () => {
+  clerkUsers = [
+    {
+      id: "user_clerk_123",
+      username: "loggedinlistener",
+      imageUrl: "https://example.com/current-user.jpg",
+    },
+  ];
+  updatedReview = {
+    _id: "review_123",
+    userId: "user_clerk_123",
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    cover: "https://example.com/kind-of-blue.jpg",
+    rating: 4,
+    reviewText: "Still brilliant after another listen.",
+    date: new Date("2026-06-01T12:00:00.000Z"),
+  };
+
+  const response = await patchReview("review_123", {
+    rating: 4,
+    reviewText: "  Still brilliant after another listen.  ",
+    title: "Client should not change this",
+    date: Date.now(),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(findOneAndUpdateCalls[0], {
+    query: { _id: "review_123", userId: "user_clerk_123" },
+    update: {
+      $set: {
+        rating: 4,
+        reviewText: "Still brilliant after another listen.",
+      },
+    },
+    options: { new: true, runValidators: true },
+  });
+  assert.deepEqual(getUserListCalls, [{ userId: ["user_clerk_123"] }]);
+  assert.equal(response.body.title, "Kind of Blue");
+  assert.equal(response.body.date, updatedReview.date);
+  assert.deepEqual(response.body.author, {
+    userId: "user_clerk_123",
+    username: "loggedinlistener",
+    imageUrl: "https://example.com/current-user.jpg",
+  });
+});
+
+test("PATCH /reviews/review/user/:id rejects an invalid rating", async () => {
+  const response = await patchReview("review_123", {
+    rating: 6,
+    reviewText: "Too high.",
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "Rating must be between 1 and 5" });
+  assert.equal(findOneAndUpdateCalls.length, 0);
+});
+
+test("PATCH /reviews/review/user/:id rejects empty review text", async () => {
+  const response = await patchReview("review_123", {
+    rating: 4,
+    reviewText: "   ",
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "Review text is required" });
+  assert.equal(findOneAndUpdateCalls.length, 0);
+});
+
+test("PATCH /reviews/review/user/:id returns 404 when the owner review is not found", async () => {
+  const response = await patchReview("review_123", {
+    rating: 4,
+    reviewText: "Could belong to someone else.",
+  });
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(findOneAndUpdateCalls[0].query, {
+    _id: "review_123",
+    userId: "user_clerk_123",
+  });
+  assert.deepEqual(response.body, { error: "Review not found" });
+});
+
+test("PATCH /reviews/review/user/:id rejects unauthenticated edits", async () => {
+  authUserId = "";
+
+  const response = await patchReview("review_123", {
+    rating: 4,
+    reviewText: "No session.",
+  });
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(response.body, { error: "Unauthorized" });
+  assert.equal(findOneAndUpdateCalls.length, 0);
 });
 
 test("GET /reviews/popular groups album reviews and ranks by balanced score", async () => {

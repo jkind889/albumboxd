@@ -1572,6 +1572,7 @@ body:has(.board-detail-page),
 .album-action-button,
 .album-primary-link,
 .review-submit-button,
+.review-edit-button,
 .review-delete-button,
 .album-more-link,
 .review-modal-close {
@@ -1597,6 +1598,7 @@ body:has(.board-detail-page),
 .album-action-button:hover,
 .album-primary-link:hover,
 .review-submit-button:hover,
+.review-edit-button:hover,
 .review-delete-button:hover,
 .album-more-link:hover,
 .review-modal-close:hover {
@@ -1607,7 +1609,9 @@ body:has(.board-detail-page),
 }
 
 .album-action-button:disabled,
-.review-submit-button:disabled {
+.review-submit-button:disabled,
+.review-edit-button:disabled,
+.review-delete-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
   transform: none;
@@ -2270,7 +2274,63 @@ body:has(.board-detail-page),
   line-height: 1.65;
 }
 
-.review-card .review-delete-button {
+.review-edit-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.review-edit-field {
+  display: grid;
+  gap: 0.4rem;
+  color: #9fb0c4;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.review-edit-field input,
+.review-edit-field textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #f8fafc;
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.review-edit-field input {
+  max-width: 7rem;
+  min-height: 40px;
+  padding: 0.55rem 0.7rem;
+}
+
+.review-edit-field textarea {
+  min-height: 112px;
+  padding: 0.75rem;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.review-edit-field input:focus,
+.review-edit-field textarea:focus {
+  border-color: rgba(248, 250, 252, 0.72);
+  outline: none;
+}
+
+.review-edit-error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.review-card .review-delete-button,
+.review-card .review-edit-button,
+.review-card .review-edit-save-button,
+.review-card .review-edit-cancel-button {
   justify-self: start;
   min-height: 36px;
   padding: 0.45rem 0.75rem;
@@ -2280,6 +2340,12 @@ body:has(.board-detail-page),
 
 .review-card .review-delete-button:hover {
   color: #fca5a5;
+  transform: none;
+}
+
+.review-card .review-edit-button:hover,
+.review-card .review-edit-save-button:hover,
+.review-card .review-edit-cancel-button:hover {
   transform: none;
 }
 

@@ -317,6 +317,26 @@ function ensureAuthenticated(req, res, next) {
     next();
 }
 
+function getReviewUpdatePayload(body) {
+    const reviewText = String(body?.reviewText || "").trim();
+    const rating = Number(body?.rating);
+
+    if (!reviewText) {
+        return { error: "Review text is required" };
+    }
+
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+        return { error: "Rating must be between 1 and 5" };
+    }
+
+    return {
+        update: {
+            reviewText,
+            rating,
+        },
+    };
+}
+
 router.post("/review", ensureAuthenticated, async(req, res) =>
     {
         const userId = req.userId;
@@ -361,6 +381,32 @@ router.get("/review/user/:userId", async(req, res) => {
     } catch (error) {
         console.log(error);
         res.status(500).json({ error: "Failed to fetch reviews" });
+    }
+});
+
+router.patch("/review/user/:id", ensureAuthenticated, async(req, res) => {
+    try {
+        const parsedUpdate = getReviewUpdatePayload(req.body);
+
+        if (parsedUpdate.error) {
+            return res.status(400).json({ error: parsedUpdate.error });
+        }
+
+        const review = await Review.findOneAndUpdate(
+            { _id: req.params.id, userId: req.userId },
+            { $set: parsedUpdate.update },
+            { new: true, runValidators: true }
+        );
+
+        if (!review) {
+            return res.status(404).json({ error: "Review not found" });
+        }
+
+        const [reviewWithAuthor] = await addAuthorsToReviews([review], req.userId);
+        res.json(reviewWithAuthor);
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Failed to update review" });
     }
 });
 

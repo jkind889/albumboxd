@@ -8,6 +8,8 @@ export function ViewReviews()
     const [reviews, setReviews] = useState([]);
     const [error, setError] = useState("");
     const [likeMessage, setLikeMessage] = useState("");
+    const [editMessage, setEditMessage] = useState("");
+    const [editingReview, setEditingReview] = useState(null);
     const [reviewDateSort, setReviewDateSort] = useState("latest");
     const  { getToken, userId: viewerId } = useAuth();
     const { userId } = useParams();
@@ -56,6 +58,40 @@ export function ViewReviews()
         }
         setReviews((prev) => prev.filter((review) => review._id !== id));
     };
+
+    async function editReview(id, updates) {
+        setEditMessage("");
+
+        try {
+            const token = await getToken();
+            const res = await fetch(`http://localhost:3000/reviews/review/user/${id}`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify(updates)
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || "Failed to edit review");
+            }
+
+            const updatedReview = await res.json();
+            setReviews((prev) => (
+                prev.map((review) => (
+                    review._id === id ? updatedReview : review
+                ))
+            ));
+            setEditingReview(null);
+            return true;
+        } catch (reviewError) {
+            console.error(reviewError);
+            setEditMessage(reviewError.message || "Could not edit that review.");
+            return false;
+        }
+    }
 
     function updateReviewLikeState(reviewId, nextState) {
         setReviews((currentReviews) => (
@@ -158,10 +194,19 @@ export function ViewReviews()
                 </div>
                 {error && <p className="review-list-error">{error}</p>}
                 <ReviewList
+                    listId="recent"
                     reviews={recentReviews}
                     onRemoveReview={canManageReviews ? removeReview : undefined}
+                    onEditReview={canManageReviews ? editReview : undefined}
+                    editingReview={editingReview}
+                    onStartEdit={(reviewId, listId) => setEditingReview({ reviewId, listId })}
+                    onCancelEdit={() => {
+                        setEditingReview(null);
+                        setEditMessage("");
+                    }}
                     onToggleReviewLike={toggleReviewLike}
                     likeMessage={likeMessage}
+                    editMessage={editMessage}
                 />
             </section>
 
@@ -170,10 +215,19 @@ export function ViewReviews()
                     <h2>Highest Rated</h2>
                 </div>
                 <ReviewList
+                    listId="highest-rated"
                     reviews={popularReviews}
                     onRemoveReview={canManageReviews ? removeReview : undefined}
+                    onEditReview={canManageReviews ? editReview : undefined}
+                    editingReview={editingReview}
+                    onStartEdit={(reviewId, listId) => setEditingReview({ reviewId, listId })}
+                    onCancelEdit={() => {
+                        setEditingReview(null);
+                        setEditMessage("");
+                    }}
                     onToggleReviewLike={toggleReviewLike}
                     likeMessage={likeMessage}
+                    editMessage={editMessage}
                 />
             </section>
         </main>
