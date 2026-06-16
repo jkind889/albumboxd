@@ -1407,6 +1407,7 @@ body:has(.profile-network-page),
 
 .album-poster-card,
 .album-ratings-panel,
+.album-social-panel,
 .album-info-panel,
 .review-form-card,
 .album-review-column,
@@ -1629,6 +1630,7 @@ body:has(.profile-network-page),
 
 .album-info-panel,
 .album-ratings-panel,
+.album-social-panel,
 .review-form-card,
 .album-review-column,
 .album-review-card,
@@ -1780,6 +1782,136 @@ body:has(.profile-network-page),
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 1rem;
   align-items: end;
+}
+
+.album-social-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+
+.album-social-stats div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.06);
+}
+
+.album-social-stats strong {
+  color: #f8fafc;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.album-social-stats span {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.album-social-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.album-social-section {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.album-social-section + .album-social-section {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.album-social-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.album-social-section-header span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.album-social-section-header strong {
+  color: #f8fafc;
+}
+
+.album-social-users {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.album-social-user {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  color: #d8e1ea;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.album-social-user:hover {
+  color: #f8fafc;
+}
+
+.album-social-user span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.album-social-avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(226, 232, 240, 0.22);
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(71, 85, 105, 0.72);
+  color: #f8fafc;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.album-social-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.album-social-toggle {
+  justify-self: start;
+  min-height: 34px;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid rgba(248, 250, 252, 0.2);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.08);
+  color: #d8e1ea;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.album-social-toggle:hover {
+  border-color: rgba(248, 250, 252, 0.45);
+  color: #f8fafc;
 }
 
 .album-rating-summary strong {

@@ -134,6 +134,8 @@ async function formatBoardDetail(board) {
 
 async function formatProfile(profile) {
   const source = typeof profile.toObject === "function" ? profile.toObject() : profile;
+  const authorsByUserId = await getAuthorsByUserId([source.userId]);
+  const author = authorsByUserId.get(source.userId) || getAuthorFromUser(source.userId);
   const favoriteAlbums = [...(source.favoriteAlbums || [])]
     .sort((first, second) => first.rank - second.rank)
     .map((favoriteAlbum) => normalizeCatalogAlbum(getCatalogAlbum(favoriteAlbum)));
@@ -143,6 +145,8 @@ async function formatProfile(profile) {
 
   return {
     userId: source.userId,
+    username: author.username,
+    imageUrl: author.imageUrl,
     bio: source.bio || "",
     spotifyProfileUrl: source.spotifyProfileUrl || "",
     favoriteAlbums,

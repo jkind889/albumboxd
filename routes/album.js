@@ -1,7 +1,10 @@
 const express = require("express");
 const Album = require("../models/Albums");
 const AlbumCatalog = require("../models/AlbumCatalog");
-const { getAuth } = require("@clerk/express");
+const Follow = require("../models/Follow");
+const Like = require("../models/Like");
+const Review = require("../models/Reviews");
+const { clerkClient, getAuth } = require("@clerk/express");
 const {
     getOrCreateAlbumCatalog,
     normalizeCatalogAlbum,
@@ -9,6 +12,7 @@ const {
 const router = express.Router();
 const CATALOG_PAGE_LIMIT = 24;
 const MAX_CATALOG_PAGE_LIMIT = 24;
+const DEFAULT_SOCIAL_USERNAME = "albumboxd user";
 
 function ensureAuthenticated(req, res, next) {
     const { userId } = getAuth(req);
@@ -37,6 +41,95 @@ function getPositiveInteger(value, fallback) {
 
 function getCatalogLimit(value) {
     return Math.min(getPositiveInteger(value, CATALOG_PAGE_LIMIT), MAX_CATALOG_PAGE_LIMIT);
+}
+
+function getViewerId(req) {
+    try {
+        return getAuth(req).userId || "";
+    } catch {
+        return "";
+    }
+}
+
+function toPlainDocument(document) {
+    return typeof document?.toObject === "function" ? document.toObject() : document;
+}
+
+function getSocialUserFromClerk(userId, user) {
+    return {
+        userId,
+        username: user?.username || DEFAULT_SOCIAL_USERNAME,
+        imageUrl: user?.imageUrl || "",
+    };
+}
+
+async function getSocialUsersById(userIds) {
+    const socialUsersById = new Map();
+    const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+
+    for (const userId of uniqueUserIds) {
+        socialUsersById.set(userId, getSocialUserFromClerk(userId));
+    }
+
+    if (uniqueUserIds.length === 0) {
+        return socialUsersById;
+    }
+
+    try {
+        const userList = await clerkClient.users.getUserList({ userId: uniqueUserIds });
+        const users = Array.isArray(userList) ? userList : userList.data || [];
+
+        for (const user of users) {
+            socialUsersById.set(user.id, getSocialUserFromClerk(user.id, user));
+        }
+    } catch {
+        // Social context should still render with fallback names if Clerk is unavailable.
+    }
+
+    return socialUsersById;
+}
+
+function getUniqueUserIds(documents) {
+    return [...new Set(documents.map(toPlainDocument).map((document) => document.userId).filter(Boolean))];
+}
+
+async function getFollowedAlbumSocialContext(spotifyId, viewerId) {
+    if (!viewerId) {
+        return {
+            followedReviewers: [],
+            followedAlbumLikers: [],
+        };
+    }
+
+    const followingRows = await Follow.find({ followerId: viewerId });
+    const followedUserIds = [
+        ...new Set(
+            followingRows
+                .map(toPlainDocument)
+                .map((follow) => follow.followingId)
+                .filter((followingId) => followingId && followingId !== viewerId),
+        ),
+    ];
+
+    if (followedUserIds.length === 0) {
+        return {
+            followedReviewers: [],
+            followedAlbumLikers: [],
+        };
+    }
+
+    const [followedReviews, followedAlbumLikes] = await Promise.all([
+        Review.find({ spotifyId, userId: { $in: followedUserIds } }),
+        Like.find({ targetType: "album", spotifyId, userId: { $in: followedUserIds } }),
+    ]);
+    const followedReviewerIds = getUniqueUserIds(followedReviews);
+    const followedAlbumLikerIds = getUniqueUserIds(followedAlbumLikes);
+    const socialUsersById = await getSocialUsersById([...followedReviewerIds, ...followedAlbumLikerIds]);
+
+    return {
+        followedReviewers: followedReviewerIds.map((userId) => socialUsersById.get(userId) || getSocialUserFromClerk(userId)),
+        followedAlbumLikers: followedAlbumLikerIds.map((userId) => socialUsersById.get(userId) || getSocialUserFromClerk(userId)),
+    };
 }
 
 function buildCatalogQuery(query) {
@@ -84,6 +177,33 @@ router.get("/catalog", async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ error: "Failed to fetch album catalog" });
+    }
+});
+
+router.get("/album/:id/social", async(req, res) => {
+    try {
+        const spotifyId = String(req.params.id || "").trim();
+
+        if (!spotifyId) {
+            return res.status(400).json({ error: "Spotify id is required" });
+        }
+
+        const viewerId = getViewerId(req);
+        const [savedCount, reviewCount, followedSocialContext] = await Promise.all([
+            Album.countDocuments({ spotifyId }),
+            Review.countDocuments({ spotifyId }),
+            getFollowedAlbumSocialContext(spotifyId, viewerId),
+        ]);
+
+        res.json({
+            spotifyId,
+            savedCount,
+            reviewCount,
+            ...followedSocialContext,
+        });
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Failed to fetch album social context" });
     }
 });
 

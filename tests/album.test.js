@@ -3,6 +3,9 @@ const test = require("node:test");
 
 const albumModelPath = require.resolve("../models/Albums");
 const albumCatalogModelPath = require.resolve("../models/AlbumCatalog");
+const followModelPath = require.resolve("../models/Follow");
+const likeModelPath = require.resolve("../models/Like");
+const reviewModelPath = require.resolve("../models/Reviews");
 const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const clerkPath = require.resolve("@clerk/express");
 const albumRoutePath = require.resolve("../routes/album");
@@ -13,14 +16,29 @@ let catalogAlbum = null;
 let catalogAlbums = [];
 let getOrCreateError = null;
 let catalogFindError = null;
+let shouldRejectClerkLookup = false;
 const createCalls = [];
+const albumCountCalls = [];
 const catalogFindCalls = [];
 const catalogCountCalls = [];
+const followFindCalls = [];
+const likeFindCalls = [];
+const reviewFindCalls = [];
+const reviewCountCalls = [];
+const getUserListCalls = [];
 const getOrCreateCalls = [];
+let savedAlbumDocuments = [];
+let followDocuments = [];
+let likeDocuments = [];
+let reviewDocuments = [];
+let clerkUsers = [];
 
 // Loads the album router with mocked database/auth/catalog dependencies.
 function loadAlbumRouter() {
   delete require.cache[albumRoutePath];
+  delete require.cache[followModelPath];
+  delete require.cache[likeModelPath];
+  delete require.cache[reviewModelPath];
 
   require.cache[albumModelPath] = {
     id: albumModelPath,
@@ -39,6 +57,10 @@ function loadAlbumRouter() {
             ...album,
           }
         );
+      },
+      countDocuments: async (query) => {
+        albumCountCalls.push(query);
+        return savedAlbumDocuments.filter((album) => album.spotifyId === query.spotifyId).length;
       },
     },
   };
@@ -124,12 +146,76 @@ function loadAlbumRouter() {
     },
   };
 
+  require.cache[followModelPath] = {
+    id: followModelPath,
+    filename: followModelPath,
+    loaded: true,
+    exports: {
+      find: async (query) => {
+        followFindCalls.push(query);
+        return followDocuments.filter((follow) => follow.followerId === query.followerId);
+      },
+    },
+  };
+
+  require.cache[likeModelPath] = {
+    id: likeModelPath,
+    filename: likeModelPath,
+    loaded: true,
+    exports: {
+      find: async (query) => {
+        likeFindCalls.push(query);
+        const userIds = query.userId?.$in || [];
+
+        return likeDocuments.filter((like) => (
+          like.targetType === query.targetType
+          && like.spotifyId === query.spotifyId
+          && userIds.includes(like.userId)
+        ));
+      },
+    },
+  };
+
+  require.cache[reviewModelPath] = {
+    id: reviewModelPath,
+    filename: reviewModelPath,
+    loaded: true,
+    exports: {
+      countDocuments: async (query) => {
+        reviewCountCalls.push(query);
+        return reviewDocuments.filter((review) => review.spotifyId === query.spotifyId).length;
+      },
+      find: async (query) => {
+        reviewFindCalls.push(query);
+        const userIds = query.userId?.$in || [];
+
+        return reviewDocuments.filter((review) => (
+          review.spotifyId === query.spotifyId
+          && userIds.includes(review.userId)
+        ));
+      },
+    },
+  };
+
   require.cache[clerkPath] = {
     id: clerkPath,
     filename: clerkPath,
     loaded: true,
     exports: {
       getAuth: () => ({ userId: authUserId }),
+      clerkClient: {
+        users: {
+          getUserList: async (query) => {
+            getUserListCalls.push(query);
+
+            if (shouldRejectClerkLookup) {
+              throw new Error("Clerk lookup failed");
+            }
+
+            return { data: clerkUsers };
+          },
+        },
+      },
     },
   };
 
@@ -182,6 +268,7 @@ test.beforeEach(() => {
   createdAlbum = null;
   getOrCreateError = null;
   catalogFindError = null;
+  shouldRejectClerkLookup = false;
   catalogAlbum = {
     _id: "catalog_album_123",
     spotifyId: "spotify_album_123",
@@ -223,9 +310,40 @@ test.beforeEach(() => {
       tracks: [],
     },
   ];
+  savedAlbumDocuments = [
+    { spotifyId: "spotify_album_123", userId: "listener_1" },
+    { spotifyId: "spotify_album_123", userId: "listener_2" },
+    { spotifyId: "spotify_album_456", userId: "listener_3" },
+  ];
+  followDocuments = [];
+  likeDocuments = [];
+  reviewDocuments = [
+    {
+      _id: "review_1",
+      spotifyId: "spotify_album_123",
+      userId: "review_author_1",
+    },
+    {
+      _id: "review_2",
+      spotifyId: "spotify_album_123",
+      userId: "review_author_2",
+    },
+    {
+      _id: "review_3",
+      spotifyId: "spotify_album_456",
+      userId: "review_author_3",
+    },
+  ];
+  clerkUsers = [];
   createCalls.length = 0;
+  albumCountCalls.length = 0;
   catalogFindCalls.length = 0;
   catalogCountCalls.length = 0;
+  followFindCalls.length = 0;
+  likeFindCalls.length = 0;
+  reviewFindCalls.length = 0;
+  reviewCountCalls.length = 0;
+  getUserListCalls.length = 0;
   getOrCreateCalls.length = 0;
 });
 
@@ -358,6 +476,137 @@ test("GET /albums/album/:id returns 500 when catalog lookup fails", async () => 
 
   assert.equal(response.status, 500);
   assert.deepEqual(response.body, { error: "Failed to fetch album details" });
+});
+
+test("GET /albums/album/:id/social returns totals for signed-out viewers", async () => {
+  authUserId = null;
+
+  const response = await callRoute("get", "/album/:id/social", {
+    params: { id: "spotify_album_123" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    spotifyId: "spotify_album_123",
+    savedCount: 2,
+    reviewCount: 2,
+    followedReviewers: [],
+    followedAlbumLikers: [],
+  });
+  assert.deepEqual(albumCountCalls, [{ spotifyId: "spotify_album_123" }]);
+  assert.deepEqual(reviewCountCalls, [{ spotifyId: "spotify_album_123" }]);
+  assert.equal(followFindCalls.length, 0);
+  assert.equal(reviewFindCalls.length, 0);
+  assert.equal(likeFindCalls.length, 0);
+  assert.equal(getUserListCalls.length, 0);
+});
+
+test("GET /albums/album/:id/social returns followed reviewers and album likers", async () => {
+  followDocuments = [
+    { followerId: "user_clerk_123", followingId: "review_author_1" },
+    { followerId: "user_clerk_123", followingId: "review_author_2" },
+    { followerId: "other_user", followingId: "unrelated_user" },
+  ];
+  reviewDocuments = [
+    { _id: "review_1", spotifyId: "spotify_album_123", userId: "review_author_1" },
+    { _id: "review_2", spotifyId: "spotify_album_123", userId: "review_author_1" },
+    { _id: "review_3", spotifyId: "spotify_album_123", userId: "unfollowed_reviewer" },
+    { _id: "review_4", spotifyId: "spotify_album_456", userId: "review_author_2" },
+  ];
+  likeDocuments = [
+    { targetType: "album", spotifyId: "spotify_album_123", userId: "review_author_2" },
+    { targetType: "album", spotifyId: "spotify_album_123", userId: "unfollowed_liker" },
+    { targetType: "review", spotifyId: "spotify_album_123", userId: "review_author_1" },
+    { targetType: "album", spotifyId: "spotify_album_456", userId: "review_author_1" },
+  ];
+  clerkUsers = [
+    { id: "review_author_1", username: "ada", imageUrl: "https://example.com/ada.jpg" },
+    { id: "review_author_2", username: "miles", imageUrl: "https://example.com/miles.jpg" },
+  ];
+
+  const response = await callRoute("get", "/album/:id/social", {
+    params: { id: "spotify_album_123" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    spotifyId: "spotify_album_123",
+    savedCount: 2,
+    reviewCount: 3,
+    followedReviewers: [
+      {
+        userId: "review_author_1",
+        username: "ada",
+        imageUrl: "https://example.com/ada.jpg",
+      },
+    ],
+    followedAlbumLikers: [
+      {
+        userId: "review_author_2",
+        username: "miles",
+        imageUrl: "https://example.com/miles.jpg",
+      },
+    ],
+  });
+  assert.deepEqual(followFindCalls, [{ followerId: "user_clerk_123" }]);
+  assert.deepEqual(reviewFindCalls, [
+    {
+      spotifyId: "spotify_album_123",
+      userId: { $in: ["review_author_1", "review_author_2"] },
+    },
+  ]);
+  assert.deepEqual(likeFindCalls, [
+    {
+      targetType: "album",
+      spotifyId: "spotify_album_123",
+      userId: { $in: ["review_author_1", "review_author_2"] },
+    },
+  ]);
+  assert.deepEqual(getUserListCalls, [{ userId: ["review_author_1", "review_author_2"] }]);
+});
+
+test("GET /albums/album/:id/social falls back when Clerk lookup fails", async () => {
+  shouldRejectClerkLookup = true;
+  followDocuments = [
+    { followerId: "user_clerk_123", followingId: "review_author_1" },
+  ];
+  reviewDocuments = [
+    { _id: "review_1", spotifyId: "spotify_album_123", userId: "review_author_1" },
+  ];
+  likeDocuments = [
+    { targetType: "album", spotifyId: "spotify_album_123", userId: "review_author_1" },
+  ];
+
+  const response = await callRoute("get", "/album/:id/social", {
+    params: { id: "spotify_album_123" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.followedReviewers, [
+    {
+      userId: "review_author_1",
+      username: "albumboxd user",
+      imageUrl: "",
+    },
+  ]);
+  assert.deepEqual(response.body.followedAlbumLikers, [
+    {
+      userId: "review_author_1",
+      username: "albumboxd user",
+      imageUrl: "",
+    },
+  ]);
+});
+
+test("GET /albums/album/:id/social returns 400 for a blank spotify id", async () => {
+  const response = await callRoute("get", "/album/:id/social", {
+    params: { id: "   " },
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "Spotify id is required" });
+  assert.equal(albumCountCalls.length, 0);
+  assert.equal(reviewCountCalls.length, 0);
 });
 
 test("POST /albums/album saves a catalog reference with the authenticated Clerk user id", async () => {

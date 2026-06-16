@@ -4,7 +4,15 @@ import ReviewForm from "./ReviewForm";
 import AlbumReviewFeed from "./AlbumReviewFeed";
 import LikeButton from "./LikeButton";
 import AsyncState from "./Loading/AsyncState";
-import { useAuth } from "@clerk/react";
+import { SignInButton, useAuth } from "@clerk/react";
+
+const getDefaultAlbumSocial = () => ({
+    savedCount: 0,
+    reviewCount: 0,
+    followedReviewers: [],
+    followedAlbumLikers: [],
+});
+
 export function AlbumDetail()
 {
     const {id} = useParams();
@@ -13,6 +21,7 @@ export function AlbumDetail()
     const [albumError, setAlbumError] = useState("");
     const [reviews, setReviews] = useState([]);
     const [isSaved, setIsSaved] = useState(false);
+    const [isBoardStateLoading, setIsBoardStateLoading] = useState(false);
     const [savedBoardIds, setSavedBoardIds] = useState([]);
     const [boards, setBoards] = useState([]);
     const [activeTab, setActiveTab] = useState("artist");
@@ -22,9 +31,12 @@ export function AlbumDetail()
     const [boardSaveMessage, setBoardSaveMessage] = useState("");
     const [isSavingBoard, setIsSavingBoard] = useState(false);
     const [albumLike, setAlbumLike] = useState({ likeCount: 0, likedByViewer: false });
+    const [albumSocial, setAlbumSocial] = useState(getDefaultAlbumSocial);
+    const [expandedSocialSections, setExpandedSocialSections] = useState({});
     const [likeMessage, setLikeMessage] = useState("");
-    const { getToken, userId } = useAuth();
+    const { getToken, isSignedIn, userId } = useAuth();
     const location = useLocation();
+    const canUseAuthenticatedActions = Boolean(isSignedIn && userId);
 
     useEffect(() => {
         async function fetchReviews() {
@@ -81,33 +93,107 @@ export function AlbumDetail()
     }, [getToken, id, userId]);
 
     useEffect(() => {
-        async function checkIfSaved() {
-            const token = await getToken();
+        let shouldIgnore = false;
 
-            const res = await fetch(
-            `http://localhost:3000/boards/album/${id}`,
-            {
-                headers: {
-                Authorization: `Bearer ${token}`,
-                },
+        async function fetchAlbumSocial() {
+            try {
+                const token = userId ? await getToken() : null;
+                const headers = token ? { Authorization: `Bearer ${token}` } : {};
+                const res = await fetch(`http://localhost:3000/albums/album/${id}/social`, { headers });
+
+                if (!res.ok) {
+                    throw new Error("Failed to fetch album social context");
+                }
+
+                const data = await res.json();
+
+                if (!shouldIgnore) {
+                    setAlbumSocial({
+                        savedCount: Number(data.savedCount) || 0,
+                        reviewCount: Number(data.reviewCount) || 0,
+                        followedReviewers: Array.isArray(data.followedReviewers) ? data.followedReviewers : [],
+                        followedAlbumLikers: Array.isArray(data.followedAlbumLikers) ? data.followedAlbumLikers : [],
+                    });
+                }
+            } catch (error) {
+                console.error("Failed to fetch album social context", error);
+
+                if (!shouldIgnore) {
+                    setAlbumSocial(getDefaultAlbumSocial());
+                }
             }
-            );
+        }
 
-            if (!res.ok) {
+        if (id) {
+            fetchAlbumSocial();
+        }
+
+        return () => {
+            shouldIgnore = true;
+        };
+    }, [getToken, id, userId]);
+
+    useEffect(() => {
+        let shouldIgnore = false;
+
+        async function checkIfSaved() {
+            if (!canUseAuthenticatedActions) {
+                setIsBoardStateLoading(false);
                 setIsSaved(false);
                 setSavedBoardIds([]);
+                setBoards([]);
+                setIsBoardModalOpen(false);
                 return;
             }
 
-            const data = await res.json();
-            setIsSaved(data.saved);
-            setSavedBoardIds(Array.isArray(data.boards) ? data.boards.map((board) => String(board._id)) : []);
+            try {
+                setIsBoardStateLoading(true);
+                const token = await getToken();
+
+                const res = await fetch(
+                `http://localhost:3000/boards/album/${id}`,
+                {
+                    headers: {
+                    Authorization: `Bearer ${token}`,
+                    },
+                }
+                );
+
+                if (shouldIgnore) {
+                    return;
+                }
+
+                if (!res.ok) {
+                    setIsSaved(false);
+                    setSavedBoardIds([]);
+                    return;
+                }
+
+                const data = await res.json();
+                setIsSaved(data.saved);
+                setSavedBoardIds(Array.isArray(data.boards) ? data.boards.map((board) => String(board._id)) : []);
+            } catch (error) {
+                console.error("Failed to check board saves", error);
+
+                if (!shouldIgnore) {
+                    setIsSaved(false);
+                    setSavedBoardIds([]);
+                }
+            } finally {
+                if (!shouldIgnore) {
+                    setIsBoardStateLoading(false);
+                }
+            }
         }
 
         if (id) {
             checkIfSaved();
         }
-    }, [id, getToken]);
+
+        return () => {
+            shouldIgnore = true;
+        };
+    }, [canUseAuthenticatedActions, id, getToken]);
         
 
     useEffect(() => {
@@ -153,6 +239,10 @@ export function AlbumDetail()
     }, [id])
 
     async function addReview(review) {
+        if (!canUseAuthenticatedActions) {
+            return false;
+        }
+
         const token = await getToken();
         const res = await fetch("http://localhost:3000/reviews/review", {
             method: "POST",
@@ -170,11 +260,19 @@ export function AlbumDetail()
         const newReview = await res.json();
         console.log("Review saved to server:", newReview);
         setReviews((prev) => [newReview, ...prev]);
+        setAlbumSocial((currentSocial) => ({
+            ...currentSocial,
+            reviewCount: (Number(currentSocial.reviewCount) || 0) + 1,
+        }));
         return true;
 
     };
 
     async function removeReview(id) {
+        if (!canUseAuthenticatedActions) {
+            return;
+        }
+
         const token = await getToken();
         const res = await fetch(`http://localhost:3000/reviews/review/user/${id}`, {
             method: "DELETE",
@@ -187,6 +285,10 @@ export function AlbumDetail()
             return;
         }
         setReviews((prev) => prev.filter((review) => review._id !== id));
+        setAlbumSocial((currentSocial) => ({
+            ...currentSocial,
+            reviewCount: Math.max(0, (Number(currentSocial.reviewCount) || 0) - 1),
+        }));
     };
 
     function updateReviewLikeState(reviewId, nextState) {
@@ -198,7 +300,7 @@ export function AlbumDetail()
     }
 
     async function toggleReviewLike(review) {
-        if (!userId) {
+        if (!canUseAuthenticatedActions) {
             setLikeMessage("Sign in to like reviews.");
             return;
         }
@@ -245,7 +347,7 @@ export function AlbumDetail()
     }
 
     async function toggleAlbumLike() {
-        if (!userId) {
+        if (!canUseAuthenticatedActions) {
             setLikeMessage("Sign in to like albums.");
             return;
         }
@@ -304,6 +406,8 @@ export function AlbumDetail()
 
     const artistNames = album.artists?.length ? album.artists : [album.artist];
     const userReviews = reviews.filter((review) => review.userId);
+    const socialReviewCount = Number(albumSocial.reviewCount) || userReviews.length;
+    const socialSavedCount = Number(albumSocial.savedCount) || 0;
     const averageRating = userReviews.length
         ? (userReviews.reduce((total, item) => total + (Number(item.rating) || 0), 0) / userReviews.length).toFixed(1)
         : null;
@@ -352,6 +456,11 @@ export function AlbumDetail()
 
 // users can keep saving the same album over and over again, need to check if the album already exists in the user's collection before saving
     async function handleSaveToCollection() {
+        if (!canUseAuthenticatedActions) {
+            return;
+        }
+
+        const wasSaved = isSaved;
         const token = await getToken();
         
 
@@ -375,6 +484,12 @@ export function AlbumDetail()
         }
         if (res.ok) {
             setIsSaved(true);
+            if (!wasSaved) {
+                setAlbumSocial((currentSocial) => ({
+                    ...currentSocial,
+                    savedCount: (Number(currentSocial.savedCount) || 0) + 1,
+                }));
+            }
             if (data.board?._id) {
                 setSavedBoardIds((currentIds) => [...new Set([...currentIds, String(data.board._id)])]);
             }
@@ -385,6 +500,10 @@ export function AlbumDetail()
     }
 
     async function fetchBoards() {
+        if (!canUseAuthenticatedActions) {
+            return;
+        }
+
         const token = await getToken();
         const res = await fetch("http://localhost:3000/boards", {
             headers: {
@@ -401,6 +520,10 @@ export function AlbumDetail()
     }
 
     async function openBoardModal() {
+        if (!canUseAuthenticatedActions) {
+            return;
+        }
+
         try {
             await fetchBoards();
             setBoardSaveMessage("");
@@ -412,11 +535,12 @@ export function AlbumDetail()
     }
 
     async function saveAlbumToBoard(boardId) {
-        if (isSavingBoard) {
+        if (!canUseAuthenticatedActions || isSavingBoard) {
             return;
         }
 
         try {
+            const wasSaved = isSaved;
             setIsSavingBoard(true);
             const token = await getToken();
             const res = await fetch(`http://localhost:3000/boards/${boardId}/albums`, {
@@ -434,6 +558,12 @@ export function AlbumDetail()
 
             const data = await res.json();
             setIsSaved(true);
+            if (!wasSaved) {
+                setAlbumSocial((currentSocial) => ({
+                    ...currentSocial,
+                    savedCount: (Number(currentSocial.savedCount) || 0) + 1,
+                }));
+            }
             if (data.board?._id) {
                 setSavedBoardIds((currentIds) => [...new Set([...currentIds, String(data.board._id)])]);
             }
@@ -449,6 +579,10 @@ export function AlbumDetail()
 
     async function createBoardAndSave(event) {
         event.preventDefault();
+
+        if (!canUseAuthenticatedActions) {
+            return;
+        }
 
         const title = newBoardTitle.trim();
 
@@ -484,6 +618,77 @@ export function AlbumDetail()
         }
     }
 
+    const renderSignInAction = (label, icon = null) => (
+        <SignInButton mode="modal">
+            <button className="album-side-action" type="button">
+                {icon && <span aria-hidden="true">{icon}</span>}
+                {label}
+            </button>
+        </SignInButton>
+    );
+
+    const getSocialInitial = (user) => {
+        const username = String(user.username || "").trim();
+        return username ? username.charAt(0).toUpperCase() : "?";
+    };
+
+    const renderSocialUser = (user) => (
+        <Link className="album-social-user" key={user.userId} to={`/profile/${encodeURIComponent(user.userId)}`}>
+            <span className="album-social-avatar" aria-hidden="true">
+                {user.imageUrl ? <img src={user.imageUrl} alt="" /> : getSocialInitial(user)}
+            </span>
+            <span>{user.username || "albumboxd user"}</span>
+        </Link>
+    );
+
+    const renderSocialSection = ({ id: sectionId, title, users }) => {
+        if (users.length === 0) {
+            return null;
+        }
+
+        const isExpanded = Boolean(expandedSocialSections[sectionId]);
+        const visibleUsers = isExpanded ? users : users.slice(0, 3);
+        const hiddenCount = users.length - visibleUsers.length;
+
+        return (
+            <div className="album-social-section" key={sectionId}>
+                <div className="album-social-section-header">
+                    <span>{title}</span>
+                    <strong>{users.length}</strong>
+                </div>
+                <div className="album-social-users">
+                    {visibleUsers.map(renderSocialUser)}
+                </div>
+                {users.length > 3 && (
+                    <button
+                        className="album-social-toggle"
+                        type="button"
+                        onClick={() => setExpandedSocialSections((currentSections) => ({
+                            ...currentSections,
+                            [sectionId]: !isExpanded,
+                        }))}
+                    >
+                        {isExpanded ? "Show less" : `Show ${hiddenCount} more`}
+                    </button>
+                )}
+            </div>
+        );
+    };
+
+    const socialSections = [
+        {
+            id: "reviewers",
+            title: "Reviewed by people you follow",
+            users: albumSocial.followedReviewers,
+        },
+        {
+            id: "likers",
+            title: "Liked by people you follow",
+            users: albumSocial.followedAlbumLikers,
+        },
+    ];
+    const hasAlbumSocialConnections = socialSections.some((section) => section.users.length > 0);
+
 
 
     return (
@@ -504,13 +709,17 @@ export function AlbumDetail()
                     </div>
 
                     <div className="album-side-actions" aria-label="Album actions">
-                        <button className="album-side-action" disabled={isSaved} onClick={handleSaveToCollection}>
-                            <span aria-hidden="true">+</span>
-                            {isSaved ? "Saved" : "Save"}
-                        </button>
-                        <button className="album-side-action" type="button" onClick={openBoardModal}>
-                            Boards...
-                        </button>
+                        {canUseAuthenticatedActions ? (
+                            <button className="album-side-action" disabled={isSaved || isBoardStateLoading} onClick={handleSaveToCollection}>
+                                <span aria-hidden="true">+</span>
+                                {isBoardStateLoading ? "Checking..." : isSaved ? "Saved" : "Save"}
+                            </button>
+                        ) : renderSignInAction("Save", "+")}
+                        {canUseAuthenticatedActions ? (
+                            <button className="album-side-action" type="button" onClick={openBoardModal} disabled={isBoardStateLoading}>
+                                Boards...
+                            </button>
+                        ) : renderSignInAction("Boards...")}
                         <div className="album-side-action album-like-action">
                             <LikeButton
                                 liked={albumLike.likedByViewer}
@@ -520,13 +729,17 @@ export function AlbumDetail()
                                 onToggle={toggleAlbumLike}
                             />
                         </div>
-                        <button className="album-side-action" type="button" onClick={() => setIsReviewModalOpen(true)}>
-                            <span aria-hidden="true">★</span>
-                            Rate
-                        </button>
-                        <button className="album-side-action" type="button" onClick={() => setIsReviewModalOpen(true)}>
-                            Review or log...
-                        </button>
+                        {canUseAuthenticatedActions ? (
+                            <button className="album-side-action" type="button" onClick={() => setIsReviewModalOpen(true)}>
+                                <span aria-hidden="true">★</span>
+                                Rate
+                            </button>
+                        ) : renderSignInAction("Rate", "★")}
+                        {canUseAuthenticatedActions ? (
+                            <button className="album-side-action" type="button" onClick={() => setIsReviewModalOpen(true)}>
+                                Review or log...
+                            </button>
+                        ) : renderSignInAction("Review or log...")}
                         {album.spotifyUrl && (
                             <a
                                 className="album-side-action"
@@ -541,8 +754,18 @@ export function AlbumDetail()
 
                     <div className="album-ratings-panel">
                         <div className="album-panel-header">
-                            <span>Ratings</span>
-                            <span>{userReviews.length} user review{userReviews.length === 1 ? "" : "s"}</span>
+                            <span>Community</span>
+                            <span>{socialReviewCount} review{socialReviewCount === 1 ? "" : "s"}</span>
+                        </div>
+                        <div className="album-social-stats">
+                            <div>
+                                <strong>{socialSavedCount}</strong>
+                                <span>saved</span>
+                            </div>
+                            <div>
+                                <strong>{socialReviewCount}</strong>
+                                <span>reviewed</span>
+                            </div>
                         </div>
                         <div className="album-rating-summary">
                             <div className="album-rating-bars" aria-hidden="true">
@@ -553,6 +776,12 @@ export function AlbumDetail()
                             <strong>{averageRating || "--"}</strong>
                         </div>
                     </div>
+
+                    {hasAlbumSocialConnections && (
+                        <div className="album-social-panel">
+                            {socialSections.map(renderSocialSection)}
+                        </div>
+                    )}
                 </aside>
 
                 <div className="album-detail-main">

@@ -116,6 +116,8 @@ export function Account() {
   const [isCreatingBoard, setIsCreatingBoard] = useState(false);
   const [profile, setProfile] = useState({
     userId: "",
+    username: "",
+    imageUrl: "",
     bio: "",
     spotifyProfileUrl: "",
     favoriteAlbums: [],
@@ -132,6 +134,8 @@ export function Account() {
   const [likeMessage, setLikeMessage] = useState("");
   const [error, setError] = useState("");
   const publicProfileState = location.state?.profileUser || {};
+  const publicProfileUsername = publicProfileState.username || "";
+  const publicProfileImageUrl = publicProfileState.imageUrl || "";
   const canManageProfile = !isPublicProfile;
   const availableTabs = useMemo(
     () => tabs.filter((tab) => tab.id !== "settings"),
@@ -150,6 +154,8 @@ export function Account() {
         setBoards([]);
         setProfile({
           userId: "",
+          username: "",
+          imageUrl: "",
           bio: "",
           spotifyProfileUrl: "",
           favoriteAlbums: [],
@@ -246,6 +252,8 @@ export function Account() {
         setBoards(Array.isArray(boardsData) ? boardsData : []);
         setProfile({
           userId: profileData.userId || publicUserId || "",
+          username: typeof profileData.username === "string" ? profileData.username : "",
+          imageUrl: typeof profileData.imageUrl === "string" ? profileData.imageUrl : "",
           bio: typeof profileData.bio === "string" ? profileData.bio : "",
           spotifyProfileUrl: typeof profileData.spotifyProfileUrl === "string" ? profileData.spotifyProfileUrl : "",
           favoriteAlbums: Array.isArray(profileData.favoriteAlbums) ? profileData.favoriteAlbums : [],
@@ -268,6 +276,8 @@ export function Account() {
           setBoards([]);
           setProfile({
             userId: publicUserId || "",
+            username: publicProfileUsername,
+            imageUrl: publicProfileImageUrl,
             bio: "",
             spotifyProfileUrl: "",
             favoriteAlbums: [],
@@ -295,7 +305,7 @@ export function Account() {
     return () => {
       isCurrent = false;
     };
-  }, [getToken, isPublicProfile, isSignedIn, publicUserId]);
+  }, [getToken, isPublicProfile, isSignedIn, publicProfileImageUrl, publicProfileUsername, publicUserId]);
 
   useEffect(() => {
     if (!availableTabs.some((tab) => tab.id === activeTab)) {
@@ -542,9 +552,9 @@ export function Account() {
   }
 
   const displayName = isPublicProfile
-    ? publicProfileState.username || profile.userId || "albumboxd user"
+    ? profile.username || publicProfileUsername || profile.userId || "albumboxd user"
     : user?.username || user?.fullName || user?.primaryEmailAddress?.emailAddress || "Your profile";
-  const profileImageUrl = isPublicProfile ? publicProfileState.imageUrl : user?.imageUrl;
+  const profileImageUrl = isPublicProfile ? profile.imageUrl || publicProfileImageUrl : user?.imageUrl;
   const showFollowButton = isPublicProfile && !profile.isCurrentUser && (!isSignedIn || !isLoading);
   const profileHandle = displayName;
   const hasSpotifyProfile = Boolean(profile.spotifyProfileUrl);

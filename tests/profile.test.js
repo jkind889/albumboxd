@@ -446,6 +446,8 @@ test("GET /profile/me creates and returns an empty current user profile", async 
   ]);
   assert.deepEqual(response.body, {
     userId: "user_clerk_123",
+    username: "albumboxd user",
+    imageUrl: "",
     bio: "",
     spotifyProfileUrl: "",
     favoriteAlbums: [],
@@ -1359,6 +1361,8 @@ test("GET /profile/:userId creates and returns a public profile for a reviewed u
   ]);
   assert.deepEqual(response.body, {
     userId: "review_author_1",
+    username: "albumboxd user",
+    imageUrl: "",
     bio: "",
     spotifyProfileUrl: "",
     favoriteAlbums: [],
@@ -1370,6 +1374,26 @@ test("GET /profile/:userId creates and returns a public profile for a reviewed u
     isFollowing: true,
     isCurrentUser: false,
   });
+});
+
+test("GET /profile/:userId includes Clerk username and profile image", async () => {
+  reviewUserIds.add("review_author_1");
+  clerkUsers = [
+    {
+      id: "review_author_1",
+      username: "blueposter",
+      imageUrl: "https://example.com/blueposter.jpg",
+    },
+  ];
+
+  const response = await callRoute("get", "/:userId", {
+    params: { userId: "review_author_1" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(getUserListCalls, [{ userId: ["review_author_1"] }]);
+  assert.equal(response.body.username, "blueposter");
+  assert.equal(response.body.imageUrl, "https://example.com/blueposter.jpg");
 });
 
 test("GET /profile/:userId exposes a saved Spotify profile URL", async () => {
