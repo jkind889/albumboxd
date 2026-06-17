@@ -14,7 +14,8 @@
 .app-shell:has(.catalog-page),
 .app-shell:has(.boards-page),
 .app-shell:has(.board-detail-page),
-.app-shell:has(.profile-network-page) {
+.app-shell:has(.profile-network-page),
+.app-shell:has(.edit-profile-page) {
   max-width: none;
   min-height: 100vh;
   background: #000000;
@@ -49,7 +50,10 @@ body:has(.board-detail-page),
 #root:has(.board-detail-page),
 html:has(.profile-network-page),
 body:has(.profile-network-page),
-#root:has(.profile-network-page) {
+#root:has(.profile-network-page),
+html:has(.edit-profile-page),
+body:has(.edit-profile-page),
+#root:has(.edit-profile-page) {
   background: #000000;
 }
 
@@ -3978,10 +3982,13 @@ body:has(.profile-network-page),
 }
 
 .edit-profile-page {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 1.25rem;
-  margin-top: 1.5rem;
+  width: min(100%, 980px);
+  margin: 0 auto;
+  padding: 2.2rem 0 3rem;
+  background: #000000;
+  color: #f8fafc;
 }
 
 .edit-profile-header {
@@ -3989,16 +3996,13 @@ body:has(.profile-network-page),
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem;
-  border: 1px solid #dbe4ee;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .edit-profile-header h1 {
   margin: 0.2rem 0 0;
-  color: #0f172a;
+  color: #f8fafc;
   font-size: clamp(1.75rem, 3vw, 2.5rem);
   line-height: 1;
 }
@@ -4014,10 +4018,15 @@ body:has(.profile-network-page),
   display: grid;
   gap: 1rem;
   padding: 1rem;
-  border: 1px solid #dbe4ee;
+  border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  background: rgba(0, 0, 0, 0.82);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+}
+
+.edit-profile-panel form {
+  display: grid;
+  gap: 0.75rem;
 }
 
 .edit-profile-wide-panel {
@@ -4038,8 +4047,10 @@ body:has(.profile-network-page),
 }
 
 .edit-profile-field span {
-  color: #334155;
-  font-weight: 700;
+  color: #a8b3c2;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .edit-profile-field input,
@@ -4048,10 +4059,30 @@ body:has(.profile-network-page),
   width: 100%;
   min-height: 42px;
   padding: 0.7rem 0.8rem;
-  border: 1px solid #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 8px;
-  background: #ffffff;
-  color: #0f172a;
+  background: rgba(0, 0, 0, 0.58);
+  color: #f8fafc;
+  font: inherit;
+}
+
+.edit-profile-field input:focus,
+.edit-profile-field select:focus,
+.edit-profile-field textarea:focus {
+  border-color: rgba(248, 250, 252, 0.64);
+  box-shadow: 0 0 0 2px rgba(248, 250, 252, 0.08);
+  outline: none;
+}
+
+.edit-profile-field input::placeholder,
+.edit-profile-field textarea::placeholder {
+  color: #6f7f92;
+}
+
+.edit-profile-field input[type="checkbox"] {
+  width: 1.1rem;
+  min-height: 1.1rem;
+  accent-color: #f8fafc;
 }
 
 .edit-profile-field textarea {
@@ -4063,16 +4094,16 @@ body:has(.profile-network-page),
 }
 
 .edit-profile-current-value {
-  color: #64748b;
+  color: #9fb0c4;
 }
 
 .edit-profile-status {
-  color: #166534;
+  color: #86efac;
   font-weight: 700;
 }
 
 .edit-profile-error {
-  color: #b91c1c;
+  color: #fca5a5;
   font-weight: 700;
 }
 
@@ -4090,19 +4121,27 @@ body:has(.profile-network-page),
   gap: 0.75rem;
   align-items: center;
   padding: 0.65rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 8px;
-  background: #f8fafc;
+  background: rgba(0, 0, 0, 0.58);
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
 .edit-profile-search-result {
   grid-template-columns: 58px minmax(0, 1fr) auto;
 }
 
+.edit-profile-selected-album:hover,
+.edit-profile-search-result:hover {
+  border-color: rgba(248, 250, 252, 0.34);
+  background: rgba(12, 12, 12, 0.92);
+  transform: translateY(-1px);
+}
+
 .edit-profile-selected-album h3,
 .edit-profile-search-result h3 {
   margin: 0;
-  color: #0f172a;
+  color: #f8fafc;
   font-size: 1rem;
   line-height: 1.25;
 }
@@ -4110,7 +4149,7 @@ body:has(.profile-network-page),
 .edit-profile-selected-album p,
 .edit-profile-search-result p {
   margin: 0;
-  color: #64748b;
+  color: #9fb0c4;
   line-height: 1.4;
 }
 
@@ -4123,15 +4162,15 @@ body:has(.profile-network-page),
 
 .edit-profile-cover {
   object-fit: cover;
-  background: #e2e8f0;
+  background: #111111;
 }
 
 .edit-profile-cover-fallback {
   display: grid;
   place-items: center;
   padding: 0.35rem;
-  background: #e2e8f0;
-  color: #475569;
+  background: #111111;
+  color: #a8b3c2;
   font-size: 0.75rem;
   text-align: center;
 }
@@ -4142,7 +4181,7 @@ body:has(.profile-network-page),
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  background: #0f172a;
+  background: rgba(248, 250, 252, 0.12);
   color: #f8fafc;
   font-size: 0.82rem;
   font-weight: 800;
@@ -4158,11 +4197,16 @@ body:has(.profile-network-page),
 .edit-profile-album-actions button {
   min-height: 34px;
   padding: 0.35rem 0.55rem;
-  border: 1px solid #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 8px;
-  background: #ffffff;
-  color: #334155;
+  background: rgba(0, 0, 0, 0.72);
+  color: #d8e1ea;
   font-weight: 700;
+}
+
+.edit-profile-album-actions button:hover:not(:disabled) {
+  border-color: rgba(248, 250, 252, 0.44);
+  color: #f8fafc;
 }
 
 .edit-profile-album-actions button:disabled,
@@ -4178,8 +4222,13 @@ body:has(.profile-network-page),
 }
 
 .edit-profile-footer-link {
-  color: #334155;
+  color: #a8b3c2;
   font-weight: 700;
+  text-decoration: none;
+}
+
+.edit-profile-footer-link:hover {
+  color: #f8fafc;
 }
 
 @media (max-width: 640px) {

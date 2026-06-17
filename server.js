@@ -9,6 +9,7 @@ const app = express();
 const cors = require("cors");
 const mongoose = require("mongoose");
 const { clerkMiddleware } = require("@clerk/express");
+const healthRoutes = require("./routes/health");
 
 if (!process.env.CLERK_SECRET_KEY) {
   throw new Error("Missing CLERK_SECRET_KEY in the server environment.");
@@ -23,6 +24,7 @@ if (!process.env.CLERK_PUBLISHABLE_KEY) {
 
 app.use(express.json())
 app.use(cors())
+app.use("/health", healthRoutes);
 app.use(clerkMiddleware());
 
 
