@@ -57,8 +57,7 @@ body:has(.profile-network-page),
   position: sticky;
   top: 0;
   z-index: 20;
-  margin: -1.5rem calc(50% - 50vw) 0;
-  width: 100vw;
+  margin: calc(var(--app-shell-padding) * -1) calc(var(--app-shell-padding) * -1) 0;
   background: #18181b;
   border-bottom: 1px solid #2f3035;
   box-shadow: 0 2px 14px rgba(0, 0, 0, 0.28);
@@ -75,7 +74,7 @@ body:has(.profile-network-page),
   gap: 1rem;
   align-items: center;
   justify-content: normal;
-  width: min(100%, calc(100vw - 2rem));
+  width: 100%;
   max-width: none;
   min-width: 0;
   margin: 0 auto;
@@ -109,19 +108,29 @@ body:has(.profile-network-page),
 .site-navbar-actions {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 0.5rem;
   white-space: nowrap;
 }
 
 .site-navbar-actions .nav-link {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  min-height: 36px;
   padding: 0;
+}
+
+.site-navbar-actions .cl-rootBox {
+  display: inline-flex;
+  align-items: center;
 }
 
 .nav-notification-link {
   position: relative;
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
+  min-height: 36px;
   gap: 0.35rem;
 }
 
@@ -232,7 +241,7 @@ body:has(.profile-network-page),
 }
 
 .front-page {
-  width: min(100%, calc(100vw - (var(--app-shell-padding) * 2)));
+  width: 100%;
   margin: 0 auto -1.5rem;
   min-height: calc(100vh - 50px);
   padding: 2rem 0 3rem;
@@ -613,8 +622,7 @@ body:has(.profile-network-page),
 
 @media (max-width: 640px) {
   .site-header {
-    margin: -1rem -1rem 0;
-    width: calc(100% + 2rem);
+    margin: calc(var(--app-shell-padding) * -1) calc(var(--app-shell-padding) * -1) 0;
   }
 
   .site-navbar {
@@ -638,14 +646,23 @@ body:has(.profile-network-page),
   .site-navbar-actions {
     grid-column: 2;
     grid-row: 1;
+    gap: 0.35rem;
+    justify-self: end;
+    max-width: 100%;
   }
 
-  .site-navbar-actions .nav-auth-button-secondary {
-    display: none;
+  .nav-auth-button {
+    min-height: 36px;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.9rem;
+  }
+
+  .site-navbar-actions .nav-link {
+    font-size: 0.95rem;
   }
 
   .front-page {
-    width: min(100%, calc(100vw - 1.5rem));
+    width: 100%;
     margin-bottom: -1rem;
   }
 
@@ -746,7 +763,7 @@ body:has(.profile-network-page),
 }
 
 .search-results-page {
-  width: min(100%, calc(100vw - (var(--app-shell-padding) * 2)));
+  width: 100%;
   margin-left: auto;
   margin-right: auto;
   margin-top: 2rem;
@@ -755,7 +772,7 @@ body:has(.profile-network-page),
 }
 
 .catalog-page {
-  width: min(calc(100vw - (var(--app-shell-padding) * 2)), 1180px);
+  width: min(100%, 1180px);
   margin: 0 auto;
   padding: 2.2rem 0 4rem;
   background: #000000;
@@ -1280,6 +1297,18 @@ body:has(.profile-network-page),
     gap: 0.2rem 0.75rem;
     min-height: 72px;
     padding: 0.65rem;
+    transform: translate3d(-18px, 12px, 0);
+    transition:
+      opacity 320ms ease,
+      transform 320ms ease,
+      background 180ms ease,
+      padding 180ms ease;
+    transition-delay: calc(var(--catalog-row-index, 0) * 24ms);
+  }
+
+  .catalog-row.is-visible {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
 
   .catalog-row:hover,
@@ -1407,7 +1436,7 @@ body:has(.profile-network-page),
 }
 
 .album-detail-page {
-  width: min(calc(100vw - (var(--app-shell-padding) * 2)), 980px);
+  width: min(100%, 980px);
   margin: 0 auto;
   padding: 2.2rem 0 3rem;
   color: #ffffff;
@@ -2273,7 +2302,7 @@ body:has(.profile-network-page),
 .reviews-page {
   display: grid;
   gap: 1.5rem;
-  width: min(calc(100vw - (var(--app-shell-padding) * 2)), 980px);
+  width: min(100%, 980px);
   margin: 0 auto;
   padding: 2.2rem 0 3rem;
   background: #000000;
@@ -2283,7 +2312,7 @@ body:has(.profile-network-page),
 .notifications-page {
   display: grid;
   gap: 1.5rem;
-  width: min(calc(100vw - (var(--app-shell-padding) * 2)), 860px);
+  width: min(100%, 860px);
   margin: 0 auto;
   padding: 2.2rem 0 3rem;
   background: #000000;
@@ -2759,7 +2788,7 @@ body:has(.profile-network-page),
 }
 
 .profile-page {
-  width: min(calc(100vw - (var(--app-shell-padding) * 2)), 980px);
+  width: min(100%, 980px);
   margin: 0 auto;
   padding: 2.2rem 0 3rem;
   overflow-x: visible;
@@ -2841,7 +2870,12 @@ body:has(.profile-network-page),
   margin: 0.1rem 0 0.3rem;
   font-size: clamp(1.9rem, 3vw, 2.35rem);
   line-height: 1;
-  overflow-wrap: anywhere;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
 }
 
 .profile-name-row {
@@ -3863,7 +3897,7 @@ body:has(.profile-network-page),
 }
 
 .profile-network-page {
-  width: min(calc(100vw - (var(--app-shell-padding) * 2)), 980px);
+  width: min(100%, 980px);
   margin: 0 auto;
   padding: 2.2rem 0 3rem;
   background: #000000;
@@ -4231,6 +4265,33 @@ body:has(.profile-network-page),
     grid-template-columns: 1fr;
   }
 
+  .profile-identity,
+  .profile-hero-actions {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .profile-identity > div {
+    min-width: 0;
+  }
+
+  .profile-name-row {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .profile-hero-links {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .profile-hero-links a,
+  .profile-hero-links button,
+  .profile-hero-stat {
+    padding: 0.1rem 0.75rem;
+  }
+
   .profile-sidebar {
     position: static;
   }
@@ -4258,7 +4319,7 @@ body:has(.profile-network-page),
 
 @media (max-width: 640px) {
   .album-detail-page {
-    width: min(calc(100vw - 1.5rem), 980px);
+    width: 100%;
     padding: 1.25rem 0 2rem;
   }
 
@@ -4267,7 +4328,8 @@ body:has(.profile-network-page),
   }
 
   .album-title-block h1 {
-    font-size: 2.35rem;
+    font-size: clamp(1.85rem, 9vw, 2.25rem);
+    line-height: 1.05;
   }
 
   .album-side-actions {

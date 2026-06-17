@@ -72,6 +72,7 @@ export function EditProfile() {
   const { user, isLoaded } = useUser();
   const [bio, setBio] = useState("");
   const [spotifyProfileUrl, setSpotifyProfileUrl] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
   const [favoriteAlbums, setFavoriteAlbums] = useState([]);
   const [listeningNextAlbum, setListeningNextAlbum] = useState(null);
   const [pinnedReviewId, setPinnedReviewId] = useState("");
@@ -144,6 +145,7 @@ export function EditProfile() {
 
         setBio(typeof data.bio === "string" ? data.bio : "");
         setSpotifyProfileUrl(typeof data.spotifyProfileUrl === "string" ? data.spotifyProfileUrl : "");
+        setIsPrivate(Boolean(data.isPrivate));
         setFavoriteAlbums(Array.isArray(data.favoriteAlbums) ? data.favoriteAlbums : []);
         setListeningNextAlbum(data.listeningNextAlbum || null);
         setPinnedReviewId(data.pinnedReview?._id || "");
@@ -353,7 +355,7 @@ export function EditProfile() {
       setProfileStatus("Saving profile...");
 
       const token = await getToken();
-      const response = await fetch("http://localhost:3000/profile/me", {
+      const profileResponse = await fetch("http://localhost:3000/profile/me", {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -369,14 +371,37 @@ export function EditProfile() {
         }),
       });
 
-      const data = await response.json();
+      const profileData = await profileResponse.json();
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to save profile");
+      if (!profileResponse.ok) {
+        throw new Error(profileData.error || "Failed to save profile");
       }
+
+      const privacyResponse = await fetch("http://localhost:3000/profile/me", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          isPrivate,
+        }),
+      });
+
+      const privacyData = await privacyResponse.json();
+
+      if (!privacyResponse.ok) {
+        throw new Error(privacyData.error || "Failed to save profile privacy");
+      }
+
+      const data = {
+        ...profileData,
+        isPrivate: privacyData.isPrivate,
+      };
 
       setBio(typeof data.bio === "string" ? data.bio : "");
       setSpotifyProfileUrl(typeof data.spotifyProfileUrl === "string" ? data.spotifyProfileUrl : "");
+      setIsPrivate(Boolean(data.isPrivate));
       setFavoriteAlbums(Array.isArray(data.favoriteAlbums) ? data.favoriteAlbums : []);
       setListeningNextAlbum(data.listeningNextAlbum || null);
       setPinnedReviewId(data.pinnedReview?._id || "");
@@ -434,6 +459,18 @@ export function EditProfile() {
                     placeholder="https://open.spotify.com/user/..."
                   />
                 </label>
+
+                <label className="edit-profile-field">
+                  <span>Private Account</span>
+                  <input
+                    type="checkbox"
+                    checked={isPrivate}
+                    onChange={(event) => setIsPrivate(event.target.checked)}
+                  />
+                </label>
+                <p className="edit-profile-current-value">
+                  Private accounts only show profile identity and follower counts to other listeners.
+                </p>
 
                 <div className="edit-profile-favorites">
                   <div className="profile-section-header">

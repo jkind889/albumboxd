@@ -122,6 +122,7 @@ export function Account() {
     imageUrl: "",
     bio: "",
     spotifyProfileUrl: "",
+    isPrivate: false,
     favoriteAlbums: [],
     listeningNextAlbum: null,
     pinnedReview: null,
@@ -139,9 +140,10 @@ export function Account() {
   const publicProfileUsername = publicProfileState.username || "";
   const publicProfileImageUrl = publicProfileState.imageUrl || "";
   const canManageProfile = !isPublicProfile;
+  const isPrivateProfile = isPublicProfile && profile.isPrivate && !profile.isCurrentUser;
   const availableTabs = useMemo(
-    () => tabs.filter((tab) => tab.id !== "settings"),
-    [],
+    () => tabs.filter((tab) => tab.id !== "settings" && (!isPrivateProfile || tab.id === "overview")),
+    [isPrivateProfile],
   );
 
   useEffect(() => {
@@ -160,6 +162,7 @@ export function Account() {
           imageUrl: "",
           bio: "",
           spotifyProfileUrl: "",
+          isPrivate: false,
           favoriteAlbums: [],
           listeningNextAlbum: null,
           pinnedReview: null,
@@ -188,31 +191,38 @@ export function Account() {
 
         if (isPublicProfile) {
           const encodedPublicUserId = encodeURIComponent(publicUserId);
-          const [profileResponse, savedResponse, reviewsResponse, activityResponse, boardsResponse] = await Promise.all([
-            fetch(`http://localhost:3000/profile/${encodedPublicUserId}`, { headers }),
-            fetch(`http://localhost:3000/profile/${encodedPublicUserId}/saved`),
-            fetch(`http://localhost:3000/reviews/review/user/${encodedPublicUserId}`, { headers }),
-            fetch(`http://localhost:3000/profile/${encodedPublicUserId}/activity`, { headers }),
-            fetch(`http://localhost:3000/profile/${encodedPublicUserId}/boards`),
-          ]);
+          const profileResponse = await fetch(`http://localhost:3000/profile/${encodedPublicUserId}`, { headers });
 
-          if (
-            !profileResponse.ok
-            || !savedResponse.ok
-            || !reviewsResponse.ok
-            || !activityResponse.ok
-            || !boardsResponse.ok
-          ) {
+          if (!profileResponse.ok) {
             throw new Error("Failed to load profile data");
           }
 
-          [profileData, savedData, reviewsData, activityData, boardsData] = await Promise.all([
-            profileResponse.json(),
-            savedResponse.json(),
-            reviewsResponse.json(),
-            activityResponse.json(),
-            boardsResponse.json(),
-          ]);
+          profileData = await profileResponse.json();
+
+          if (!(profileData.isPrivate && !profileData.isCurrentUser)) {
+            const [savedResponse, reviewsResponse, activityResponse, boardsResponse] = await Promise.all([
+              fetch(`http://localhost:3000/profile/${encodedPublicUserId}/saved`),
+              fetch(`http://localhost:3000/reviews/review/user/${encodedPublicUserId}`, { headers }),
+              fetch(`http://localhost:3000/profile/${encodedPublicUserId}/activity`, { headers }),
+              fetch(`http://localhost:3000/profile/${encodedPublicUserId}/boards`),
+            ]);
+
+            if (
+              !savedResponse.ok
+              || !reviewsResponse.ok
+              || !activityResponse.ok
+              || !boardsResponse.ok
+            ) {
+              throw new Error("Failed to load profile data");
+            }
+
+            [savedData, reviewsData, activityData, boardsData] = await Promise.all([
+              savedResponse.json(),
+              reviewsResponse.json(),
+              activityResponse.json(),
+              boardsResponse.json(),
+            ]);
+          }
         } else {
           const [
             defaultBoardResponse,
@@ -272,6 +282,7 @@ export function Account() {
           imageUrl: typeof profileData.imageUrl === "string" ? profileData.imageUrl : "",
           bio: typeof profileData.bio === "string" ? profileData.bio : "",
           spotifyProfileUrl: typeof profileData.spotifyProfileUrl === "string" ? profileData.spotifyProfileUrl : "",
+          isPrivate: Boolean(profileData.isPrivate),
           favoriteAlbums: Array.isArray(profileData.favoriteAlbums) ? profileData.favoriteAlbums : [],
           listeningNextAlbum: profileData.listeningNextAlbum || null,
           pinnedReview: profileData.pinnedReview || null,
@@ -296,6 +307,7 @@ export function Account() {
             imageUrl: publicProfileImageUrl,
             bio: "",
             spotifyProfileUrl: "",
+            isPrivate: false,
             favoriteAlbums: [],
             listeningNextAlbum: null,
             pinnedReview: null,
@@ -1160,6 +1172,15 @@ export function Account() {
       return <AsyncState error={error} errorTitle="Profile unavailable" />;
     }
 
+    if (isPrivateProfile) {
+      return (
+        <ProfileEmptyState
+          title={`${displayName} account is private`}
+          body="This listener is keeping their albums, reviews, activity, and boards private."
+        />
+      );
+    }
+
     if (activeTab === "overview") {
       return renderOverview();
     }
@@ -1257,28 +1278,43 @@ export function Account() {
               </div>
 
               <div className="profile-hero-links" aria-label="Profile links">
-                <button type="button" onClick={() => setActiveTab("saved")}>
-                  <span>Albums</span>
-                  <strong>{savedAlbums.length}</strong>
-                </button>
-                <button type="button" onClick={() => setActiveTab("reviews")}>
-                  <span>Reviews</span>
-                  <strong>{reviews.length}</strong>
-                </button>
-                <Link
-                  to={`${socialPath}?tab=followers`}
-                  state={{ profileUser: publicProfileState, activeTab: "followers" }}
-                >
-                  <span>Followers</span>
-                  <strong>{profile.followerCount}</strong>
-                </Link>
-                <Link
-                  to={`${socialPath}?tab=following`}
-                  state={{ profileUser: publicProfileState, activeTab: "following" }}
-                >
-                  <span>Following</span>
-                  <strong>{profile.followingCount}</strong>
-                </Link>
+                {isPrivateProfile ? (
+                  <>
+                    <div className="profile-hero-stat">
+                      <span>Followers</span>
+                      <strong>{profile.followerCount}</strong>
+                    </div>
+                    <div className="profile-hero-stat">
+                      <span>Following</span>
+                      <strong>{profile.followingCount}</strong>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => setActiveTab("saved")}>
+                      <span>Albums</span>
+                      <strong>{savedAlbums.length}</strong>
+                    </button>
+                    <button type="button" onClick={() => setActiveTab("reviews")}>
+                      <span>Reviews</span>
+                      <strong>{reviews.length}</strong>
+                    </button>
+                    <Link
+                      to={`${socialPath}?tab=followers`}
+                      state={{ profileUser: publicProfileState, activeTab: "followers" }}
+                    >
+                      <span>Followers</span>
+                      <strong>{profile.followerCount}</strong>
+                    </Link>
+                    <Link
+                      to={`${socialPath}?tab=following`}
+                      state={{ profileUser: publicProfileState, activeTab: "following" }}
+                    >
+                      <span>Following</span>
+                      <strong>{profile.followingCount}</strong>
+                    </Link>
+                  </>
+                )}
               </div>
               {canManageProfile && (
                 <div className="profile-hero-actions">
@@ -1305,6 +1341,7 @@ export function Account() {
             </div>
           </main>
 
+          {!isPrivateProfile && (
           <aside className="profile-sidebar" aria-label="Profile details">
             <div className="profile-sidebar-card">
               <div className="profile-sidebar-banner" />
@@ -1406,6 +1443,7 @@ export function Account() {
               </div>
             </div>
           </aside>
+          )}
         </div>
       </section>
     </>

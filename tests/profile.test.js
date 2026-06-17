@@ -524,6 +524,7 @@ test("GET /profile/me creates and returns an empty current user profile", async 
       userId: "user_clerk_123",
       bio: "",
       spotifyProfileUrl: "",
+      isPrivate: false,
       favoriteAlbums: [],
       listeningNextAlbum: null,
       pinnedReviewId: null,
@@ -536,6 +537,7 @@ test("GET /profile/me creates and returns an empty current user profile", async 
     imageUrl: "",
     bio: "",
     spotifyProfileUrl: "",
+    isPrivate: false,
     favoriteAlbums: [],
     listeningNextAlbum: null,
     pinnedReview: null,
@@ -685,6 +687,109 @@ test("PUT /profile/me saves bio and ordered favorite albums", async () => {
   assert.equal(response.body.followingCount, 0);
   assert.equal(response.body.isCurrentUser, true);
   assert.equal(response.body.spotifyProfileUrl, "https://open.spotify.com/user/currentlistener");
+  assert.equal(response.body.isPrivate, false);
+});
+
+test("PATCH /profile/me updates profile privacy", async () => {
+  updatedProfile = {
+    userId: "user_clerk_123",
+    bio: "Private listener.",
+    spotifyProfileUrl: "",
+    isPrivate: true,
+    favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReviewId: null,
+    pinnedBoardId: null,
+  };
+
+  const response = await callRoute("patch", "/me", {
+    body: { isPrivate: true },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(updateCalls[0], {
+    query: { userId: "user_clerk_123" },
+    update: {
+      $set: {
+        userId: "user_clerk_123",
+        isPrivate: true,
+      },
+    },
+    options: {
+      new: true,
+      upsert: true,
+      setDefaultsOnInsert: true,
+    },
+  });
+  assert.equal(response.body.isPrivate, true);
+  assert.equal(response.body.isCurrentUser, true);
+});
+
+test("PATCH /profile/me can make a private profile public again", async () => {
+  updatedProfile = {
+    userId: "user_clerk_123",
+    bio: "",
+    spotifyProfileUrl: "",
+    isPrivate: false,
+    favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReviewId: null,
+    pinnedBoardId: null,
+  };
+
+  const response = await callRoute("patch", "/me", {
+    body: { isPrivate: false },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(updateCalls[0].update.$set.isPrivate, false);
+  assert.equal(response.body.isPrivate, false);
+});
+
+test("PATCH /profile/me rejects non-boolean privacy values", async () => {
+  const response = await callRoute("patch", "/me", {
+    body: { isPrivate: "yes" },
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "isPrivate must be true or false" });
+  assert.equal(updateCalls.length, 0);
+});
+
+test("PATCH /profile/me returns 401 when Clerk has no user", async () => {
+  authUserId = "";
+
+  const response = await callRoute("patch", "/me", {
+    body: { isPrivate: true },
+  });
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(response.body, { error: "Unauthorized" });
+  assert.equal(updateCalls.length, 0);
+});
+
+test("PUT /profile/me preserves an existing private profile setting", async () => {
+  updatedProfile = {
+    userId: "user_clerk_123",
+    bio: "Still private.",
+    spotifyProfileUrl: "",
+    isPrivate: true,
+    favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReviewId: null,
+    pinnedBoardId: null,
+  };
+
+  const response = await callRoute("put", "/me", {
+    body: {
+      bio: "Still private.",
+      favoriteAlbumIds: [],
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(Object.hasOwn(updateCalls[0].update.$set, "isPrivate"), false);
+  assert.equal(response.body.isPrivate, true);
 });
 
 test("PUT /profile/me saves listening next, pinned review, and pinned board", async () => {
@@ -1385,6 +1490,7 @@ test("GET /profile/:userId/activity returns an empty feed for a profile without 
     userId: "empty_profile_user",
     bio: "Still setting up.",
     spotifyProfileUrl: "",
+    isPrivate: false,
     favoriteAlbums: [],
     listeningNextAlbum: null,
     pinnedReviewId: null,
@@ -1504,6 +1610,7 @@ test("GET /profile/:userId/saved returns an empty shelf for a profile without sa
     userId: "empty_profile_user",
     bio: "Still setting up.",
     spotifyProfileUrl: "",
+    isPrivate: false,
     favoriteAlbums: [],
     listeningNextAlbum: null,
     pinnedReviewId: null,
@@ -1742,6 +1849,42 @@ test("GET /profile/:userId/network returns 404 for a user without reviews", asyn
   assert.equal(followFindCalls.length, 0);
 });
 
+test("public profile side routes return 403 for a private profile viewed by another user", async () => {
+  profilesByUserId.set("private_profile_user", {
+    userId: "private_profile_user",
+    bio: "Hidden shelf.",
+    spotifyProfileUrl: "",
+    isPrivate: true,
+    favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReviewId: null,
+    pinnedBoardId: null,
+  });
+
+  const routes = [
+    { path: "/:userId/saved", params: { userId: "private_profile_user" } },
+    { path: "/:userId/activity", params: { userId: "private_profile_user" } },
+    { path: "/:userId/boards", params: { userId: "private_profile_user" } },
+    { path: "/:userId/boards/:boardId", params: { userId: "private_profile_user", boardId: "board_1" } },
+    { path: "/:userId/network", params: { userId: "private_profile_user" } },
+  ];
+
+  for (const route of routes) {
+    const response = await callRoute("get", route.path, { params: route.params });
+
+    assert.equal(response.status, 403, route.path);
+    assert.deepEqual(response.body, {
+      error: "Profile is private",
+      isPrivate: true,
+    });
+  }
+
+  assert.equal(boardFindOneCalls.length, 0);
+  assert.equal(boardFindCalls.length, 0);
+  assert.equal(boardItemFindCalls.length, 0);
+  assert.equal(followFindCalls.length, 0);
+});
+
 test("GET /profile/:userId creates and returns a public profile for a reviewed user", async () => {
   reviewUserIds.add("review_author_1");
   followDocuments = [
@@ -1762,6 +1905,7 @@ test("GET /profile/:userId creates and returns a public profile for a reviewed u
       userId: "review_author_1",
       bio: "",
       spotifyProfileUrl: "",
+      isPrivate: false,
       favoriteAlbums: [],
       listeningNextAlbum: null,
       pinnedReviewId: null,
@@ -1774,6 +1918,7 @@ test("GET /profile/:userId creates and returns a public profile for a reviewed u
     imageUrl: "",
     bio: "",
     spotifyProfileUrl: "",
+    isPrivate: false,
     favoriteAlbums: [],
     listeningNextAlbum: null,
     pinnedReview: null,
@@ -1783,6 +1928,81 @@ test("GET /profile/:userId creates and returns a public profile for a reviewed u
     isFollowing: true,
     isCurrentUser: false,
   });
+});
+
+test("GET /profile/:userId returns minimal data for a private profile viewed by another user", async () => {
+  profilesByUserId.set("private_profile_user", {
+    userId: "private_profile_user",
+    bio: "Hidden shelf.",
+    spotifyProfileUrl: "https://open.spotify.com/user/private",
+    isPrivate: true,
+    favoriteAlbums: [
+      {
+        spotifyId: "album_1",
+        rank: 0,
+        albumCatalogId: {
+          spotifyId: "album_1",
+          title: "Kind of Blue",
+          artist: "Miles Davis",
+        },
+      },
+    ],
+    listeningNextAlbum: null,
+    pinnedReviewId: null,
+    pinnedBoardId: null,
+  });
+  followDocuments = [
+    { followerId: "fan_1", followingId: "private_profile_user" },
+    { followerId: "private_profile_user", followingId: "artist_friend" },
+    { followerId: "user_clerk_123", followingId: "private_profile_user" },
+  ];
+  clerkUsers = [
+    {
+      id: "private_profile_user",
+      username: "privateposter",
+      imageUrl: "https://example.com/private.jpg",
+    },
+  ];
+
+  const response = await callRoute("get", "/:userId", {
+    params: { userId: "private_profile_user" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    userId: "private_profile_user",
+    username: "privateposter",
+    imageUrl: "https://example.com/private.jpg",
+    isPrivate: true,
+    followerCount: 2,
+    followingCount: 1,
+    isFollowing: true,
+    isCurrentUser: false,
+  });
+});
+
+test("GET /profile/:userId returns full data for the owner of a private profile", async () => {
+  authUserId = "private_profile_user";
+  profilesByUserId.set("private_profile_user", {
+    userId: "private_profile_user",
+    bio: "Owner can see this.",
+    spotifyProfileUrl: "",
+    isPrivate: true,
+    favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReviewId: null,
+    pinnedBoardId: null,
+  });
+
+  const response = await callRoute("get", "/:userId", {
+    params: { userId: "private_profile_user" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.bio, "Owner can see this.");
+  assert.equal(response.body.isPrivate, true);
+  assert.deepEqual(response.body.favoriteAlbums, []);
+  assert.equal(response.body.isCurrentUser, true);
 });
 
 test("GET /profile/:userId includes Clerk username and profile image", async () => {
@@ -1894,6 +2114,7 @@ test("GET /profile/:userId returns an existing profile without reviews", async (
     userId: "empty_profile_user",
     bio: "Still setting up.",
     spotifyProfileUrl: "",
+    isPrivate: false,
     favoriteAlbums: [],
     listeningNextAlbum: null,
     pinnedReviewId: null,
@@ -1914,6 +2135,7 @@ test("GET /profile/:userId returns an existing profile without reviews", async (
     imageUrl: "",
     bio: "Still setting up.",
     spotifyProfileUrl: "",
+    isPrivate: false,
     favoriteAlbums: [],
     listeningNextAlbum: null,
     pinnedReview: null,

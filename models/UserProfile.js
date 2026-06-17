@@ -54,6 +54,10 @@ const userProfileSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    isPrivate: {
+      type: Boolean,
+      default: false,
+    },
     favoriteAlbums: {
       type: [favoriteAlbumSchema],
       default: [],
