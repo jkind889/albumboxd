@@ -79,10 +79,6 @@ export function PopularAlbums({ limit = 5, window = "30d" }) {
                     <div className="popular-album-info">
                         <h4>{album.title}</h4>
                         <p>{album.artist}</p>
-                        <div className="popular-album-stats">
-                            <span>{Number(album.averageRating || 0).toFixed(1)} avg</span>
-                            <span>{album.reviewCount} reviews</span>
-                        </div>
                     </div>
                 </Link>
             ))}

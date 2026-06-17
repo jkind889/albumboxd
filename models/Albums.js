@@ -22,7 +22,7 @@ const albumSchema = new mongoose.Schema({
 });
 
 albumSchema.index({ spotifyId: 1, userId: 1 }, { unique: true });
-
+albumSchema.index({ userId: 1, savedAt: -1 });
 
 const Album = mongoose.model("Album", albumSchema);
 

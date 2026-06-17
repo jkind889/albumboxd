@@ -56,16 +56,17 @@ export function SearchBar()
 
 
     return (
-    <form onSubmit={handleSubmit}>
+    <form className="search-form" onSubmit={handleSubmit}>
     
       <input
+        className="search-input"
         value={input}
         onChange={(e) => { setInput(e.target.value); setShowDropdown(true); }}
         onFocus={() => setShowDropdown(true)}
-        placeholder="Search albums..."
+        placeholder="Search"
       />
-      <button type="submit">Search</button>
-    <div onClick={(e) => e.stopPropagation()}>
+      <button className="search-submit" type="submit" aria-label="Search albums">Search</button>
+    <div className="search-dropdown-wrap" onClick={(e) => e.stopPropagation()}>
       {showDropdown && suggestions.length > 0 && (
         <ul className="suggestions-dropdown">
           {suggestions.map((suggestion) => (

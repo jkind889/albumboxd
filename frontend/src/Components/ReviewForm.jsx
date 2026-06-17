@@ -1,12 +1,12 @@
 import { useState } from "react";
 
-export function ReviewForm({album, onAddReview})
+export function ReviewForm({album, onAddReview, onSubmitted})
 {
     const [reviewText, setReviewText] = useState("");
     const [rating, setRating] = useState("");
 
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
 
         const numericRating = Number(rating);
@@ -25,9 +25,13 @@ export function ReviewForm({album, onAddReview})
             date: Date.now()
         };
 
-        onAddReview(newReview)
+        const wasAdded = await onAddReview(newReview)
+        if (wasAdded === false) {
+            return;
+        }
         setReviewText("");
         setRating("");
+        onSubmitted?.();
         console.log("Review submitted:", newReview);
 
     };

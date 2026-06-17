@@ -42,12 +42,20 @@ const albumRoutes = require("./routes/album");
 const searchRoutes = require("./routes/search");
 const reviewRoutes = require("./routes/reviews");
 const collectionRoutes = require("./routes/collections")
+const profileRoutes = require("./routes/profile")
+const boardRoutes = require("./routes/boards")
+const likeRoutes = require("./routes/likes")
+const notificationRoutes = require("./routes/notifications")
 
 app.use("/auth", authRoutes);
 app.use("/search", searchRoutes);
 app.use("/albums", albumRoutes);
 app.use("/reviews", reviewRoutes);
 app.use("/collections", collectionRoutes)
+app.use("/profile", profileRoutes)
+app.use("/boards", boardRoutes)
+app.use("/likes", likeRoutes)
+app.use("/notifications", notificationRoutes)
 
 app.listen(3000, () =>
 {

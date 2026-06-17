@@ -1,24 +1,1415 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
   RedirectToSignIn,
-  Show,
+  SignInButton,
   UserProfile,
-} from '@clerk/react'
+  useAuth,
+  useUser,
+} from "@clerk/react";
+import LikeButton from "../Components/LikeButton";
+import AsyncState from "../Components/Loading/AsyncState";
 
-export function Account() {
-  return (
-    <>
-      <Show when="signed-in">
-        <section className="container py-4">
-          <h1 className="mb-4">Account</h1>
-          <UserProfile />
-        </section>
-      </Show>
+const tabs = [
+  { id: "overview", label: "Overview" },
+  { id: "saved", label: "Saved Albums" },
+  { id: "reviews", label: "Reviews" },
+  { id: "activity", label: "Activity" },
+  { id: "boards", label: "Boards" },
+  { id: "network", label: "Network" },
+  { id: "settings", label: "Settings" },
+];
 
-      <Show when="signed-out">
-        <RedirectToSignIn />
-      </Show>
-    </>
-  )
+const REVIEW_PREVIEW_LIMIT = 2;
+
+function formatDate(value) {
+  if (!value) {
+    return "Date unavailable";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Date unavailable";
+  }
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
-export default Account
+function formatMonthYear(value) {
+  if (!value) {
+    return "Month unavailable";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Month unavailable";
+  }
+
+  return date.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function getArtistName(album) {
+  if (Array.isArray(album.artists) && album.artists.length > 0) {
+    return album.artists.join(", ");
+  }
+
+  return album.artist || "Artist unknown";
+}
+
+function ProfileEmptyState({ title, body }) {
+  return (
+    <div className="profile-empty-state">
+      <h3>{title}</h3>
+      <p>{body}</p>
+    </div>
+  );
+}
+
+function AlbumCover({ src, title }) {
+  if (!src) {
+    return <div className="profile-cover-fallback">No cover</div>;
+  }
+
+  return <img className="profile-cover" src={src} alt={`${title} cover`} />;
+}
+
+function BoardPreview({ albums }) {
+  const previewAlbums = albums.slice(0, 4);
+
+  return (
+    <div className="board-preview-grid" aria-hidden="true">
+      {Array.from({ length: 4 }).map((_, index) => {
+        const album = previewAlbums[index];
+
+        return album?.cover ? (
+          <img key={album.spotifyId || index} src={album.cover} alt="" />
+        ) : (
+          <span key={index} />
+        );
+      })}
+    </div>
+  );
+}
+
+export function Account() {
+  const { getToken, isSignedIn } = useAuth();
+  const { user, isLoaded } = useUser();
+  const { userId: publicUserId } = useParams();
+  const location = useLocation();
+  const isPublicProfile = Boolean(publicUserId);
+  const requestedTab = location.state?.activeTab;
+  const [activeTab, setActiveTab] = useState(requestedTab || "overview");
+  const [savedViewMode, setSavedViewMode] = useState("grid");
+  const [savedAlbums, setSavedAlbums] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [activityItems, setActivityItems] = useState([]);
+  const [networkItems, setNetworkItems] = useState([]);
+  const [boards, setBoards] = useState([]);
+  const [newBoardTitle, setNewBoardTitle] = useState("");
+  const [isCreatingBoard, setIsCreatingBoard] = useState(false);
+  const [profile, setProfile] = useState({
+    userId: "",
+    username: "",
+    imageUrl: "",
+    bio: "",
+    spotifyProfileUrl: "",
+    favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReview: null,
+    pinnedBoard: null,
+    followerCount: 0,
+    followingCount: 0,
+    isFollowing: false,
+    isCurrentUser: false,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isFollowSaving, setIsFollowSaving] = useState(false);
+  const [likeMessage, setLikeMessage] = useState("");
+  const [error, setError] = useState("");
+  const publicProfileState = location.state?.profileUser || {};
+  const publicProfileUsername = publicProfileState.username || "";
+  const publicProfileImageUrl = publicProfileState.imageUrl || "";
+  const canManageProfile = !isPublicProfile;
+  const availableTabs = useMemo(
+    () => tabs.filter((tab) => tab.id !== "settings"),
+    [],
+  );
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function fetchProfileData() {
+      if (!isPublicProfile && !isSignedIn) {
+        setSavedAlbums([]);
+        setReviews([]);
+        setActivityItems([]);
+        setNetworkItems([]);
+        setBoards([]);
+        setProfile({
+          userId: "",
+          username: "",
+          imageUrl: "",
+          bio: "",
+          spotifyProfileUrl: "",
+          favoriteAlbums: [],
+          listeningNextAlbum: null,
+          pinnedReview: null,
+          pinnedBoard: null,
+          followerCount: 0,
+          followingCount: 0,
+          isFollowing: false,
+          isCurrentUser: false,
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError("");
+
+        const token = isSignedIn ? await getToken() : null;
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        let savedData = [];
+        let reviewsData = [];
+        let activityData = [];
+        let networkData = [];
+        let boardsData = [];
+        let profileData;
+
+        if (isPublicProfile) {
+          const encodedPublicUserId = encodeURIComponent(publicUserId);
+          const [profileResponse, savedResponse, reviewsResponse, activityResponse, boardsResponse] = await Promise.all([
+            fetch(`http://localhost:3000/profile/${encodedPublicUserId}`, { headers }),
+            fetch(`http://localhost:3000/profile/${encodedPublicUserId}/saved`),
+            fetch(`http://localhost:3000/reviews/review/user/${encodedPublicUserId}`, { headers }),
+            fetch(`http://localhost:3000/profile/${encodedPublicUserId}/activity`, { headers }),
+            fetch(`http://localhost:3000/profile/${encodedPublicUserId}/boards`),
+          ]);
+
+          if (
+            !profileResponse.ok
+            || !savedResponse.ok
+            || !reviewsResponse.ok
+            || !activityResponse.ok
+            || !boardsResponse.ok
+          ) {
+            throw new Error("Failed to load profile data");
+          }
+
+          [profileData, savedData, reviewsData, activityData, boardsData] = await Promise.all([
+            profileResponse.json(),
+            savedResponse.json(),
+            reviewsResponse.json(),
+            activityResponse.json(),
+            boardsResponse.json(),
+          ]);
+        } else {
+          const [
+            defaultBoardResponse,
+            reviewsResponse,
+            profileResponse,
+            activityResponse,
+            networkResponse,
+            boardsResponse,
+          ] = await Promise.all([
+            fetch("http://localhost:3000/boards/default", { headers }),
+            fetch("http://localhost:3000/reviews/review/user/", { headers }),
+            fetch("http://localhost:3000/profile/me", { headers }),
+            fetch("http://localhost:3000/profile/me/activity", { headers }),
+            fetch("http://localhost:3000/profile/me/network", { headers }),
+            fetch("http://localhost:3000/boards", { headers }),
+          ]);
+
+          if (
+            !defaultBoardResponse.ok
+            || !reviewsResponse.ok
+            || !profileResponse.ok
+            || !activityResponse.ok
+            || !networkResponse.ok
+            || !boardsResponse.ok
+          ) {
+            throw new Error("Failed to load profile data");
+          }
+
+          const [defaultBoardData, nextReviewsData, nextProfileData, nextActivityData, nextNetworkData, nextBoardsData] = await Promise.all([
+            defaultBoardResponse.json(),
+            reviewsResponse.json(),
+            profileResponse.json(),
+            activityResponse.json(),
+            networkResponse.json(),
+            boardsResponse.json(),
+          ]);
+          savedData = Array.isArray(defaultBoardData.albums) ? defaultBoardData.albums : [];
+          reviewsData = nextReviewsData;
+          profileData = nextProfileData;
+          activityData = nextActivityData;
+          networkData = nextNetworkData;
+          boardsData = nextBoardsData;
+        }
+
+        if (!isCurrent) {
+          return;
+        }
+
+        setSavedAlbums(Array.isArray(savedData) ? savedData : []);
+        setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+        setActivityItems(Array.isArray(activityData) ? activityData : []);
+        setNetworkItems(Array.isArray(networkData) ? networkData : []);
+        setBoards(Array.isArray(boardsData) ? boardsData : []);
+        setProfile({
+          userId: profileData.userId || publicUserId || "",
+          username: typeof profileData.username === "string" ? profileData.username : "",
+          imageUrl: typeof profileData.imageUrl === "string" ? profileData.imageUrl : "",
+          bio: typeof profileData.bio === "string" ? profileData.bio : "",
+          spotifyProfileUrl: typeof profileData.spotifyProfileUrl === "string" ? profileData.spotifyProfileUrl : "",
+          favoriteAlbums: Array.isArray(profileData.favoriteAlbums) ? profileData.favoriteAlbums : [],
+          listeningNextAlbum: profileData.listeningNextAlbum || null,
+          pinnedReview: profileData.pinnedReview || null,
+          pinnedBoard: profileData.pinnedBoard || null,
+          followerCount: Number(profileData.followerCount) || 0,
+          followingCount: Number(profileData.followingCount) || 0,
+          isFollowing: Boolean(profileData.isFollowing),
+          isCurrentUser: Boolean(profileData.isCurrentUser),
+        });
+      } catch (profileError) {
+        console.error(profileError);
+
+        if (isCurrent) {
+          setSavedAlbums([]);
+          setReviews([]);
+          setActivityItems([]);
+          setNetworkItems([]);
+          setBoards([]);
+          setProfile({
+            userId: publicUserId || "",
+            username: publicProfileUsername,
+            imageUrl: publicProfileImageUrl,
+            bio: "",
+            spotifyProfileUrl: "",
+            favoriteAlbums: [],
+            listeningNextAlbum: null,
+            pinnedReview: null,
+            pinnedBoard: null,
+            followerCount: 0,
+            followingCount: 0,
+            isFollowing: false,
+            isCurrentUser: false,
+          });
+          setError(isPublicProfile
+            ? "Could not load this profile right now."
+            : "Could not load your profile right now.");
+        }
+      } finally {
+        if (isCurrent) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    fetchProfileData();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [getToken, isPublicProfile, isSignedIn, publicProfileImageUrl, publicProfileUsername, publicUserId]);
+
+  useEffect(() => {
+    if (!availableTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab("overview");
+    }
+  }, [activeTab, availableTabs]);
+
+  useEffect(() => {
+    if (requestedTab && availableTabs.some((tab) => tab.id === requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [availableTabs, requestedTab]);
+
+  const averageRating = useMemo(() => {
+    if (reviews.length === 0) {
+      return "--";
+    }
+
+    const total = reviews.reduce((sum, review) => sum + (Number(review.rating) || 0), 0);
+    return (total / reviews.length).toFixed(1);
+  }, [reviews]);
+
+  const sortedReviews = useMemo(() => (
+    [...reviews].sort((first, second) => new Date(second.date) - new Date(first.date))
+  ), [reviews]);
+  const popularReviews = useMemo(() => (
+    [...reviews].sort((first, second) => (
+      (Number(second.likeCount) || 0) - (Number(first.likeCount) || 0)
+      || (Number(second.rating) || 0) - (Number(first.rating) || 0)
+      || new Date(second.date) - new Date(first.date)
+    ))
+  ), [reviews]);
+  const sortedSavedAlbums = useMemo(() => (
+    [...savedAlbums].sort((first, second) => new Date(second.savedAt) - new Date(first.savedAt))
+  ), [savedAlbums]);
+  const sortedBoards = useMemo(() => (
+    [...boards].sort((first, second) => Number(second.isDefault) - Number(first.isDefault)
+      || new Date(second.updatedAt || 0) - new Date(first.updatedAt || 0))
+  ), [boards]);
+  const latestReviews = useMemo(() => sortedReviews.slice(0, REVIEW_PREVIEW_LIMIT), [sortedReviews]);
+  const previewPopularReviews = useMemo(() => (
+    popularReviews.slice(0, REVIEW_PREVIEW_LIMIT)
+  ), [popularReviews]);
+  const latestSidebarActivity = useMemo(() => activityItems.slice(0, 4), [activityItems]);
+  const favoriteAlbums = profile.favoriteAlbums;
+  const profileUserId = profile.userId || publicUserId || user?.id || "";
+  const moreReviewsPath = profileUserId
+    ? `/profile/${encodeURIComponent(profileUserId)}/reviews`
+    : "/viewreviews";
+  const socialPath = isPublicProfile && profileUserId
+    ? `/profile/${encodeURIComponent(profileUserId)}/network`
+    : "/account/network";
+
+  async function removeSavedAlbum(spotifyId) {
+    const token = await getToken();
+    const response = await fetch(
+      `http://localhost:3000/boards/default/albums/${spotifyId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      console.error("Failed to remove album from saved albums");
+      return;
+    }
+
+    setSavedAlbums((currentAlbums) => (
+      currentAlbums.filter((album) => album.spotifyId !== spotifyId)
+    ));
+  }
+
+  async function removeReview(reviewId) {
+    const token = await getToken();
+    const response = await fetch(
+      `http://localhost:3000/reviews/review/user/${reviewId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      console.error("Failed to delete review");
+      return;
+    }
+
+    setReviews((currentReviews) => (
+      currentReviews.filter((review) => review._id !== reviewId)
+    ));
+  }
+
+  function updateReviewLikeState(reviewId, nextState) {
+    setReviews((currentReviews) => (
+      currentReviews.map((review) => (
+        review._id === reviewId ? { ...review, ...nextState } : review
+      ))
+    ));
+    setActivityItems((currentItems) => (
+      currentItems.map((activity) => (
+        activity.type === "review" && activity.id === reviewId ? { ...activity, ...nextState } : activity
+      ))
+    ));
+    setNetworkItems((currentItems) => (
+      currentItems.map((activity) => (
+        activity.type === "review" && activity.id === reviewId ? { ...activity, ...nextState } : activity
+      ))
+    ));
+  }
+
+  async function toggleReviewLike(review) {
+    if (!isSignedIn) {
+      setLikeMessage("Sign in to like reviews.");
+      return;
+    }
+
+    const reviewId = review._id || review.id;
+
+    if (!reviewId) {
+      return;
+    }
+
+    const nextLiked = !review.likedByViewer;
+    const previousLikeCount = Number(review.likeCount) || 0;
+    const nextLikeCount = Math.max(0, previousLikeCount + (nextLiked ? 1 : -1));
+
+    setLikeMessage("");
+    updateReviewLikeState(reviewId, {
+      likedByViewer: nextLiked,
+      likeCount: nextLikeCount,
+    });
+
+    try {
+      const token = await getToken();
+      const response = await fetch(`http://localhost:3000/likes/review/${reviewId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ liked: nextLiked }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update review like");
+      }
+
+      const data = await response.json();
+      updateReviewLikeState(reviewId, {
+        likedByViewer: Boolean(data.likedByViewer),
+        likeCount: Number(data.likeCount) || 0,
+      });
+    } catch (likeError) {
+      console.error(likeError);
+      updateReviewLikeState(reviewId, {
+        likedByViewer: Boolean(review.likedByViewer),
+        likeCount: previousLikeCount,
+      });
+      setLikeMessage("Could not update that like.");
+    }
+  }
+
+  async function createBoard(event) {
+    event.preventDefault();
+
+    const title = newBoardTitle.trim();
+
+    if (!title || isCreatingBoard || isPublicProfile) {
+      return;
+    }
+
+    try {
+      setIsCreatingBoard(true);
+      setError("");
+
+      const token = await getToken();
+      const response = await fetch("http://localhost:3000/boards", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create board");
+      }
+
+      const board = await response.json();
+      setBoards((currentBoards) => [board, ...currentBoards]);
+      setNewBoardTitle("");
+    } catch (boardError) {
+      console.error(boardError);
+      setError("Could not create that board.");
+    } finally {
+      setIsCreatingBoard(false);
+    }
+  }
+
+  async function updateFollowState(nextFollowing) {
+    if (!profile.userId || isFollowSaving) {
+      return;
+    }
+
+    try {
+      setIsFollowSaving(true);
+      setError("");
+
+      const token = await getToken();
+      const response = await fetch(
+        `http://localhost:3000/profile/${encodeURIComponent(profile.userId)}/follow`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ following: nextFollowing }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update follow status");
+      }
+
+      const data = await response.json();
+
+      setProfile((currentProfile) => ({
+        ...currentProfile,
+        followerCount: Number(data.followerCount) || 0,
+        followingCount: Number(data.followingCount) || 0,
+        isFollowing: Boolean(data.isFollowing),
+        isCurrentUser: Boolean(data.isCurrentUser),
+      }));
+    } catch (followError) {
+      console.error(followError);
+      setError("Could not update follow status right now.");
+    } finally {
+      setIsFollowSaving(false);
+    }
+  }
+
+  const displayName = isPublicProfile
+    ? profile.username || publicProfileUsername || profile.userId || "albumboxd user"
+    : user?.username || user?.fullName || user?.primaryEmailAddress?.emailAddress || "Your profile";
+  const profileImageUrl = isPublicProfile ? profile.imageUrl || publicProfileImageUrl : user?.imageUrl;
+  const showFollowButton = isPublicProfile && !profile.isCurrentUser && (!isSignedIn || !isLoading);
+  const profileHandle = displayName;
+  const hasSpotifyProfile = Boolean(profile.spotifyProfileUrl);
+  const sidebarFacts = [
+    { label: "Albums", value: savedAlbums.length },
+    { label: "Reviews", value: reviews.length },
+    { label: "Avg. Rating", value: averageRating },
+    { label: "Followers", value: profile.followerCount },
+    { label: "Following", value: profile.followingCount },
+  ];
+
+  function renderOverview() {
+    const pinnedBoardPath = profile.pinnedBoard?._id
+      ? isPublicProfile
+        ? `/profile/${encodeURIComponent(profileUserId)}/boards/${profile.pinnedBoard._id}`
+        : `/boards/${profile.pinnedBoard._id}`
+      : "";
+
+    return (
+      <div className="profile-overview-grid">
+        <section className="profile-panel profile-wide-panel">
+          <div className="profile-section-header">
+            <h2>Profile Pins</h2>
+          </div>
+          <div className="profile-pin-grid">
+            {profile.listeningNextAlbum ? (
+              <Link className="profile-pin-card profile-listening-next-card" to={`/album/${profile.listeningNextAlbum.spotifyId}`}>
+                <AlbumCover src={profile.listeningNextAlbum.cover} title={profile.listeningNextAlbum.title} />
+                <div>
+                  <span>Listening Next</span>
+                  <h3>{profile.listeningNextAlbum.title || "Untitled album"}</h3>
+                  <p>{getArtistName(profile.listeningNextAlbum)}</p>
+                </div>
+              </Link>
+            ) : (
+              <div className="profile-pin-card profile-pin-empty">
+                <span>Listening Next</span>
+                <h3>No album queued</h3>
+                <p>{canManageProfile ? "Choose an album from edit profile." : "This listener has not picked one yet."}</p>
+              </div>
+            )}
+
+            {profile.pinnedReview ? (
+              <Link className="profile-pin-card" to={`/album/${profile.pinnedReview.spotifyId}`}>
+                <AlbumCover src={profile.pinnedReview.cover} title={profile.pinnedReview.title} />
+                <div>
+                  <span>Pinned Review</span>
+                  <h3>{profile.pinnedReview.title || "Untitled album"}</h3>
+                  <p>{profile.pinnedReview.reviewText || `${profile.pinnedReview.rating}/5`}</p>
+                </div>
+              </Link>
+            ) : (
+              <div className="profile-pin-card profile-pin-empty">
+                <span>Pinned Review</span>
+                <h3>No review pinned</h3>
+                <p>{canManageProfile ? "Pin one of your reviews from edit profile." : "This listener has not pinned a review yet."}</p>
+              </div>
+            )}
+
+            {profile.pinnedBoard ? (
+              <Link className="profile-pin-card" to={pinnedBoardPath}>
+                <BoardPreview albums={profile.pinnedBoard.previewAlbums || []} />
+                <div>
+                  <span>Pinned Board</span>
+                  <h3>{profile.pinnedBoard.title || "Untitled board"}</h3>
+                  <p>{profile.pinnedBoard.itemCount || 0} album{profile.pinnedBoard.itemCount === 1 ? "" : "s"}</p>
+                </div>
+              </Link>
+            ) : (
+              <div className="profile-pin-card profile-pin-empty">
+                <span>Pinned Board</span>
+                <h3>No board pinned</h3>
+                <p>{canManageProfile ? "Pin one of your boards from edit profile." : "This listener has not pinned a board yet."}</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="profile-panel profile-wide-panel">
+          <div className="profile-section-header">
+            <h2>Favorite Albums</h2>
+          </div>
+
+          {favoriteAlbums.length === 0 ? (
+            <ProfileEmptyState
+              title="No favorites chosen"
+              body={canManageProfile
+                ? "Choose up to five favorite albums from edit profile."
+                : "Favorite albums will show up here once this listener chooses them."}
+            />
+          ) : (
+            <div className="profile-favorites-grid">
+              {favoriteAlbums.map((album) => (
+                <Link
+                  className="profile-favorite-card"
+                  key={album.spotifyId}
+                  to={`/album/${album.spotifyId}`}
+                >
+                  <AlbumCover src={album.cover} title={album.title} />
+                  <h3>{album.title || "Untitled album"}</h3>
+                  <p>{getArtistName(album)}</p>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="profile-panel">
+          <div className="profile-section-header">
+            <h2>Recent Reviews</h2>
+            {reviews.length > latestReviews.length && (
+              <Link
+                className="profile-more-link"
+                to={moreReviewsPath}
+                state={{ profileUser: publicProfileState }}
+              >
+                More
+              </Link>
+            )}
+          </div>
+
+          {latestReviews.length === 0 ? (
+            <ProfileEmptyState
+              title="No reviews yet"
+              body={canManageProfile
+                ? "Reviews you write will appear here."
+                : "Reviews are not available on this profile yet."}
+            />
+          ) : (
+            <div className="profile-review-list">
+              {latestReviews.map((review) => (
+                <article className="profile-review-card" key={review._id}>
+                  <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
+                    <AlbumCover src={review.cover} title={review.title} />
+                    <div>
+                      <h3>{review.title || "Untitled album"}</h3>
+                      <p>{review.artist || "Artist unknown"}</p>
+                    </div>
+                  </Link>
+                  <div className="profile-review-meta">
+                    <span>{review.rating}/5</span>
+                    <time>{formatDate(review.date)}</time>
+                  </div>
+                  <p className="profile-review-copy">{review.reviewText}</p>
+                  <div className="review-card-actions">
+                    <LikeButton
+                      liked={Boolean(review.likedByViewer)}
+                      count={review.likeCount}
+                      label="review"
+                      message={likeMessage}
+                      onToggle={() => toggleReviewLike(review)}
+                    />
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="profile-panel">
+          <div className="profile-section-header">
+            <h2>Popular Reviews</h2>
+          </div>
+
+          {previewPopularReviews.length === 0 ? (
+            <ProfileEmptyState
+              title="No popular reviews yet"
+              body="Liked reviews will appear here once listeners engage with them."
+            />
+          ) : (
+            <div className="profile-review-list">
+              {previewPopularReviews.map((review) => (
+                <article className="profile-review-card" key={review._id}>
+                  <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
+                    <AlbumCover src={review.cover} title={review.title} />
+                    <div>
+                      <h3>{review.title || "Untitled album"}</h3>
+                      <p>{review.artist || "Artist unknown"}</p>
+                    </div>
+                  </Link>
+                  <div className="profile-review-meta">
+                    <span>{review.rating}/5</span>
+                    <time>{formatDate(review.date)}</time>
+                  </div>
+                  <p className="profile-review-copy">{review.reviewText}</p>
+                  <div className="review-card-actions">
+                    <LikeButton
+                      liked={Boolean(review.likedByViewer)}
+                      count={review.likeCount}
+                      label="review"
+                      message={likeMessage}
+                      onToggle={() => toggleReviewLike(review)}
+                    />
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
+
+  function renderSavedAlbums() {
+    if (savedAlbums.length === 0) {
+      return (
+        <ProfileEmptyState
+          title="No saved albums"
+          body={canManageProfile
+            ? "Save albums from their detail pages and they will collect here."
+            : "Saved albums are not available for this profile yet."}
+        />
+      );
+    }
+
+    return (
+      <section className="profile-saved-section">
+        <div className="profile-saved-toolbar">
+          <div>
+            <h2>Saved Albums</h2>
+            <p>{sortedSavedAlbums.length} albums on this shelf</p>
+          </div>
+          <div className="profile-view-toggle" aria-label="Saved albums view">
+            <button
+              className={savedViewMode === "grid" ? "profile-view-toggle-active" : ""}
+              type="button"
+              onClick={() => setSavedViewMode("grid")}
+            >
+              Grid
+            </button>
+            <button
+              className={savedViewMode === "list" ? "profile-view-toggle-active" : ""}
+              type="button"
+              onClick={() => setSavedViewMode("list")}
+            >
+              List
+            </button>
+          </div>
+        </div>
+
+        {savedViewMode === "grid" ? (
+          <div className="profile-album-grid">
+            {sortedSavedAlbums.map((album) => (
+              <article className="profile-album-card" key={album.spotifyId}>
+                <Link to={`/album/${album.spotifyId}`} className="profile-album-card-link">
+                  <AlbumCover src={album.cover} title={album.title} />
+                  <h3>{album.title || "Untitled album"}</h3>
+                  <p>{getArtistName(album)}</p>
+                  <span>Saved {formatMonthYear(album.savedAt)}</span>
+                </Link>
+                {canManageProfile && (
+                  <button
+                    className="profile-secondary-button"
+                    type="button"
+                    onClick={() => removeSavedAlbum(album.spotifyId)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="profile-saved-list">
+            {sortedSavedAlbums.map((album) => (
+              <article className="profile-saved-row" key={album.spotifyId}>
+                <Link to={`/album/${album.spotifyId}`} className="profile-saved-album">
+                  <AlbumCover src={album.cover} title={album.title} />
+                  <div>
+                    <h3>{album.title || "Untitled album"}</h3>
+                    <p>{getArtistName(album)}</p>
+                  </div>
+                </Link>
+                <div className="profile-saved-date">
+                  <span>Saved</span>
+                  <strong>{formatMonthYear(album.savedAt)}</strong>
+                </div>
+                {canManageProfile && (
+                  <button
+                    className="profile-secondary-button"
+                    type="button"
+                    onClick={() => removeSavedAlbum(album.spotifyId)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function renderActivityFeed(items, emptyState) {
+    if (items.length === 0) {
+      return (
+        <ProfileEmptyState
+          title={emptyState.title}
+          body={emptyState.body}
+        />
+      );
+    }
+
+    return (
+      <div className="profile-activity-list">
+        {items.map((activity) => {
+          const actor = activity.actor || {};
+          const album = activity.album || {};
+          const targetUser = activity.targetUser || {};
+          const reviewAuthor = activity.reviewAuthor || {};
+          const actorName = actor.username || "albumboxd user";
+          const actionLabelByType = {
+            saved_album: "Saved",
+            review: "Reviewed",
+            liked_album: "Liked",
+            liked_review: "Liked",
+            follow: "Followed",
+          };
+          const actionTextByType = {
+            saved_album: "saved",
+            review: "reviewed",
+            liked_album: "liked",
+            liked_review: "liked a review of",
+            follow: "followed",
+          };
+          const actionLabel = actionLabelByType[activity.type] || "Activity";
+          const actionText = actionTextByType[activity.type] || "updated";
+          const actorState = {
+            profileUser: {
+              username: actorName,
+              imageUrl: actor.imageUrl || "",
+            },
+          };
+          const targetUserName = targetUser.username || targetUser.userId || "albumboxd user";
+          const targetUserState = {
+            profileUser: {
+              username: targetUserName,
+              imageUrl: targetUser.imageUrl || "",
+            },
+          };
+          const reviewAuthorName = reviewAuthor.username || reviewAuthor.userId || "albumboxd user";
+
+          return (
+            <article className="profile-activity-item" key={activity.id}>
+              {activity.type === "follow" ? (
+                targetUser.imageUrl ? (
+                  <img className="profile-cover" src={targetUser.imageUrl} alt={`${targetUserName} avatar`} />
+                ) : (
+                  <div className="profile-cover-fallback">Profile</div>
+                )
+              ) : (
+                <AlbumCover src={album.cover} title={album.title || "Album"} />
+              )}
+              <div>
+                <span>{actionLabel}</span>
+                {activity.type === "follow" ? (
+                  <h3>
+                    <Link to={`/profile/${actor.userId}`} state={actorState}>
+                      {actorName}
+                    </Link>
+                    {` ${actionText} `}
+                    <Link to={`/profile/${targetUser.userId}`} state={targetUserState}>
+                      {targetUserName}
+                    </Link>
+                  </h3>
+                ) : (
+                  <h3>
+                    <Link to={`/profile/${actor.userId}`} state={actorState}>
+                      {actorName}
+                    </Link>
+                    {` ${actionText} `}
+                    <Link to={`/album/${album.spotifyId}`}>
+                      {album.title || "Untitled album"}
+                    </Link>
+                  </h3>
+                )}
+                {activity.type === "liked_review" && (
+                  <p>Reviewed by {reviewAuthorName}</p>
+                )}
+                {activity.type !== "follow" && activity.type !== "liked_review" && (
+                  <p>{album.artist || "Artist unknown"}</p>
+                )}
+                {activity.reviewText && <p className="profile-review-copy">{activity.reviewText}</p>}
+                {activity.type === "review" && (
+                  <div className="review-card-actions">
+                    <LikeButton
+                      liked={Boolean(activity.likedByViewer)}
+                      count={activity.likeCount}
+                      label="review"
+                      message={likeMessage}
+                      onToggle={() => toggleReviewLike(activity)}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="profile-activity-meta">
+                {activity.rating && <strong>{activity.rating}/5</strong>}
+                <time>{formatDate(activity.createdAt)}</time>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function renderActivity() {
+    return renderActivityFeed(activityItems, {
+      title: "No activity yet",
+      body: canManageProfile
+        ? "Reviews, saves, likes, and follows will show up here."
+        : "This listener has not saved or reviewed anything yet.",
+    });
+  }
+
+  function renderBoards() {
+    return (
+      <section className="profile-saved-section">
+        <div className="profile-saved-toolbar">
+          <div>
+            <h2>Boards</h2>
+            <p>
+              {sortedBoards.length} board{sortedBoards.length === 1 ? "" : "s"}
+              {canManageProfile ? " in your library" : " on this profile"}
+            </p>
+          </div>
+          {canManageProfile && (
+            <form className="board-create-form profile-board-create" onSubmit={createBoard}>
+              <input
+                value={newBoardTitle}
+                onChange={(event) => setNewBoardTitle(event.target.value)}
+                placeholder="New board name"
+                maxLength={80}
+              />
+              <button type="submit" disabled={!newBoardTitle.trim() || isCreatingBoard}>
+                Create
+              </button>
+            </form>
+          )}
+        </div>
+
+        {sortedBoards.length === 0 ? (
+          <ProfileEmptyState
+            title="No boards yet"
+            body={canManageProfile
+              ? "Create boards to group albums from their detail pages."
+              : "This listener has not created any boards yet."}
+          />
+        ) : (
+          <div className="boards-grid profile-boards-grid">
+            {sortedBoards.map((board) => {
+              const boardPath = isPublicProfile
+                ? `/profile/${encodeURIComponent(profileUserId)}/boards/${board._id}`
+                : `/boards/${board._id}`;
+
+              return (
+                <Link className="board-card" key={board._id} to={boardPath}>
+                  <BoardPreview albums={board.previewAlbums || []} />
+                  <h2>{board.title}</h2>
+                  <p>
+                    {board.itemCount} album{board.itemCount === 1 ? "" : "s"}
+                    {board.isDefault ? " · Default" : ""}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function renderNetwork() {
+    if (isPublicProfile) {
+      return (
+        <ProfileEmptyState
+          title="Network is private"
+          body="Following activity is only available from your own profile."
+        />
+      );
+    }
+
+    return renderActivityFeed(networkItems, {
+      title: "No network activity yet",
+      body: "Follow listeners with reviews and their latest activity will show up here.",
+    });
+  }
+
+  function renderReviews() {
+    if (sortedReviews.length === 0) {
+      return (
+        <ProfileEmptyState
+          title="No reviews yet"
+          body={canManageProfile
+            ? "Your album reviews will live here once you write them."
+            : "Reviews are not available on public profiles yet."}
+        />
+      );
+    }
+
+    const shouldShowMoreReviews = reviews.length > REVIEW_PREVIEW_LIMIT;
+    const renderReviewCard = (review) => (
+      <article className="profile-review-card" key={review._id}>
+        <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
+          <AlbumCover src={review.cover} title={review.title} />
+          <div>
+            <h3>{review.title || "Untitled album"}</h3>
+            <p>{review.artist || "Artist unknown"}</p>
+          </div>
+        </Link>
+        <div className="profile-review-meta">
+          <span>{review.rating}/5</span>
+          <time>{formatDate(review.date)}</time>
+        </div>
+        <p className="profile-review-copy">{review.reviewText}</p>
+        <div className="review-card-actions">
+          <LikeButton
+            liked={Boolean(review.likedByViewer)}
+            count={review.likeCount}
+            label="review"
+            message={likeMessage}
+            onToggle={() => toggleReviewLike(review)}
+          />
+        </div>
+        {canManageProfile && (
+          <button
+            className="profile-secondary-button"
+            type="button"
+            onClick={() => removeReview(review._id)}
+          >
+            Delete Review
+          </button>
+        )}
+      </article>
+    );
+
+    return (
+      <div className="profile-review-tab">
+        <section className="profile-panel">
+          <div className="profile-section-header">
+            <h2>Popular Reviews</h2>
+            {shouldShowMoreReviews && (
+              <Link
+                className="profile-more-link"
+                to={moreReviewsPath}
+                state={{ profileUser: publicProfileState }}
+              >
+                More
+              </Link>
+            )}
+          </div>
+          <div className="profile-review-list">
+            {previewPopularReviews.map(renderReviewCard)}
+          </div>
+        </section>
+
+        <section className="profile-panel">
+          <div className="profile-section-header">
+            <h2>Latest Reviews</h2>
+          </div>
+          <div className="profile-review-list">
+            {latestReviews.map(renderReviewCard)}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderActiveTab() {
+    if (isLoading) {
+      return (
+        <AsyncState
+          isLoading
+          loadingVariant="profile"
+          loadingMessage={canManageProfile
+            ? "Pulling together your saved albums and reviews."
+            : "Pulling together this listener's profile."}
+        />
+      );
+    }
+
+    if (error) {
+      return <AsyncState error={error} errorTitle="Profile unavailable" />;
+    }
+
+    if (activeTab === "overview") {
+      return renderOverview();
+    }
+
+    if (activeTab === "saved") {
+      return renderSavedAlbums();
+    }
+
+    if (activeTab === "reviews") {
+      return renderReviews();
+    }
+
+    if (activeTab === "activity") {
+      return renderActivity();
+    }
+
+    if (activeTab === "boards") {
+      return renderBoards();
+    }
+
+    if (activeTab === "network") {
+      return renderNetwork();
+    }
+
+    return (
+      <div className="profile-settings-panel">
+        <UserProfile />
+      </div>
+    );
+  }
+
+  if (!isPublicProfile && !isSignedIn) {
+    return <RedirectToSignIn />;
+  }
+
+  function renderProfileAction(className = "profile-follow-button") {
+    if (!showFollowButton) {
+      return null;
+    }
+
+    if (isSignedIn) {
+      return (
+        <button
+          className={className}
+          type="button"
+          disabled={isFollowSaving || isLoading}
+          onClick={() => updateFollowState(!profile.isFollowing)}
+        >
+          {isFollowSaving ? "Saving..." : profile.isFollowing ? "Following" : "Follow"}
+        </button>
+      );
+    }
+
+    return (
+      <SignInButton mode="modal">
+        <button className={className} type="button">
+          Follow
+        </button>
+      </SignInButton>
+    );
+  }
+
+  return (
+    <>
+      <section className="profile-page">
+        <div className="profile-layout">
+          <main className="profile-main">
+            <header className="profile-hero">
+              <div className="profile-identity">
+                {isLoaded && profileImageUrl ? (
+                  <img className="profile-avatar" src={profileImageUrl} alt={`${displayName} avatar`} />
+                ) : (
+                  <div className="profile-avatar profile-avatar-fallback">
+                    {displayName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+
+                <div>
+                  <div className="profile-name-row">
+                    <h1>{displayName}</h1>
+                    {renderProfileAction()}
+                  </div>
+                  {profile.bio && <p className="profile-bio">{profile.bio}</p>}
+                  {hasSpotifyProfile && (
+                    <a
+                      className="profile-spotify-inline"
+                      href={profile.spotifyProfileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Spotify
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              <div className="profile-hero-links" aria-label="Profile links">
+                <button type="button" onClick={() => setActiveTab("saved")}>
+                  <span>Albums</span>
+                  <strong>{savedAlbums.length}</strong>
+                </button>
+                <button type="button" onClick={() => setActiveTab("reviews")}>
+                  <span>Reviews</span>
+                  <strong>{reviews.length}</strong>
+                </button>
+                <Link
+                  to={`${socialPath}?tab=followers`}
+                  state={{ profileUser: publicProfileState, activeTab: "followers" }}
+                >
+                  <span>Followers</span>
+                  <strong>{profile.followerCount}</strong>
+                </Link>
+                <Link
+                  to={`${socialPath}?tab=following`}
+                  state={{ profileUser: publicProfileState, activeTab: "following" }}
+                >
+                  <span>Following</span>
+                  <strong>{profile.followingCount}</strong>
+                </Link>
+              </div>
+              {canManageProfile && (
+                <div className="profile-hero-actions">
+                  <Link className="profile-edit-link" to="/account/edit">Edit Profile</Link>
+                </div>
+              )}
+            </header>
+
+            <nav className="profile-tabs" aria-label="Profile sections">
+              {availableTabs.map((tab) => (
+                <button
+                  className={activeTab === tab.id ? "profile-tab profile-tab-active" : "profile-tab"}
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+
+            <div className="profile-tab-panel">
+              {renderActiveTab()}
+            </div>
+          </main>
+
+          <aside className="profile-sidebar" aria-label="Profile details">
+            <div className="profile-sidebar-card">
+              <div className="profile-sidebar-banner" />
+              <div className="profile-sidebar-body">
+                <div className="profile-sidebar-heading">
+                  {isLoaded && profileImageUrl ? (
+                    <img className="profile-sidebar-avatar" src={profileImageUrl} alt={`${displayName} avatar`} />
+                  ) : (
+                    <div className="profile-sidebar-avatar profile-avatar-fallback">
+                      {displayName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <h2>{displayName}</h2>
+                    <p>{profileHandle}</p>
+                  </div>
+                </div>
+
+                {profile.bio ? (
+                  <p className="profile-sidebar-bio">{profile.bio}</p>
+                ) : (
+                  <p className="profile-sidebar-bio">
+                    {canManageProfile
+                      ? "Add a bio from edit profile to introduce your listening shelf."
+                      : "This listener has not added a bio yet."}
+                  </p>
+                )}
+
+                <dl className="profile-sidebar-facts">
+                  {sidebarFacts.map((fact) => (
+                    <div key={fact.label}>
+                      <dt>{fact.label}</dt>
+                      <dd>{fact.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+
+                <div className="profile-sidebar-section">
+                  <h3>Activity Log</h3>
+                  {latestSidebarActivity.length === 0 ? (
+                    <p>No activity logged yet.</p>
+                  ) : (
+                    <div className="profile-sidebar-activity">
+                      {latestSidebarActivity.map((activity) => {
+                        const album = activity.album || {};
+                        const targetUser = activity.targetUser || {};
+                        const actionLabelByType = {
+                          saved_album: "Saved",
+                          review: "Reviewed",
+                          liked_album: "Liked",
+                          liked_review: "Liked",
+                          follow: "Followed",
+                        };
+                        const actionLabel = actionLabelByType[activity.type] || "Activity";
+                        const activityPath = activity.type === "follow" && targetUser.userId
+                          ? `/profile/${encodeURIComponent(targetUser.userId)}`
+                          : `/album/${album.spotifyId}`;
+
+                        return (
+                          <Link
+                            className="profile-sidebar-activity-row"
+                            key={activity.id}
+                            to={activityPath}
+                          >
+                            {activity.type === "follow" ? (
+                              targetUser.imageUrl ? (
+                                <img className="profile-cover" src={targetUser.imageUrl} alt={`${targetUser.username || "Profile"} avatar`} />
+                              ) : (
+                                <div className="profile-cover-fallback">Profile</div>
+                              )
+                            ) : (
+                              <AlbumCover src={album.cover} title={album.title || "Album"} />
+                            )}
+                            <div>
+                              <span>{actionLabel}</span>
+                              <strong>
+                                {activity.type === "follow"
+                                  ? targetUser.username || targetUser.userId || "albumboxd user"
+                                  : album.title || "Untitled album"}
+                              </strong>
+                              <time>{formatDate(activity.createdAt)}</time>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="profile-sidebar-section">
+                  <h3>Ratings Scale</h3>
+                  <div className="profile-rating-scale" aria-label="Rating scale">
+                    <span>1</span>
+                    <div />
+                    <span>5</span>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </>
+  );
+}
+
+export default Account;

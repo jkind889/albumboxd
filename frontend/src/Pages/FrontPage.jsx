@@ -1,6 +1,7 @@
-import FeaturedAlbum from "../Components/FeaturedAlbums";
+import FeaturedAlbums from "../Components/FeaturedAlbums";
+import NewOnAlbumboxd from "../Components/NewOnAlbumboxd";
 import PopularAlbums from "../Components/PopularAlbums";
-import RecentlySaved from "../Components/RecentlySaved";
+import PopularReviews from "../Components/PopularReviews";
 import { useNavigate } from "react-router-dom";
 
 export function FrontPage() {
@@ -8,58 +9,48 @@ export function FrontPage() {
 
     return (
         <div className="front-page">
-            <h1>Welcome to AlbumBoxd</h1>
-            <p>Discover and review your favorite albums!</p>
-            <button className="explore-button" onClick={() => navigate("/collection")}>
-                Explore Now
-            </button>
-
-
-
-            <div className= "featuredbanner">
-                <FeaturedAlbum />
-            </div>
-
-            <div className="featuregrid">
-                <div className="feature">
-                    <h2>Discover New Music</h2>
-                    <p>Search for albums, artists, and genres to find your next favorite listen.</p>
+            <section className="front-hero">
+                <div className="front-hero-copy">
+                    <p className="front-hero-kicker">For You</p>
+                    <h1>AlbumBoxd</h1>
+                    <p>Cycle through community picks, jump into the album page, and see which records are earning attention right now.</p>
+                    <button
+                        className="explore-button"
+                        onClick={() => navigate("/account", { state: { activeTab: "saved" } })}
+                    >
+                        View Saved Albums
+                    </button>
                 </div>
-                <div className="feature">
-                    <h2>Save Your Collection</h2>
-                    <p>Keep track of the albums you own and want to listen to.</p>
-                </div>
-                <div className="feature">
-                    <h2>Share Your Reviews</h2>
-                    <p>Write reviews and share your thoughts with the community.</p>
-                </div>
-                <div className="feature">
-                    <h2>Share Your Reviews</h2>
-                    <p>Write reviews and share your thoughts with the community.</p>
-                </div>
-                <div className="feature">
-                    <h2>Share Your Reviews</h2>
-                    <p>Write reviews and share your thoughts with the community.</p>
-                </div>
-                <div className="feature">
-                    <h2>Share Your Reviews</h2>
-                    <p>Write reviews and share your thoughts with the community.</p>
-                </div>
-                
+                <FeaturedAlbums limit={5} />
+            </section>
 
-            </div>
+            <section className="front-section">
+                <div className="front-section-heading">
+                    <h3>New on albumboxd</h3>
+                </div>
+                <NewOnAlbumboxd limit={6} />
+            </section>
 
-
-
-            <div>
-                <h3>Recently Saved</h3>
-                <RecentlySaved />
-            </div>
-
-            <div>
-                <h3>Popular Albums</h3>
+            <section className="front-section">
+                <div className="front-section-heading">
+                    <h3>Popular Albums</h3>
+                    <button className="front-more-button" type="button" onClick={() => navigate("/albums")}>
+                        More
+                    </button>
+                </div>
                 <PopularAlbums limit={5} window="30d" />
-            </div>
+            </section>
+
+            <section className="front-section">
+                <div className="front-section-heading">
+                    <h3>Popular Reviews</h3>
+                </div>
+                <PopularReviews limit={4} />
+            </section>
+
+            <section className="front-section front-lists-preview">
+                <h3>Popular Lists</h3>
+            </section>
         </div>
     );
 }

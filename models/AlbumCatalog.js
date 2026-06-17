@@ -92,6 +92,7 @@ const albumCatalogSchema = new mongoose.Schema(
 );
 
 albumCatalogSchema.index({ title: "text", artist: "text", artists: "text" });
+albumCatalogSchema.index({ artist: 1, title: 1 });
 
 const AlbumCatalog = mongoose.model("AlbumCatalog", albumCatalogSchema);
 
