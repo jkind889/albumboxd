@@ -188,22 +188,30 @@ export function Account() {
 
         if (isPublicProfile) {
           const encodedPublicUserId = encodeURIComponent(publicUserId);
-          const [profileResponse, savedResponse, reviewsResponse, activityResponse] = await Promise.all([
+          const [profileResponse, savedResponse, reviewsResponse, activityResponse, boardsResponse] = await Promise.all([
             fetch(`http://localhost:3000/profile/${encodedPublicUserId}`, { headers }),
             fetch(`http://localhost:3000/profile/${encodedPublicUserId}/saved`),
             fetch(`http://localhost:3000/reviews/review/user/${encodedPublicUserId}`, { headers }),
             fetch(`http://localhost:3000/profile/${encodedPublicUserId}/activity`, { headers }),
+            fetch(`http://localhost:3000/profile/${encodedPublicUserId}/boards`),
           ]);
 
-          if (!profileResponse.ok || !savedResponse.ok || !reviewsResponse.ok || !activityResponse.ok) {
+          if (
+            !profileResponse.ok
+            || !savedResponse.ok
+            || !reviewsResponse.ok
+            || !activityResponse.ok
+            || !boardsResponse.ok
+          ) {
             throw new Error("Failed to load profile data");
           }
 
-          [profileData, savedData, reviewsData, activityData] = await Promise.all([
+          [profileData, savedData, reviewsData, activityData, boardsData] = await Promise.all([
             profileResponse.json(),
             savedResponse.json(),
             reviewsResponse.json(),
             activityResponse.json(),
+            boardsResponse.json(),
           ]);
         } else {
           const [
@@ -875,31 +883,80 @@ export function Account() {
         {items.map((activity) => {
           const actor = activity.actor || {};
           const album = activity.album || {};
+          const targetUser = activity.targetUser || {};
+          const reviewAuthor = activity.reviewAuthor || {};
           const actorName = actor.username || "albumboxd user";
-          const actionLabel = activity.type === "saved_album" ? "Saved" : "Reviewed";
-          const actionText = activity.type === "saved_album" ? "saved" : "reviewed";
+          const actionLabelByType = {
+            saved_album: "Saved",
+            review: "Reviewed",
+            liked_album: "Liked",
+            liked_review: "Liked",
+            follow: "Followed",
+          };
+          const actionTextByType = {
+            saved_album: "saved",
+            review: "reviewed",
+            liked_album: "liked",
+            liked_review: "liked a review of",
+            follow: "followed",
+          };
+          const actionLabel = actionLabelByType[activity.type] || "Activity";
+          const actionText = actionTextByType[activity.type] || "updated";
           const actorState = {
             profileUser: {
               username: actorName,
               imageUrl: actor.imageUrl || "",
             },
           };
+          const targetUserName = targetUser.username || targetUser.userId || "albumboxd user";
+          const targetUserState = {
+            profileUser: {
+              username: targetUserName,
+              imageUrl: targetUser.imageUrl || "",
+            },
+          };
+          const reviewAuthorName = reviewAuthor.username || reviewAuthor.userId || "albumboxd user";
 
           return (
             <article className="profile-activity-item" key={activity.id}>
-              <AlbumCover src={album.cover} title={album.title || "Album"} />
+              {activity.type === "follow" ? (
+                targetUser.imageUrl ? (
+                  <img className="profile-cover" src={targetUser.imageUrl} alt={`${targetUserName} avatar`} />
+                ) : (
+                  <div className="profile-cover-fallback">Profile</div>
+                )
+              ) : (
+                <AlbumCover src={album.cover} title={album.title || "Album"} />
+              )}
               <div>
                 <span>{actionLabel}</span>
-                <h3>
-                  <Link to={`/profile/${actor.userId}`} state={actorState}>
-                    {actorName}
-                  </Link>
-                  {` ${actionText} `}
-                  <Link to={`/album/${album.spotifyId}`}>
-                    {album.title || "Untitled album"}
-                  </Link>
-                </h3>
-                <p>{album.artist || "Artist unknown"}</p>
+                {activity.type === "follow" ? (
+                  <h3>
+                    <Link to={`/profile/${actor.userId}`} state={actorState}>
+                      {actorName}
+                    </Link>
+                    {` ${actionText} `}
+                    <Link to={`/profile/${targetUser.userId}`} state={targetUserState}>
+                      {targetUserName}
+                    </Link>
+                  </h3>
+                ) : (
+                  <h3>
+                    <Link to={`/profile/${actor.userId}`} state={actorState}>
+                      {actorName}
+                    </Link>
+                    {` ${actionText} `}
+                    <Link to={`/album/${album.spotifyId}`}>
+                      {album.title || "Untitled album"}
+                    </Link>
+                  </h3>
+                )}
+                {activity.type === "liked_review" && (
+                  <p>Reviewed by {reviewAuthorName}</p>
+                )}
+                {activity.type !== "follow" && activity.type !== "liked_review" && (
+                  <p>{album.artist || "Artist unknown"}</p>
+                )}
                 {activity.reviewText && <p className="profile-review-copy">{activity.reviewText}</p>}
                 {activity.type === "review" && (
                   <div className="review-card-actions">
@@ -928,58 +985,62 @@ export function Account() {
     return renderActivityFeed(activityItems, {
       title: "No activity yet",
       body: canManageProfile
-        ? "Reviews you write and albums you save will show up here."
+        ? "Reviews, saves, likes, and follows will show up here."
         : "This listener has not saved or reviewed anything yet.",
     });
   }
 
   function renderBoards() {
-    if (isPublicProfile) {
-      return (
-        <ProfileEmptyState
-          title="Boards are private"
-          body="Boards are only available from your own profile right now."
-        />
-      );
-    }
-
     return (
       <section className="profile-saved-section">
         <div className="profile-saved-toolbar">
           <div>
             <h2>Boards</h2>
-            <p>{sortedBoards.length} board{sortedBoards.length === 1 ? "" : "s"} in your library</p>
+            <p>
+              {sortedBoards.length} board{sortedBoards.length === 1 ? "" : "s"}
+              {canManageProfile ? " in your library" : " on this profile"}
+            </p>
           </div>
-          <form className="board-create-form profile-board-create" onSubmit={createBoard}>
-            <input
-              value={newBoardTitle}
-              onChange={(event) => setNewBoardTitle(event.target.value)}
-              placeholder="New board name"
-              maxLength={80}
-            />
-            <button type="submit" disabled={!newBoardTitle.trim() || isCreatingBoard}>
-              Create
-            </button>
-          </form>
+          {canManageProfile && (
+            <form className="board-create-form profile-board-create" onSubmit={createBoard}>
+              <input
+                value={newBoardTitle}
+                onChange={(event) => setNewBoardTitle(event.target.value)}
+                placeholder="New board name"
+                maxLength={80}
+              />
+              <button type="submit" disabled={!newBoardTitle.trim() || isCreatingBoard}>
+                Create
+              </button>
+            </form>
+          )}
         </div>
 
         {sortedBoards.length === 0 ? (
           <ProfileEmptyState
             title="No boards yet"
-            body="Create boards to group albums from their detail pages."
+            body={canManageProfile
+              ? "Create boards to group albums from their detail pages."
+              : "This listener has not created any boards yet."}
           />
         ) : (
           <div className="boards-grid profile-boards-grid">
-            {sortedBoards.map((board) => (
-              <Link className="board-card" key={board._id} to={`/boards/${board._id}`}>
-                <BoardPreview albums={board.previewAlbums || []} />
-                <h2>{board.title}</h2>
-                <p>
-                  {board.itemCount} album{board.itemCount === 1 ? "" : "s"}
-                  {board.isDefault ? " · Default" : ""}
-                </p>
-              </Link>
-            ))}
+            {sortedBoards.map((board) => {
+              const boardPath = isPublicProfile
+                ? `/profile/${encodeURIComponent(profileUserId)}/boards/${board._id}`
+                : `/boards/${board._id}`;
+
+              return (
+                <Link className="board-card" key={board._id} to={boardPath}>
+                  <BoardPreview albums={board.previewAlbums || []} />
+                  <h2>{board.title}</h2>
+                  <p>
+                    {board.itemCount} album{board.itemCount === 1 ? "" : "s"}
+                    {board.isDefault ? " · Default" : ""}
+                  </p>
+                </Link>
+              );
+            })}
           </div>
         )}
       </section>
@@ -1289,18 +1350,41 @@ export function Account() {
                     <div className="profile-sidebar-activity">
                       {latestSidebarActivity.map((activity) => {
                         const album = activity.album || {};
-                        const actionLabel = activity.type === "saved_album" ? "Saved" : "Reviewed";
+                        const targetUser = activity.targetUser || {};
+                        const actionLabelByType = {
+                          saved_album: "Saved",
+                          review: "Reviewed",
+                          liked_album: "Liked",
+                          liked_review: "Liked",
+                          follow: "Followed",
+                        };
+                        const actionLabel = actionLabelByType[activity.type] || "Activity";
+                        const activityPath = activity.type === "follow" && targetUser.userId
+                          ? `/profile/${encodeURIComponent(targetUser.userId)}`
+                          : `/album/${album.spotifyId}`;
 
                         return (
                           <Link
                             className="profile-sidebar-activity-row"
                             key={activity.id}
-                            to={`/album/${album.spotifyId}`}
+                            to={activityPath}
                           >
-                            <AlbumCover src={album.cover} title={album.title || "Album"} />
+                            {activity.type === "follow" ? (
+                              targetUser.imageUrl ? (
+                                <img className="profile-cover" src={targetUser.imageUrl} alt={`${targetUser.username || "Profile"} avatar`} />
+                              ) : (
+                                <div className="profile-cover-fallback">Profile</div>
+                              )
+                            ) : (
+                              <AlbumCover src={album.cover} title={album.title || "Album"} />
+                            )}
                             <div>
                               <span>{actionLabel}</span>
-                              <strong>{album.title || "Untitled album"}</strong>
+                              <strong>
+                                {activity.type === "follow"
+                                  ? targetUser.username || targetUser.userId || "albumboxd user"
+                                  : album.title || "Untitled album"}
+                              </strong>
                               <time>{formatDate(activity.createdAt)}</time>
                             </div>
                           </Link>

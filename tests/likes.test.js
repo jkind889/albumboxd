@@ -3,10 +3,12 @@ const test = require("node:test");
 
 const likeModelPath = require.resolve("../models/Like");
 const reviewModelPath = require.resolve("../models/Reviews");
+const notificationModelPath = require.resolve("../models/Notification");
 const clerkPath = require.resolve("@clerk/express");
 const likeRoutePath = require.resolve("../routes/likes");
 
 let likeDocuments = [];
+let notificationDocuments = [];
 let reviewById = new Map();
 let authUserId = "user_clerk_123";
 
@@ -18,6 +20,7 @@ function loadLikeRouter() {
   delete require.cache[likeRoutePath];
   delete require.cache[likeModelPath];
   delete require.cache[reviewModelPath];
+  delete require.cache[notificationModelPath];
 
   require.cache[likeModelPath] = {
     id: likeModelPath,
@@ -48,6 +51,28 @@ function loadLikeRouter() {
     loaded: true,
     exports: {
       findById: async (reviewId) => reviewById.get(String(reviewId)) || null,
+    },
+  };
+
+  require.cache[notificationModelPath] = {
+    id: notificationModelPath,
+    filename: notificationModelPath,
+    loaded: true,
+    exports: {
+      updateOne: async (query, update) => {
+        const existingNotification = notificationDocuments.find((notification) => (
+          notification.recipientUserId === query.recipientUserId
+          && notification.actorUserId === query.actorUserId
+          && notification.type === query.type
+          && String(notification.reviewId || "") === String(query.reviewId || "")
+        ));
+
+        if (!existingNotification) {
+          notificationDocuments.push({ ...update.$setOnInsert });
+        }
+
+        return { acknowledged: true };
+      },
     },
   };
 
@@ -110,6 +135,7 @@ async function callRoute(method, path, { params = {}, body = {} } = {}) {
 
 test.beforeEach(() => {
   likeDocuments = [];
+  notificationDocuments = [];
   reviewById = new Map();
   authUserId = "user_clerk_123";
 });
@@ -129,6 +155,7 @@ test("PUT /likes/album/:spotifyId likes an album idempotently", async () => {
   assert.equal(secondResponse.body.likeCount, 1);
   assert.equal(secondResponse.body.likedByViewer, true);
   assert.equal(likeDocuments.length, 1);
+  assert.deepEqual(notificationDocuments, []);
 });
 
 test("PUT /likes/album/:spotifyId unlikes an album idempotently", async () => {
@@ -185,6 +212,7 @@ test("GET /likes/album/:spotifyId returns count and viewer state", async () => {
 test("PUT /likes/review/:reviewId likes and unlikes a review idempotently", async () => {
   reviewById.set("review_123", {
     _id: "review_123",
+    userId: "review_author_1",
     spotifyId: "spotify_album_123",
   });
 
@@ -207,6 +235,55 @@ test("PUT /likes/review/:reviewId likes and unlikes a review idempotently", asyn
   assert.equal(duplicateLikeResponse.body.likeCount, 1);
   assert.equal(unlikeResponse.body.likeCount, 0);
   assert.equal(unlikeResponse.body.likedByViewer, false);
+  assert.deepEqual(notificationDocuments, [
+    {
+      recipientUserId: "review_author_1",
+      actorUserId: "user_clerk_123",
+      type: "review_like",
+      reviewId: "review_123",
+      spotifyId: "spotify_album_123",
+    },
+  ]);
+});
+
+test("PUT /likes/review/:reviewId does not notify for self-likes", async () => {
+  reviewById.set("review_123", {
+    _id: "review_123",
+    userId: "user_clerk_123",
+    spotifyId: "spotify_album_123",
+  });
+
+  const response = await callRoute("put", "/review/:reviewId", {
+    params: { reviewId: "review_123" },
+    body: { liked: true },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(notificationDocuments, []);
+});
+
+test("PUT /likes/review/:reviewId does not notify for unlikes", async () => {
+  reviewById.set("review_123", {
+    _id: "review_123",
+    userId: "review_author_1",
+    spotifyId: "spotify_album_123",
+  });
+  likeDocuments = [
+    {
+      userId: "user_clerk_123",
+      targetType: "review",
+      spotifyId: "spotify_album_123",
+      reviewId: "review_123",
+    },
+  ];
+
+  const response = await callRoute("put", "/review/:reviewId", {
+    params: { reviewId: "review_123" },
+    body: { liked: false },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(notificationDocuments, []);
 });
 
 test("PUT /likes/review/:reviewId rejects missing reviews", async () => {

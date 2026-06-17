@@ -2,6 +2,7 @@ const express = require("express");
 const { getAuth } = require("@clerk/express");
 const Like = require("../models/Like");
 const Review = require("../models/Reviews");
+const Notification = require("../models/Notification");
 
 const router = express.Router();
 
@@ -26,6 +27,33 @@ function getViewerId(req) {
 
 function normalizeLiked(value) {
   return value === true || value === false ? value : null;
+}
+
+async function createReviewLikeNotification({ actorUserId, review, reviewId }) {
+  const recipientUserId = review.userId;
+
+  if (!recipientUserId || recipientUserId === actorUserId) {
+    return;
+  }
+
+  await Notification.updateOne(
+    {
+      recipientUserId,
+      actorUserId,
+      type: "review_like",
+      reviewId,
+    },
+    {
+      $setOnInsert: {
+        recipientUserId,
+        actorUserId,
+        type: "review_like",
+        reviewId,
+        spotifyId: review.spotifyId,
+      },
+    },
+    { upsert: true },
+  );
 }
 
 router.get("/album/:spotifyId", async(req, res) => {
@@ -123,6 +151,11 @@ router.put("/review/:reviewId", ensureAuthenticated, async(req, res) => {
         },
         { upsert: true },
       );
+      await createReviewLikeNotification({
+        actorUserId: req.userId,
+        review,
+        reviewId,
+      });
     } else {
       await Like.deleteOne({ userId: req.userId, targetType: "review", reviewId });
     }

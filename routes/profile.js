@@ -3,9 +3,11 @@ const { clerkClient, getAuth } = require("@clerk/express");
 const UserProfile = require("../models/UserProfile");
 const Follow = require("../models/Follow");
 const Review = require("../models/Reviews");
+const AlbumCatalog = require("../models/AlbumCatalog");
 const Board = require("../models/Board");
 const BoardItem = require("../models/BoardItem");
 const Like = require("../models/Like");
+const Notification = require("../models/Notification");
 const {
   getOrCreateAlbumCatalog,
   normalizeCatalogAlbum,
@@ -131,6 +133,12 @@ async function formatBoardDetail(board) {
   };
 }
 
+async function getUserBoards(userId) {
+  const boards = await Board.find({ userId }).sort({ isDefault: -1, updatedAt: -1 });
+
+  return Promise.all(boards.map(formatPinnedBoard));
+}
+
 async function getDefaultBoardItems(userId, { limit } = {}) {
   const defaultBoard = await Board.findOne({ userId, isDefault: true });
 
@@ -242,7 +250,33 @@ async function getOrCreateProfile(userId) {
 }
 
 async function isFollowableUser(userId) {
-  return Boolean(await Review.exists({ userId }));
+  if (await Review.exists({ userId })) {
+    return true;
+  }
+
+  return Boolean(await UserProfile.exists({ userId }));
+}
+
+async function createFollowNotification({ actorUserId, recipientUserId }) {
+  if (!recipientUserId || recipientUserId === actorUserId) {
+    return;
+  }
+
+  await Notification.updateOne(
+    {
+      recipientUserId,
+      actorUserId,
+      type: "follow",
+    },
+    {
+      $setOnInsert: {
+        recipientUserId,
+        actorUserId,
+        type: "follow",
+      },
+    },
+    { upsert: true },
+  );
 }
 
 function toPlainDocument(document) {
@@ -399,29 +433,170 @@ function formatSavedAlbumActivity(savedAlbum, actor) {
   };
 }
 
-async function getUserActivity(userId, { includeSavedAlbums, viewerId = "" }) {
+function getActivityTimestamp(activity) {
+  const timestamp = new Date(activity.createdAt).getTime();
+
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function sortAndLimitActivity(activities) {
+  return activities
+    .sort((first, second) => getActivityTimestamp(second) - getActivityTimestamp(first))
+    .slice(0, DEFAULT_ACTIVITY_LIMIT);
+}
+
+function formatLikedAlbumActivity(like, actor, catalogAlbum) {
+  const source = toPlainDocument(like);
+  const normalizedAlbum = catalogAlbum ? normalizeCatalogAlbum(catalogAlbum) : null;
+
+  return {
+    id: String(source._id || `liked-album-${source.spotifyId}`),
+    type: "liked_album",
+    actor,
+    userId: source.userId,
+    createdAt: source.createdAt,
+    album: {
+      spotifyId: source.spotifyId,
+      title: normalizedAlbum?.title || "Unknown Album",
+      artist: normalizedAlbum?.artist || "Artist unknown",
+      cover: normalizedAlbum?.cover || "",
+    },
+  };
+}
+
+function formatLikedReviewActivity(like, review, actor, reviewAuthor) {
+  const source = toPlainDocument(like);
+  const plainReview = toPlainDocument(review);
+
+  return {
+    id: String(source._id || `liked-review-${plainReview._id}`),
+    type: "liked_review",
+    actor,
+    userId: source.userId,
+    createdAt: source.createdAt,
+    reviewId: String(plainReview._id),
+    reviewAuthor,
+    album: {
+      spotifyId: plainReview.spotifyId,
+      title: plainReview.title,
+      artist: plainReview.artist,
+      cover: plainReview.cover || "",
+    },
+    rating: plainReview.rating,
+    reviewText: plainReview.reviewText,
+  };
+}
+
+function formatFollowActivity(follow, actor, targetUser) {
+  const source = toPlainDocument(follow);
+
+  return {
+    id: String(source._id || `follow-${source.followingId}`),
+    type: "follow",
+    actor,
+    userId: source.followerId,
+    createdAt: source.createdAt,
+    targetUser,
+  };
+}
+
+async function getPrivateInteractionActivity(userId, actor) {
+  const [likes, follows] = await Promise.all([
+    Like.find({ userId }),
+    Follow.find({ followerId: userId }),
+  ]);
+  const plainLikes = likes.map(toPlainDocument);
+  const reviewLikeIds = [...new Set(
+    plainLikes
+      .filter((like) => like.targetType === "review" && like.reviewId)
+      .map((like) => String(like.reviewId)),
+  )];
+  const albumLikeIds = [...new Set(
+    plainLikes
+      .filter((like) => like.targetType === "album" && like.spotifyId)
+      .map((like) => like.spotifyId),
+  )];
+  const followedUserIds = [...new Set(
+    follows
+      .map((follow) => toPlainDocument(follow).followingId)
+      .filter(Boolean),
+  )];
+  const [likedReviews, likedAlbums, followedUsersById] = await Promise.all([
+    reviewLikeIds.length > 0 ? Review.find({ _id: { $in: reviewLikeIds } }) : Promise.resolve([]),
+    albumLikeIds.length > 0 ? AlbumCatalog.find({ spotifyId: { $in: albumLikeIds } }) : Promise.resolve([]),
+    getAuthorsByUserId(followedUserIds),
+  ]);
+  const reviewsById = new Map(likedReviews.map((review) => [getDocumentId(review), toPlainDocument(review)]));
+  const albumBySpotifyId = new Map(
+    likedAlbums.map((album) => {
+      const source = toPlainDocument(album);
+      return [source.spotifyId, source];
+    }),
+  );
+  const reviewAuthorsByUserId = await getAuthorsByUserId(
+    likedReviews.map((review) => toPlainDocument(review).userId),
+  );
+  const likeActivities = plainLikes
+    .map((like) => {
+      if (like.targetType === "album" && like.spotifyId) {
+        return formatLikedAlbumActivity(like, actor, albumBySpotifyId.get(like.spotifyId));
+      }
+
+      if (like.targetType === "review" && like.reviewId) {
+        const review = reviewsById.get(String(like.reviewId));
+
+        if (!review) {
+          return null;
+        }
+
+        return formatLikedReviewActivity(
+          like,
+          review,
+          actor,
+          reviewAuthorsByUserId.get(review.userId) || getAuthorFromUser(review.userId),
+        );
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+  const followActivities = follows.map((follow) => {
+    const source = toPlainDocument(follow);
+    return formatFollowActivity(
+      source,
+      actor,
+      getProfileUserFromAuthor(followedUsersById.get(source.followingId) || getAuthorFromUser(source.followingId)),
+    );
+  });
+
+  return [...likeActivities, ...followActivities];
+}
+
+async function getUserActivity(userId, { includeSavedAlbums, includePrivateInteractions = false, viewerId = "" }) {
   const authorsByUserId = await getAuthorsByUserId([userId]);
   const actor = authorsByUserId.get(userId) || getAuthorFromUser(userId);
-  const [reviews, savedAlbums] = await Promise.all([
+  const [reviews, savedAlbums, privateInteractions] = await Promise.all([
     Review.find({ userId }).sort({ date: -1 }).limit(DEFAULT_ACTIVITY_LIMIT),
     includeSavedAlbums
       ? getDefaultBoardItems(userId, { limit: DEFAULT_ACTIVITY_LIMIT })
+      : Promise.resolve([]),
+    includePrivateInteractions
+      ? getPrivateInteractionActivity(userId, actor)
       : Promise.resolve([]),
   ]);
 
   const plainReviews = reviews.map(toPlainDocument);
   const likeStatsByReviewId = await getLikeStatsByReviewId(plainReviews, viewerId);
 
-  return [
+  return sortAndLimitActivity([
     ...plainReviews.map((review) => formatReviewActivity(
       review,
       actor,
       likeStatsByReviewId.get(getDocumentId(review)),
     )),
     ...savedAlbums.map((savedAlbum) => formatSavedAlbumActivity(savedAlbum, actor)),
-  ]
-    .sort((first, second) => new Date(second.createdAt) - new Date(first.createdAt))
-    .slice(0, DEFAULT_ACTIVITY_LIMIT);
+    ...privateInteractions,
+  ]);
 }
 
 function getProfileUserFromAuthor(author) {
@@ -517,7 +692,11 @@ router.get("/me/social", ensureAuthenticated, async(req, res) => {
 
 router.get("/me/activity", ensureAuthenticated, async(req, res) => {
   try {
-    res.json(await getUserActivity(req.userId, { includeSavedAlbums: true, viewerId: req.userId }));
+    res.json(await getUserActivity(req.userId, {
+      includeSavedAlbums: true,
+      includePrivateInteractions: true,
+      viewerId: req.userId,
+    }));
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Failed to fetch activity" });
@@ -651,6 +830,10 @@ router.put("/:userId/follow", ensureAuthenticated, async(req, res) => {
         { $setOnInsert: { followerId: req.userId, followingId: targetUserId } },
         { upsert: true },
       );
+      await createFollowNotification({
+        actorUserId: req.userId,
+        recipientUserId: targetUserId,
+      });
     } else {
       await Follow.deleteOne({ followerId: req.userId, followingId: targetUserId });
     }
@@ -688,6 +871,25 @@ router.get("/:userId/boards/:boardId", async(req, res) => {
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: "Failed to fetch board" });
+  }
+});
+
+router.get("/:userId/boards", async(req, res) => {
+  try {
+    const targetUserId = String(req.params.userId || "").trim();
+
+    if (!targetUserId) {
+      return res.status(400).json({ error: "User id is required" });
+    }
+
+    if (!(await isFollowableUser(targetUserId))) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json(await getUserBoards(targetUserId));
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to fetch boards" });
   }
 });
 

@@ -5,9 +5,11 @@ const profileModelPath = require.resolve("../models/UserProfile");
 const followModelPath = require.resolve("../models/Follow");
 const reviewModelPath = require.resolve("../models/Reviews");
 const albumModelPath = require.resolve("../models/Albums");
+const albumCatalogModelPath = require.resolve("../models/AlbumCatalog");
 const boardModelPath = require.resolve("../models/Board");
 const boardItemModelPath = require.resolve("../models/BoardItem");
 const likeModelPath = require.resolve("../models/Like");
+const notificationModelPath = require.resolve("../models/Notification");
 const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const clerkPath = require.resolve("@clerk/express");
 const profileRoutePath = require.resolve("../routes/profile");
@@ -24,12 +26,14 @@ let activitySavedAlbumDocuments = [];
 let boardDocuments = [];
 let boardItemDocuments = [];
 let likeDocuments = [];
+let notificationDocuments = [];
 let clerkUsers = [];
 let shouldRejectClerkLookup = false;
 const findOneCalls = [];
 const createCalls = [];
 const updateCalls = [];
 const getOrCreateCalls = [];
+const profileExistsCalls = [];
 const reviewExistsCalls = [];
 const reviewFindCalls = [];
 const reviewFindOneCalls = [];
@@ -39,7 +43,10 @@ const albumFindCalls = [];
 const albumPopulateCalls = [];
 const albumSortCalls = [];
 const albumLimitCalls = [];
+const albumCatalogFindCalls = [];
 const boardFindOneCalls = [];
+const boardFindCalls = [];
+const boardSortCalls = [];
 const boardItemFindCalls = [];
 const boardItemPopulateCalls = [];
 const boardItemSortCalls = [];
@@ -50,6 +57,7 @@ const followUpdateCalls = [];
 const followDeleteCalls = [];
 const getUserListCalls = [];
 const likeFindCalls = [];
+const notificationUpdateCalls = [];
 
 function chainResult(result) {
   const chain = {
@@ -87,7 +95,9 @@ function normalizeCatalogAlbum(album) {
 
 function loadProfileRouter() {
   delete require.cache[profileRoutePath];
+  delete require.cache[albumCatalogModelPath];
   delete require.cache[likeModelPath];
+  delete require.cache[notificationModelPath];
 
   require.cache[profileModelPath] = {
     id: profileModelPath,
@@ -97,6 +107,10 @@ function loadProfileRouter() {
       findOne: (query) => {
         findOneCalls.push(query);
         return chainResult(profilesByUserId.get(query.userId) || null);
+      },
+      exists: async (query) => {
+        profileExistsCalls.push(query);
+        return profilesByUserId.has(query.userId) ? { _id: `profile_${query.userId}` } : null;
       },
       create: async (profile) => {
         createCalls.push(profile);
@@ -164,6 +178,16 @@ function loadProfileRouter() {
       find: (query) => {
         reviewFindCalls.push(query);
 
+        const matchingReviews = (() => {
+          if (query._id?.$in) {
+            const reviewIds = query._id.$in.map(String);
+            return activityReviewDocuments.filter((review) => reviewIds.includes(String(review._id)));
+          }
+
+          const userIds = query.userId?.$in || [query.userId].filter(Boolean);
+          return activityReviewDocuments.filter((review) => userIds.includes(review.userId));
+        })();
+
         return {
           sort: (sortOrder) => {
             reviewSortCalls.push(sortOrder);
@@ -171,15 +195,13 @@ function loadProfileRouter() {
             return {
               limit: async (limit) => {
                 reviewLimitCalls.push(limit);
-                const userIds = query.userId?.$in || [query.userId].filter(Boolean);
-
-                return activityReviewDocuments
-                  .filter((review) => userIds.includes(review.userId))
+                return matchingReviews
                   .sort((first, second) => new Date(second.date) - new Date(first.date))
                   .slice(0, limit);
               },
             };
           },
+          then: (resolve, reject) => Promise.resolve(matchingReviews).then(resolve, reject),
         };
       },
       findOne: async (query) => {
@@ -226,11 +248,42 @@ function loadProfileRouter() {
     },
   };
 
+  require.cache[albumCatalogModelPath] = {
+    id: albumCatalogModelPath,
+    filename: albumCatalogModelPath,
+    loaded: true,
+    exports: {
+      find: (query) => {
+        albumCatalogFindCalls.push(query);
+        const spotifyIds = query.spotifyId?.$in || [];
+        return Promise.resolve(
+          boardItemDocuments
+            .map((item) => item.albumCatalogId)
+            .filter((album) => album && spotifyIds.includes(album.spotifyId)),
+        );
+      },
+    },
+  };
+
   require.cache[boardModelPath] = {
     id: boardModelPath,
     filename: boardModelPath,
     loaded: true,
     exports: {
+      find: (query) => {
+        boardFindCalls.push(query);
+        const matchingBoards = boardDocuments.filter((board) => board.userId === query.userId);
+
+        return {
+          sort: (sortOrder) => {
+            boardSortCalls.push(sortOrder);
+            return Promise.resolve(
+              matchingBoards.sort((first, second) => Number(second.isDefault) - Number(first.isDefault)
+                || new Date(second.updatedAt || 0) - new Date(first.updatedAt || 0)),
+            );
+          },
+        };
+      },
       findOne: async (query) => {
         boardFindOneCalls.push(query);
 
@@ -292,12 +345,32 @@ function loadProfileRouter() {
     exports: {
       find: async (query) => {
         likeFindCalls.push(query);
-        const reviewIds = query.reviewId?.$in?.map(String) || [];
 
         return likeDocuments.filter((like) => (
-          like.targetType === query.targetType
-          && reviewIds.includes(String(like.reviewId))
+          (!query.userId || like.userId === query.userId)
+          && (!query.targetType || like.targetType === query.targetType)
+          && (!query.reviewId?.$in || query.reviewId.$in.map(String).includes(String(like.reviewId)))
         ));
+      },
+    },
+  };
+
+  require.cache[notificationModelPath] = {
+    id: notificationModelPath,
+    filename: notificationModelPath,
+    loaded: true,
+    exports: {
+      updateOne: async (query, update, options) => {
+        notificationUpdateCalls.push({ query, update, options });
+        const existingNotification = notificationDocuments.find((notification) => (
+          notification.recipientUserId === query.recipientUserId
+          && notification.actorUserId === query.actorUserId
+          && notification.type === query.type
+        ));
+
+        if (!existingNotification) {
+          notificationDocuments.push({ ...update.$setOnInsert });
+        }
       },
     },
   };
@@ -407,12 +480,14 @@ test.beforeEach(() => {
   boardDocuments = [];
   boardItemDocuments = [];
   likeDocuments = [];
+  notificationDocuments = [];
   clerkUsers = [];
   shouldRejectClerkLookup = false;
   findOneCalls.length = 0;
   createCalls.length = 0;
   updateCalls.length = 0;
   getOrCreateCalls.length = 0;
+  profileExistsCalls.length = 0;
   reviewExistsCalls.length = 0;
   reviewFindCalls.length = 0;
   reviewFindOneCalls.length = 0;
@@ -422,7 +497,10 @@ test.beforeEach(() => {
   albumPopulateCalls.length = 0;
   albumSortCalls.length = 0;
   albumLimitCalls.length = 0;
+  albumCatalogFindCalls.length = 0;
   boardFindOneCalls.length = 0;
+  boardFindCalls.length = 0;
+  boardSortCalls.length = 0;
   boardItemFindCalls.length = 0;
   boardItemPopulateCalls.length = 0;
   boardItemSortCalls.length = 0;
@@ -433,6 +511,7 @@ test.beforeEach(() => {
   followDeleteCalls.length = 0;
   getUserListCalls.length = 0;
   likeFindCalls.length = 0;
+  notificationUpdateCalls.length = 0;
 });
 
 test("GET /profile/me creates and returns an empty current user profile", async () => {
@@ -1100,6 +1179,134 @@ test("GET /profile/me/activity returns current user's saved and reviewed activit
   });
 });
 
+test("GET /profile/me/activity includes current user's likes and follows newest first", async () => {
+  activityReviewDocuments = [
+    {
+      _id: "own_review",
+      userId: "user_clerk_123",
+      spotifyId: "album_1",
+      title: "Kind of Blue",
+      artist: "Miles Davis",
+      cover: "https://example.com/kind-of-blue.jpg",
+      rating: 5,
+      reviewText: "Mine.",
+      date: new Date("2026-06-10T10:00:00.000Z"),
+    },
+    {
+      _id: "liked_review",
+      userId: "review_author_1",
+      spotifyId: "album_2",
+      title: "Blue Train",
+      artist: "John Coltrane",
+      cover: "https://example.com/blue-train.jpg",
+      rating: 4,
+      reviewText: "A favorite review.",
+      date: new Date("2026-06-09T10:00:00.000Z"),
+    },
+  ];
+  boardDocuments = [
+    {
+      _id: "default_board",
+      userId: "user_clerk_123",
+      title: "Saved albums",
+      isDefault: true,
+    },
+  ];
+  boardItemDocuments = [
+    {
+      _id: "own_save",
+      userId: "user_clerk_123",
+      boardId: "default_board",
+      spotifyId: "album_4",
+      savedAt: new Date("2026-06-11T10:00:00.000Z"),
+      albumCatalogId: {
+        _id: "catalog_album_4",
+        spotifyId: "album_4",
+        title: "Giant Steps",
+        artist: "John Coltrane",
+        cover: "https://example.com/giant-steps.jpg",
+      },
+    },
+    {
+      _id: "catalog_seed",
+      userId: "other_user",
+      boardId: "other_board",
+      spotifyId: "album_3",
+      savedAt: new Date("2026-06-01T10:00:00.000Z"),
+      albumCatalogId: {
+        _id: "catalog_album_3",
+        spotifyId: "album_3",
+        title: "Head Hunters",
+        artist: "Herbie Hancock",
+        cover: "https://example.com/head-hunters.jpg",
+      },
+    },
+  ];
+  likeDocuments = [
+    {
+      _id: "album_like",
+      userId: "user_clerk_123",
+      targetType: "album",
+      spotifyId: "album_3",
+      createdAt: new Date("2026-06-12T10:00:00.000Z"),
+    },
+    {
+      _id: "review_like",
+      userId: "user_clerk_123",
+      targetType: "review",
+      spotifyId: "album_2",
+      reviewId: "liked_review",
+      createdAt: new Date("2026-06-12T09:00:00.000Z"),
+    },
+  ];
+  followDocuments = [
+    {
+      _id: "follow_1",
+      followerId: "user_clerk_123",
+      followingId: "review_author_1",
+      createdAt: new Date("2026-06-13T10:00:00.000Z"),
+    },
+  ];
+  clerkUsers = [
+    {
+      id: "user_clerk_123",
+      username: "currentlistener",
+      imageUrl: "https://example.com/current.jpg",
+    },
+    {
+      id: "review_author_1",
+      username: "bluebill",
+      imageUrl: "https://example.com/bill.jpg",
+    },
+  ];
+
+  const response = await callRoute("get", "/me/activity");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(likeFindCalls, [
+    { userId: "user_clerk_123" },
+    { targetType: "review", reviewId: { $in: ["own_review"] } },
+  ]);
+  assert.deepEqual(albumCatalogFindCalls, [{ spotifyId: { $in: ["album_3"] } }]);
+  assert.deepEqual(followFindCalls, [{ followerId: "user_clerk_123" }]);
+  assert.deepEqual(
+    response.body.map((activity) => activity.type),
+    ["follow", "liked_album", "liked_review", "saved_album", "review"],
+  );
+  assert.deepEqual(response.body[0].targetUser, {
+    userId: "review_author_1",
+    username: "bluebill",
+    imageUrl: "https://example.com/bill.jpg",
+  });
+  assert.deepEqual(response.body[1].album, {
+    spotifyId: "album_3",
+    title: "Head Hunters",
+    artist: "Herbie Hancock",
+    cover: "https://example.com/head-hunters.jpg",
+  });
+  assert.equal(response.body[2].reviewAuthor.username, "bluebill");
+});
+
 test("GET /profile/:userId/activity returns public profile saved and reviewed activity", async () => {
   reviewUserIds.add("review_author_1");
   activityReviewDocuments = [
@@ -1138,6 +1345,23 @@ test("GET /profile/:userId/activity returns public profile saved and reviewed ac
       },
     },
   ];
+  likeDocuments = [
+    {
+      _id: "public_profile_album_like",
+      userId: "review_author_1",
+      targetType: "album",
+      spotifyId: "album_3",
+      createdAt: new Date("2026-06-13T10:00:00.000Z"),
+    },
+  ];
+  followDocuments = [
+    {
+      _id: "public_profile_follow",
+      followerId: "review_author_1",
+      followingId: "other_user",
+      createdAt: new Date("2026-06-14T10:00:00.000Z"),
+    },
+  ];
 
   const response = await callRoute("get", "/:userId/activity", {
     params: { userId: "review_author_1" },
@@ -1152,6 +1376,30 @@ test("GET /profile/:userId/activity returns public profile saved and reviewed ac
     response.body.map((activity) => activity.type),
     ["saved_album", "review"],
   );
+  assert.equal(albumCatalogFindCalls.length, 0);
+  assert.equal(followFindCalls.length, 0);
+});
+
+test("GET /profile/:userId/activity returns an empty feed for a profile without activity", async () => {
+  profilesByUserId.set("empty_profile_user", {
+    userId: "empty_profile_user",
+    bio: "Still setting up.",
+    spotifyProfileUrl: "",
+    favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReviewId: null,
+    pinnedBoardId: null,
+  });
+
+  const response = await callRoute("get", "/:userId/activity", {
+    params: { userId: "empty_profile_user" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(reviewExistsCalls, [{ userId: "empty_profile_user" }]);
+  assert.deepEqual(profileExistsCalls, [{ userId: "empty_profile_user" }]);
+  assert.deepEqual(boardFindOneCalls, [{ userId: "empty_profile_user", isDefault: true }]);
+  assert.deepEqual(response.body, []);
 });
 
 test("GET /profile/:userId/saved returns public profile saved albums newest first", async () => {
@@ -1251,15 +1499,131 @@ test("GET /profile/:userId/saved returns public profile saved albums newest firs
   });
 });
 
-test("GET /profile/:userId/saved returns 404 for a user without reviews", async () => {
+test("GET /profile/:userId/saved returns an empty shelf for a profile without saved albums", async () => {
+  profilesByUserId.set("empty_profile_user", {
+    userId: "empty_profile_user",
+    bio: "Still setting up.",
+    spotifyProfileUrl: "",
+    favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReviewId: null,
+    pinnedBoardId: null,
+  });
+
+  const response = await callRoute("get", "/:userId/saved", {
+    params: { userId: "empty_profile_user" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(reviewExistsCalls, [{ userId: "empty_profile_user" }]);
+  assert.deepEqual(profileExistsCalls, [{ userId: "empty_profile_user" }]);
+  assert.deepEqual(boardFindOneCalls, [{ userId: "empty_profile_user", isDefault: true }]);
+  assert.deepEqual(response.body, []);
+});
+
+test("GET /profile/:userId/saved returns 404 for a user without reviews or a profile", async () => {
   const response = await callRoute("get", "/:userId/saved", {
     params: { userId: "random_user" },
   });
 
   assert.equal(response.status, 404);
   assert.deepEqual(response.body, { error: "User not found" });
+  assert.deepEqual(profileExistsCalls, [{ userId: "random_user" }]);
   assert.equal(albumFindCalls.length, 0);
   assert.equal(boardItemFindCalls.length, 0);
+});
+
+test("GET /profile/:userId/boards returns public profile boards newest first", async () => {
+  reviewUserIds.add("review_author_1");
+  boardDocuments = [
+    {
+      _id: "custom_old",
+      userId: "review_author_1",
+      title: "Older Custom",
+      isDefault: false,
+      createdAt: new Date("2026-06-07T10:00:00.000Z"),
+      updatedAt: new Date("2026-06-08T10:00:00.000Z"),
+    },
+    {
+      _id: "default_board",
+      userId: "review_author_1",
+      title: "Saved albums",
+      isDefault: true,
+      createdAt: new Date("2026-06-09T10:00:00.000Z"),
+      updatedAt: new Date("2026-06-09T10:00:00.000Z"),
+    },
+    {
+      _id: "custom_new",
+      userId: "review_author_1",
+      title: "New Custom",
+      isDefault: false,
+      createdAt: new Date("2026-06-10T10:00:00.000Z"),
+      updatedAt: new Date("2026-06-12T10:00:00.000Z"),
+    },
+    {
+      _id: "other_user_board",
+      userId: "other_user",
+      title: "Should Not Render",
+      isDefault: false,
+      updatedAt: new Date("2026-06-13T10:00:00.000Z"),
+    },
+  ];
+  boardItemDocuments = [
+    {
+      _id: "default_item",
+      userId: "review_author_1",
+      boardId: "default_board",
+      spotifyId: "album_1",
+      savedAt: new Date("2026-06-10T10:00:00.000Z"),
+      albumCatalogId: {
+        _id: "catalog_album_1",
+        spotifyId: "album_1",
+        title: "Kind of Blue",
+        artist: "Miles Davis",
+        cover: "https://example.com/kind-of-blue.jpg",
+      },
+    },
+    {
+      _id: "custom_item",
+      userId: "review_author_1",
+      boardId: "custom_new",
+      spotifyId: "album_2",
+      savedAt: new Date("2026-06-11T10:00:00.000Z"),
+      albumCatalogId: {
+        _id: "catalog_album_2",
+        spotifyId: "album_2",
+        title: "Blue Train",
+        artist: "John Coltrane",
+        cover: "https://example.com/blue-train.jpg",
+      },
+    },
+  ];
+
+  const response = await callRoute("get", "/:userId/boards", {
+    params: { userId: "review_author_1" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(reviewExistsCalls, [{ userId: "review_author_1" }]);
+  assert.deepEqual(boardFindCalls, [{ userId: "review_author_1" }]);
+  assert.deepEqual(boardSortCalls, [{ isDefault: -1, updatedAt: -1 }]);
+  assert.deepEqual(
+    response.body.map((board) => board._id),
+    ["default_board", "custom_new", "custom_old"],
+  );
+  assert.equal(response.body[0].itemCount, 1);
+  assert.equal(response.body[0].previewAlbums[0].spotifyId, "album_1");
+});
+
+test("GET /profile/:userId/boards returns 404 for a user without reviews or a profile", async () => {
+  const response = await callRoute("get", "/:userId/boards", {
+    params: { userId: "random_user" },
+  });
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(response.body, { error: "User not found" });
+  assert.deepEqual(profileExistsCalls, [{ userId: "random_user" }]);
+  assert.equal(boardFindCalls.length, 0);
 });
 
 test("GET /profile/:userId/boards/:boardId returns a public read-only board", async () => {
@@ -1525,13 +1889,50 @@ test("GET /profile/:userId exposes public profile pins", async () => {
   assert.equal(response.body.pinnedBoard.previewAlbums[0].spotifyId, "album_2");
 });
 
-test("GET /profile/:userId returns 404 for a user without reviews", async () => {
+test("GET /profile/:userId returns an existing profile without reviews", async () => {
+  profilesByUserId.set("empty_profile_user", {
+    userId: "empty_profile_user",
+    bio: "Still setting up.",
+    spotifyProfileUrl: "",
+    favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReviewId: null,
+    pinnedBoardId: null,
+  });
+
+  const response = await callRoute("get", "/:userId", {
+    params: { userId: "empty_profile_user" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(reviewExistsCalls, [{ userId: "empty_profile_user" }]);
+  assert.deepEqual(profileExistsCalls, [{ userId: "empty_profile_user" }]);
+  assert.equal(createCalls.length, 0);
+  assert.deepEqual(response.body, {
+    userId: "empty_profile_user",
+    username: "albumboxd user",
+    imageUrl: "",
+    bio: "Still setting up.",
+    spotifyProfileUrl: "",
+    favoriteAlbums: [],
+    listeningNextAlbum: null,
+    pinnedReview: null,
+    pinnedBoard: null,
+    followerCount: 0,
+    followingCount: 0,
+    isFollowing: false,
+    isCurrentUser: false,
+  });
+});
+
+test("GET /profile/:userId returns 404 for a user without reviews or a profile", async () => {
   const response = await callRoute("get", "/:userId", {
     params: { userId: "random_user" },
   });
 
   assert.equal(response.status, 404);
   assert.deepEqual(response.body, { error: "User not found" });
+  assert.deepEqual(profileExistsCalls, [{ userId: "random_user" }]);
   assert.equal(createCalls.length, 0);
 });
 
@@ -1556,6 +1957,14 @@ test("PUT /profile/:userId/follow creates a follow relationship once", async () 
   assert.equal(secondResponse.body.followerCount, 1);
   assert.equal(secondResponse.body.followingCount, 0);
   assert.equal(secondResponse.body.isFollowing, true);
+  assert.deepEqual(notificationDocuments, [
+    {
+      recipientUserId: "review_author_1",
+      actorUserId: "user_clerk_123",
+      type: "follow",
+    },
+  ]);
+  assert.equal(notificationUpdateCalls.length, 2);
 });
 
 test("PUT /profile/:userId/follow removes an existing follow relationship", async () => {
@@ -1579,6 +1988,7 @@ test("PUT /profile/:userId/follow removes an existing follow relationship", asyn
   ]);
   assert.equal(response.body.followerCount, 1);
   assert.equal(response.body.isFollowing, false);
+  assert.deepEqual(notificationDocuments, []);
 });
 
 test("PUT /profile/:userId/follow succeeds when unfollowing without a relationship", async () => {

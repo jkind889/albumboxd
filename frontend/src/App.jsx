@@ -11,6 +11,7 @@ import EditProfile from "./Pages/EditProfile";
 import ProfileNetwork from "./Pages/ProfileNetwork";
 import Boards from "./Pages/Boards";
 import BoardDetail from "./Pages/BoardDetail";
+import Notifications from "./Pages/Notifications";
 import ProtectedRoute from "./Components/ProtectedRoute";
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -37,6 +38,10 @@ export function App() {
             </ProtectedRoute>} />
             <Route path="/account" element={<Account />} />
             <Route path="/account/network" element={<ProfileNetwork />} />
+            <Route path="/notifications" element={
+              <ProtectedRoute>
+                <Notifications />
+              </ProtectedRoute>} />
             <Route path="/profile/:userId/reviews" element={<ViewReviews />} />
             <Route path="/profile/:userId/network" element={<ProfileNetwork />} />
             <Route path="/profile/:userId/boards/:boardId" element={<BoardDetail />} />
