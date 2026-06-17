@@ -5,6 +5,10 @@ const Like = require("../models/Like");
 const UserProfile = require("../models/UserProfile");
 const { clerkClient, getAuth } = require("@clerk/express");
 const { normalizeCatalogAlbum } = require("./utils/albumCatalog");
+const {
+    reviewCreateRateLimit,
+    reviewMutationRateLimit,
+} = require("./utils/rateLimit");
 
 const router = express.Router();
 const DEFAULT_AUTHOR_USERNAME = "albumboxd user";
@@ -342,7 +346,7 @@ function getReviewUpdatePayload(body) {
     };
 }
 
-router.post("/review", ensureAuthenticated, async(req, res) =>
+router.post("/review", ensureAuthenticated, reviewCreateRateLimit, async(req, res) =>
     {
         const userId = req.userId;
 
@@ -395,7 +399,7 @@ router.get("/review/user/:userId", async(req, res) => {
     }
 });
 
-router.patch("/review/user/:id", ensureAuthenticated, async(req, res) => {
+router.patch("/review/user/:id", ensureAuthenticated, reviewMutationRateLimit, async(req, res) => {
     try {
         const parsedUpdate = getReviewUpdatePayload(req.body);
 
@@ -421,7 +425,7 @@ router.patch("/review/user/:id", ensureAuthenticated, async(req, res) => {
     }
 });
 
-router.delete("/review/user/:id", ensureAuthenticated, async(req, res) => {
+router.delete("/review/user/:id", ensureAuthenticated, reviewMutationRateLimit, async(req, res) => {
     try {
         await Review.findOneAndDelete({ _id: req.params.id, userId: req.userId });
         res.json({ message: "Review deleted" });

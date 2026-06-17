@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { RedirectToSignIn, Show, useAuth, useUser } from "@clerk/react";
+import { getApiErrorMessage } from "../utils/apiErrors";
 
 const MAX_BIO_LENGTH = 280;
 const MAX_FAVORITES = 5;
@@ -286,7 +287,7 @@ export function EditProfile() {
       const response = await fetch(`http://localhost:3000/search/search?q=${encodeURIComponent(query)}`);
 
       if (!response.ok) {
-        throw new Error("Search failed");
+        throw new Error(await getApiErrorMessage(response, "Search failed"));
       }
 
       const data = await response.json();
@@ -295,7 +296,7 @@ export function EditProfile() {
     } catch (error) {
       setSearchResults([]);
       setSearchStatus("");
-      setSearchError(getErrorMessage(error, "Could not search albums."));
+      setSearchError(error.message || getErrorMessage(error, "Could not search albums."));
     }
   }
 

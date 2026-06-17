@@ -9,6 +9,7 @@ import {
 } from "@clerk/react";
 import LikeButton from "../Components/LikeButton";
 import AsyncState from "../Components/Loading/AsyncState";
+import { getApiErrorMessage } from "../utils/apiErrors";
 
 const tabs = [
   { id: "overview", label: "Overview" },
@@ -422,7 +423,9 @@ export function Account() {
     );
 
     if (!response.ok) {
+      const message = await getApiErrorMessage(response, "Failed to delete review");
       console.error("Failed to delete review");
+      setError(message);
       return;
     }
 
@@ -483,7 +486,7 @@ export function Account() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to update review like");
+        throw new Error(await getApiErrorMessage(response, "Failed to update review like"));
       }
 
       const data = await response.json();
@@ -497,7 +500,7 @@ export function Account() {
         likedByViewer: Boolean(review.likedByViewer),
         likeCount: previousLikeCount,
       });
-      setLikeMessage("Could not update that like.");
+      setLikeMessage(likeError.message || "Could not update that like.");
     }
   }
 

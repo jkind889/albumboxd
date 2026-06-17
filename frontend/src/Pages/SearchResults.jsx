@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSearchParams } from "react-router-dom";     
 import AsyncState from "../Components/Loading/AsyncState";
+import { getApiErrorMessage } from "../utils/apiErrors";
 
 export function SearchResults()
 {
@@ -34,7 +35,7 @@ export function SearchResults()
           const res = await fetch(`http://localhost:3000/search/search?q=${encodeURIComponent(query)}&page=${page}`)
 
           if (!res.ok) {
-            throw new Error("Search request failed");
+            throw new Error(await getApiErrorMessage(res, "Search request failed"));
           }
 
           const data = await res.json()
@@ -46,14 +47,14 @@ export function SearchResults()
           const results = Array.isArray(data) ? data : data.results;
           setResults(Array.isArray(results) ? results : [])
           setHasNextPage(Boolean(data?.hasNextPage))
-        } catch {
+        } catch (searchError) {
           if (shouldIgnore) {
             return;
           }
 
           setResults([])
           setHasNextPage(false)
-          setError("Unable to load search results.")
+          setError(searchError.message || "Unable to load search results.")
         } finally {
           if (!shouldIgnore) {
             setLoading(false)

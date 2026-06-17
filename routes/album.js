@@ -9,6 +9,13 @@ const {
     getOrCreateAlbumCatalog,
     normalizeCatalogAlbum,
 } = require("./utils/albumCatalog");
+const {
+    albumSaveRateLimit,
+    getAuthenticatedUserRateLimitKey,
+    getUserOrIpRateLimitKey,
+    isRateLimitError,
+    sendRateLimitError,
+} = require("./utils/rateLimit");
 const router = express.Router();
 const CATALOG_PAGE_LIMIT = 24;
 const MAX_CATALOG_PAGE_LIMIT = 24;
@@ -211,15 +218,21 @@ router.get("/album/:id/social", async(req, res) => {
 router.get("/album/:id", async(req, res) =>
 {
     try {
-        const album = await getOrCreateAlbumCatalog(req.params.id);
+        const album = await getOrCreateAlbumCatalog(req.params.id, {
+            rateLimitKey: getUserOrIpRateLimitKey(req),
+        });
         res.json(normalizeCatalogAlbum(album));
     } catch (error) {
+        if (isRateLimitError(error)) {
+            return sendRateLimitError(res, error);
+        }
+
         res.status(500).json({ error: "Failed to fetch album details" });
     }
 });
 
 // User saves only store a reference to the shared catalog album.
-router.post("/album", ensureAuthenticated, async(req, res) => 
+router.post("/album", ensureAuthenticated, albumSaveRateLimit, async(req, res) =>
 {
     try {
         const { spotifyId } = req.body;
@@ -228,7 +241,9 @@ router.post("/album", ensureAuthenticated, async(req, res) =>
             return res.status(400).json({ error: "spotifyId is required" });
         }
 
-        const catalogAlbum = await getOrCreateAlbumCatalog(spotifyId);
+        const catalogAlbum = await getOrCreateAlbumCatalog(spotifyId, {
+            rateLimitKey: getAuthenticatedUserRateLimitKey(req),
+        });
         const savedAlbum = await Album.create({
             albumCatalogId: catalogAlbum._id,
             spotifyId,
@@ -248,6 +263,10 @@ router.post("/album", ensureAuthenticated, async(req, res) =>
         }
 
         console.log(error);
+        if (isRateLimitError(error)) {
+            return sendRateLimitError(res, error);
+        }
+
         res.status(500).json({ error: "Failed to create album" });
     }
 });
