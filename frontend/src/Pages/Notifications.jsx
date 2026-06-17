@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@clerk/react";
@@ -80,7 +81,7 @@ export function Notifications() {
         setError("");
 
         const token = await getToken();
-        const response = await fetch("http://localhost:3000/notifications", {
+        const response = await fetch(`${API_BASE_URL}/notifications`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },

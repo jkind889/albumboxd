@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@clerk/react";
 import { useParams } from "react-router-dom";
@@ -23,8 +24,8 @@ export function ViewReviews()
         async function fetchReviews() {
             const encodedUserId = userId ? encodeURIComponent(userId) : "";
             const reviewUrl = isPublicReviewList
-                ? `http://localhost:3000/reviews/review/user/${encodedUserId}`
-                : "http://localhost:3000/reviews/review/user/";
+                ? `${API_BASE_URL}/reviews/review/user/${encodedUserId}`
+                : `${API_BASE_URL}/reviews/review/user/`;
             const token = viewerId ? await getToken() : null;
             const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
@@ -47,7 +48,7 @@ export function ViewReviews()
 
     async function removeReview(id) {
         const token = await getToken();
-        const res = await fetch(`http://localhost:3000/reviews/review/user/${id}`, {
+        const res = await fetch(`${API_BASE_URL}/reviews/review/user/${id}`, {
             method: "DELETE",
             headers: {
                 "Authorization": `Bearer ${token}`
@@ -67,7 +68,7 @@ export function ViewReviews()
 
         try {
             const token = await getToken();
-            const res = await fetch(`http://localhost:3000/reviews/review/user/${id}`, {
+            const res = await fetch(`${API_BASE_URL}/reviews/review/user/${id}`, {
                 method: "PATCH",
                 headers: {
                     "Content-Type": "application/json",
@@ -122,7 +123,7 @@ export function ViewReviews()
 
         try {
             const token = await getToken();
-            const response = await fetch(`http://localhost:3000/likes/review/${reviewId}`, {
+            const response = await fetch(`${API_BASE_URL}/likes/review/${reviewId}`, {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json",

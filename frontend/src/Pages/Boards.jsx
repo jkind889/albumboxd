@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@clerk/react";
@@ -42,7 +43,7 @@ export function Boards() {
       setIsLoading(true);
       setLoadError("");
       const token = await getToken();
-      const response = await fetch("http://localhost:3000/boards", {
+      const response = await fetch(`${API_BASE_URL}/boards`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -86,7 +87,7 @@ export function Boards() {
       setIsCreating(true);
       setActionError("");
       const token = await getToken();
-      const response = await fetch("http://localhost:3000/boards", {
+      const response = await fetch(`${API_BASE_URL}/boards`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

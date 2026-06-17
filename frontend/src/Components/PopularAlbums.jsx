@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -16,7 +17,7 @@ export function PopularAlbums({ limit = 5, window = "30d" }) {
                     limit: String(limit),
                     window,
                 });
-                const res = await fetch(`http://localhost:3000/reviews/popular?${params.toString()}`);
+                const res = await fetch(`${API_BASE_URL}/reviews/popular?${params.toString()}`);
 
                 if (!res.ok) {
                     setAlbums([]);

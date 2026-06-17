@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import SearchBar from './Searchbar'
@@ -31,7 +32,7 @@ function Navbar()
 
             try {
                 const token = await getToken()
-                const response = await fetch("http://localhost:3000/notifications/unread-count", {
+                const response = await fetch(`${API_BASE_URL}/notifications/unread-count`, {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },

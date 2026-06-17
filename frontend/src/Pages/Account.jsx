@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
@@ -192,7 +193,7 @@ export function Account() {
 
         if (isPublicProfile) {
           const encodedPublicUserId = encodeURIComponent(publicUserId);
-          const profileResponse = await fetch(`http://localhost:3000/profile/${encodedPublicUserId}`, { headers });
+          const profileResponse = await fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}`, { headers });
 
           if (!profileResponse.ok) {
             throw new Error("Failed to load profile data");
@@ -202,10 +203,10 @@ export function Account() {
 
           if (!(profileData.isPrivate && !profileData.isCurrentUser)) {
             const [savedResponse, reviewsResponse, activityResponse, boardsResponse] = await Promise.all([
-              fetch(`http://localhost:3000/profile/${encodedPublicUserId}/saved`),
-              fetch(`http://localhost:3000/reviews/review/user/${encodedPublicUserId}`, { headers }),
-              fetch(`http://localhost:3000/profile/${encodedPublicUserId}/activity`, { headers }),
-              fetch(`http://localhost:3000/profile/${encodedPublicUserId}/boards`),
+              fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/saved`),
+              fetch(`${API_BASE_URL}/reviews/review/user/${encodedPublicUserId}`, { headers }),
+              fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/activity`, { headers }),
+              fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/boards`),
             ]);
 
             if (
@@ -233,12 +234,12 @@ export function Account() {
             networkResponse,
             boardsResponse,
           ] = await Promise.all([
-            fetch("http://localhost:3000/boards/default", { headers }),
-            fetch("http://localhost:3000/reviews/review/user/", { headers }),
-            fetch("http://localhost:3000/profile/me", { headers }),
-            fetch("http://localhost:3000/profile/me/activity", { headers }),
-            fetch("http://localhost:3000/profile/me/network", { headers }),
-            fetch("http://localhost:3000/boards", { headers }),
+            fetch(`${API_BASE_URL}/boards/default`, { headers }),
+            fetch(`${API_BASE_URL}/reviews/review/user/`, { headers }),
+            fetch(`${API_BASE_URL}/profile/me`, { headers }),
+            fetch(`${API_BASE_URL}/profile/me/activity`, { headers }),
+            fetch(`${API_BASE_URL}/profile/me/network`, { headers }),
+            fetch(`${API_BASE_URL}/boards`, { headers }),
           ]);
 
           if (
@@ -391,7 +392,7 @@ export function Account() {
   async function removeSavedAlbum(spotifyId) {
     const token = await getToken();
     const response = await fetch(
-      `http://localhost:3000/boards/default/albums/${spotifyId}`,
+      `${API_BASE_URL}/boards/default/albums/${spotifyId}`,
       {
         method: "DELETE",
         headers: {
@@ -413,7 +414,7 @@ export function Account() {
   async function removeReview(reviewId) {
     const token = await getToken();
     const response = await fetch(
-      `http://localhost:3000/reviews/review/user/${reviewId}`,
+      `${API_BASE_URL}/reviews/review/user/${reviewId}`,
       {
         method: "DELETE",
         headers: {
@@ -476,7 +477,7 @@ export function Account() {
 
     try {
       const token = await getToken();
-      const response = await fetch(`http://localhost:3000/likes/review/${reviewId}`, {
+      const response = await fetch(`${API_BASE_URL}/likes/review/${reviewId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -518,7 +519,7 @@ export function Account() {
       setError("");
 
       const token = await getToken();
-      const response = await fetch("http://localhost:3000/boards", {
+      const response = await fetch(`${API_BASE_URL}/boards`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -553,7 +554,7 @@ export function Account() {
 
       const token = await getToken();
       const response = await fetch(
-        `http://localhost:3000/profile/${encodeURIComponent(profile.userId)}/follow`,
+        `${API_BASE_URL}/profile/${encodeURIComponent(profile.userId)}/follow`,
         {
           method: "PUT",
           headers: {

@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@clerk/react";
@@ -38,8 +39,8 @@ export function BoardDetail() {
       setLoadError("");
       const token = isSignedIn ? await getToken() : null;
       const boardUrl = isPublicBoard
-        ? `http://localhost:3000/profile/${encodeURIComponent(userId)}/boards/${boardId}`
-        : `http://localhost:3000/boards/${boardId}`;
+        ? `${API_BASE_URL}/profile/${encodeURIComponent(userId)}/boards/${boardId}`
+        : `${API_BASE_URL}/boards/${boardId}`;
       const response = await fetch(boardUrl, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -94,7 +95,7 @@ export function BoardDetail() {
       setIsSavingTitle(true);
       setActionError("");
       const token = await getToken();
-      const response = await fetch(`http://localhost:3000/boards/${board._id}`, {
+      const response = await fetch(`${API_BASE_URL}/boards/${board._id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -127,7 +128,7 @@ export function BoardDetail() {
     try {
       setActionError("");
       const token = await getToken();
-      const response = await fetch(`http://localhost:3000/boards/${board._id}`, {
+      const response = await fetch(`${API_BASE_URL}/boards/${board._id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -153,7 +154,7 @@ export function BoardDetail() {
     try {
       setActionError("");
       const token = await getToken();
-      const response = await fetch(`http://localhost:3000/boards/${board._id}/albums/${spotifyId}`, {
+      const response = await fetch(`${API_BASE_URL}/boards/${board._id}/albums/${spotifyId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,

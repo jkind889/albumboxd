@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -11,7 +12,7 @@ export function FeaturedAlbums({ limit = 5 }) {
         async function fetchFeaturedAlbums() {
             try {
                 const params = new URLSearchParams({ limit: String(limit) });
-                const res = await fetch(`http://localhost:3000/reviews/featured?${params.toString()}`);
+                const res = await fetch(`${API_BASE_URL}/reviews/featured?${params.toString()}`);
 
                 if (!res.ok) {
                     setAlbums([]);

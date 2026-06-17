@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSearchParams } from "react-router-dom";     
@@ -32,7 +33,7 @@ export function SearchResults()
         setError("")
 
         try {
-          const res = await fetch(`http://localhost:3000/search/search?q=${encodeURIComponent(query)}&page=${page}`)
+          const res = await fetch(`${API_BASE_URL}/search/search?q=${encodeURIComponent(query)}&page=${page}`)
 
           if (!res.ok) {
             throw new Error(await getApiErrorMessage(res, "Search request failed"));

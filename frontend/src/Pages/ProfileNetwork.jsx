@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { RedirectToSignIn, useAuth } from "@clerk/react";
@@ -64,8 +65,8 @@ export function ProfileNetwork() {
         const token = isSignedIn ? await getToken() : null;
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
         const networkUrl = isOwnNetwork
-          ? "http://localhost:3000/profile/me/social"
-          : `http://localhost:3000/profile/${encodeURIComponent(userId)}/network`;
+          ? `${API_BASE_URL}/profile/me/social`
+          : `${API_BASE_URL}/profile/${encodeURIComponent(userId)}/network`;
         const response = await fetch(networkUrl, { headers });
 
         if (!response.ok) {

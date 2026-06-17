@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -29,7 +30,7 @@ export function PopularReviews({ limit = 4 }) {
 
             try {
                 const params = new URLSearchParams({ limit: String(limit) });
-                const res = await fetch(`http://localhost:3000/reviews/popular-reviews?${params.toString()}`);
+                const res = await fetch(`${API_BASE_URL}/reviews/popular-reviews?${params.toString()}`);
 
                 if (!res.ok) {
                     setReviews([]);

@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/react";
 
@@ -7,7 +8,7 @@ export function RecentlySaved() {
     useEffect(() => {
         async function fetchSavedAlbums() {
             const token = await getToken();
-            const res = await fetch("http://localhost:3000/boards/default", {
+            const res = await fetch(`${API_BASE_URL}/boards/default`, {
                 headers: {
                     "Authorization": `Bearer ${token}`
                 }

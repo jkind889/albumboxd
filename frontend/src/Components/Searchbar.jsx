@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import {useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -18,7 +19,7 @@ export function SearchBar()
             return;
         }
 
-        fetch(`http://localhost:3000/search/search?q=${encodeURIComponent(input)}`)
+        fetch(`${API_BASE_URL}/search/search?q=${encodeURIComponent(input)}`)
           .then((res) => (res.ok ? res.json() : []))
           .then((data) => setSuggestions(Array.isArray(data) ? data.slice(0, 5) : []))
           .catch(() => setSuggestions([]))

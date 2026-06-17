@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import AsyncState from "../Components/Loading/AsyncState";
@@ -34,7 +35,7 @@ export function Albums() {
           catalogParams.set("q", trimmedQuery);
         }
 
-        const response = await fetch(`http://localhost:3000/albums/catalog?${catalogParams.toString()}`);
+        const response = await fetch(`${API_BASE_URL}/albums/catalog?${catalogParams.toString()}`);
 
         if (!response.ok) {
           throw new Error("Catalog request failed");

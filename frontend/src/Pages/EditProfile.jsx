@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { RedirectToSignIn, Show, useAuth, useUser } from "@clerk/react";
@@ -125,9 +126,9 @@ export function EditProfile() {
           Authorization: `Bearer ${token}`,
         };
         const [profileResponse, reviewsResponse, boardsResponse] = await Promise.all([
-          fetch("http://localhost:3000/profile/me", { headers }),
-          fetch("http://localhost:3000/reviews/review/user/", { headers }),
-          fetch("http://localhost:3000/boards", { headers }),
+          fetch(`${API_BASE_URL}/profile/me`, { headers }),
+          fetch(`${API_BASE_URL}/reviews/review/user/`, { headers }),
+          fetch(`${API_BASE_URL}/boards`, { headers }),
         ]);
 
         if (!profileResponse.ok || !reviewsResponse.ok || !boardsResponse.ok) {
@@ -284,7 +285,7 @@ export function EditProfile() {
       setSearchError("");
       setSearchStatus("Searching...");
 
-      const response = await fetch(`http://localhost:3000/search/search?q=${encodeURIComponent(query)}`);
+      const response = await fetch(`${API_BASE_URL}/search/search?q=${encodeURIComponent(query)}`);
 
       if (!response.ok) {
         throw new Error(await getApiErrorMessage(response, "Search failed"));
@@ -356,7 +357,7 @@ export function EditProfile() {
       setProfileStatus("Saving profile...");
 
       const token = await getToken();
-      const profileResponse = await fetch("http://localhost:3000/profile/me", {
+      const profileResponse = await fetch(`${API_BASE_URL}/profile/me`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -378,7 +379,7 @@ export function EditProfile() {
         throw new Error(profileData.error || "Failed to save profile");
       }
 
-      const privacyResponse = await fetch("http://localhost:3000/profile/me", {
+      const privacyResponse = await fetch(`${API_BASE_URL}/profile/me`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,

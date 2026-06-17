@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import {Link, useLocation, useParams} from "react-router-dom";
 import {useState, useEffect } from "react";
 import ReviewForm from "./ReviewForm";
@@ -45,7 +46,7 @@ export function AlbumDetail()
             try {
                 const token = userId ? await getToken() : null;
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await fetch(`http://localhost:3000/reviews/review/album/${id}`, { headers });
+                const res = await fetch(`${API_BASE_URL}/reviews/review/album/${id}`, { headers });
 
                 if (!res.ok) {
                     console.error("Failed to fetch reviews");
@@ -71,7 +72,7 @@ export function AlbumDetail()
             try {
                 const token = userId ? await getToken() : null;
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await fetch(`http://localhost:3000/likes/album/${id}`, { headers });
+                const res = await fetch(`${API_BASE_URL}/likes/album/${id}`, { headers });
 
                 if (!res.ok) {
                     setAlbumLike({ likeCount: 0, likedByViewer: false });
@@ -101,7 +102,7 @@ export function AlbumDetail()
             try {
                 const token = userId ? await getToken() : null;
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await fetch(`http://localhost:3000/albums/album/${id}/social`, { headers });
+                const res = await fetch(`${API_BASE_URL}/albums/album/${id}/social`, { headers });
 
                 if (!res.ok) {
                     throw new Error("Failed to fetch album social context");
@@ -153,7 +154,7 @@ export function AlbumDetail()
                 const token = await getToken();
 
                 const res = await fetch(
-                `http://localhost:3000/boards/album/${id}`,
+                `${API_BASE_URL}/boards/album/${id}`,
                 {
                     headers: {
                     Authorization: `Bearer ${token}`,
@@ -206,7 +207,7 @@ export function AlbumDetail()
                 setIsAlbumLoading(true);
                 setAlbumError("");
 
-                const res = await fetch(`http://localhost:3000/albums/album/${id}`);
+                const res = await fetch(`${API_BASE_URL}/albums/album/${id}`);
 
                 if (!res.ok) {
                     throw new Error("Failed to fetch album");
@@ -247,7 +248,7 @@ export function AlbumDetail()
 
         setReviewActionMessage("");
         const token = await getToken();
-        const res = await fetch("http://localhost:3000/reviews/review", {
+        const res = await fetch(`${API_BASE_URL}/reviews/review`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -280,7 +281,7 @@ export function AlbumDetail()
 
         setReviewActionMessage("");
         const token = await getToken();
-        const res = await fetch(`http://localhost:3000/reviews/review/user/${id}`, {
+        const res = await fetch(`${API_BASE_URL}/reviews/review/user/${id}`, {
             method: "DELETE",
             headers: {
                 "Authorization": `Bearer ${token}`
@@ -326,7 +327,7 @@ export function AlbumDetail()
 
         try {
             const token = await getToken();
-            const response = await fetch(`http://localhost:3000/likes/review/${reviewId}`, {
+            const response = await fetch(`${API_BASE_URL}/likes/review/${reviewId}`, {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json",
@@ -372,7 +373,7 @@ export function AlbumDetail()
 
         try {
             const token = await getToken();
-            const response = await fetch(`http://localhost:3000/likes/album/${id}`, {
+            const response = await fetch(`${API_BASE_URL}/likes/album/${id}`, {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json",
@@ -473,7 +474,7 @@ export function AlbumDetail()
         setBoardSaveMessage("");
         
 
-        const res = await fetch("http://localhost:3000/boards/default/albums", {
+        const res = await fetch(`${API_BASE_URL}/boards/default/albums`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -515,7 +516,7 @@ export function AlbumDetail()
         }
 
         const token = await getToken();
-        const res = await fetch("http://localhost:3000/boards", {
+        const res = await fetch(`${API_BASE_URL}/boards`, {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -553,7 +554,7 @@ export function AlbumDetail()
             const wasSaved = isSaved;
             setIsSavingBoard(true);
             const token = await getToken();
-            const res = await fetch(`http://localhost:3000/boards/${boardId}/albums`, {
+            const res = await fetch(`${API_BASE_URL}/boards/${boardId}/albums`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -603,7 +604,7 @@ export function AlbumDetail()
         try {
             setIsSavingBoard(true);
             const token = await getToken();
-            const createResponse = await fetch("http://localhost:3000/boards", {
+            const createResponse = await fetch(`${API_BASE_URL}/boards`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
