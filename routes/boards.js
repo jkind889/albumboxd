@@ -315,7 +315,7 @@ router.post("/:boardId/albums", ensureAuthenticated, albumSaveRateLimit, async (
           savedAt,
         },
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
+      { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
     ).populate("albumCatalogId");
 
     if (board.isDefault) {

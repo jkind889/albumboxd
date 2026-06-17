@@ -674,7 +674,7 @@ test("PUT /profile/me saves bio and ordered favorite albums", async () => {
       },
     },
     options: {
-      new: true,
+      returnDocument: "after",
       upsert: true,
       setDefaultsOnInsert: true,
     },
@@ -716,7 +716,7 @@ test("PATCH /profile/me updates profile privacy", async () => {
       },
     },
     options: {
-      new: true,
+      returnDocument: "after",
       upsert: true,
       setDefaultsOnInsert: true,
     },

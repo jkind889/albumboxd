@@ -21,7 +21,7 @@ router.post("/test", async (req, res) => {
           cover: "image_url",
         },
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
+      { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
     );
 
     const album = await Album.create({

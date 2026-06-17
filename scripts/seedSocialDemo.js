@@ -148,7 +148,7 @@ async function seedSocialDemo() {
     await AlbumCatalog.findOneAndUpdate(
       { spotifyId: album.spotifyId },
       { $set: album },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     );
   }
 
@@ -156,7 +156,7 @@ async function seedSocialDemo() {
     await UserProfile.findOneAndUpdate(
       { userId: profile.userId },
       { $set: profile },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     );
   }
 
@@ -164,7 +164,7 @@ async function seedSocialDemo() {
     await Review.findOneAndUpdate(
       { _id: review._id },
       { $set: review },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     );
   }
 
@@ -172,7 +172,7 @@ async function seedSocialDemo() {
     await Album.findOneAndUpdate(
       { spotifyId: savedAlbum.spotifyId, userId: savedAlbum.userId },
       { $set: savedAlbum },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     );
   }
 
