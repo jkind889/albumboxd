@@ -3,6 +3,7 @@ const { getAuth } = require("@clerk/express");
 const Like = require("../models/Like");
 const Review = require("../models/Reviews");
 const Notification = require("../models/Notification");
+const { likeMutationRateLimit } = require("./utils/rateLimit");
 
 const router = express.Router();
 
@@ -83,7 +84,7 @@ router.get("/album/:spotifyId", async(req, res) => {
   }
 });
 
-router.put("/album/:spotifyId", ensureAuthenticated, async(req, res) => {
+router.put("/album/:spotifyId", ensureAuthenticated, likeMutationRateLimit, async(req, res) => {
   try {
     const spotifyId = String(req.params.spotifyId || "").trim();
     const liked = normalizeLiked(req.body.liked);
@@ -119,7 +120,7 @@ router.put("/album/:spotifyId", ensureAuthenticated, async(req, res) => {
   }
 });
 
-router.put("/review/:reviewId", ensureAuthenticated, async(req, res) => {
+router.put("/review/:reviewId", ensureAuthenticated, likeMutationRateLimit, async(req, res) => {
   try {
     const reviewId = String(req.params.reviewId || "").trim();
     const liked = normalizeLiked(req.body.liked);

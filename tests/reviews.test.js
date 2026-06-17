@@ -4,6 +4,7 @@ const test = require("node:test");
 const reviewModelPath = require.resolve("../models/Reviews");
 const likeModelPath = require.resolve("../models/Like");
 const albumCatalogModelPath = require.resolve("../models/AlbumCatalog");
+const profileModelPath = require.resolve("../models/UserProfile");
 const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const clerkPath = require.resolve("@clerk/express");
 const reviewRoutePath = require.resolve("../routes/reviews");
@@ -18,12 +19,14 @@ const catalogSortCalls = [];
 const catalogLimitCalls = [];
 const getUserListCalls = [];
 const likeFindCalls = [];
+const profileFindOneCalls = [];
 let foundReviews = [];
 let createdReview = null;
 let updatedReview = null;
 let reviewDocuments = [];
 let likeDocuments = [];
 let catalogDocuments = [];
+let profileDocuments = [];
 let clerkUsers = [];
 let shouldRejectClerkLookup = false;
 let authUserId = "user_clerk_123";
@@ -95,6 +98,7 @@ function loadReviewRouter() {
   delete require.cache[reviewRoutePath];
   delete require.cache[albumCatalogHelperPath];
   delete require.cache[likeModelPath];
+  delete require.cache[profileModelPath];
 
   require.cache[reviewModelPath] = {
     id: reviewModelPath,
@@ -157,6 +161,18 @@ function loadReviewRouter() {
           like.targetType === query.targetType
           && reviewIds.includes(String(like.reviewId))
         ));
+      },
+    },
+  };
+
+  require.cache[profileModelPath] = {
+    id: profileModelPath,
+    filename: profileModelPath,
+    loaded: true,
+    exports: {
+      findOne: async (query) => {
+        profileFindOneCalls.push(query);
+        return profileDocuments.find((profile) => profile.userId === query.userId) || null;
       },
     },
   };
@@ -392,12 +408,14 @@ test.beforeEach(() => {
   catalogLimitCalls.length = 0;
   getUserListCalls.length = 0;
   likeFindCalls.length = 0;
+  profileFindOneCalls.length = 0;
   foundReviews = [];
   createdReview = null;
   updatedReview = null;
   reviewDocuments = [];
   likeDocuments = [];
   catalogDocuments = [];
+  profileDocuments = [];
   clerkUsers = [];
   shouldRejectClerkLookup = false;
   authUserId = "user_clerk_123";
@@ -601,6 +619,65 @@ test("GET /reviews/review/user/:userId fetches public profile reviews", async ()
       },
     },
   ]);
+});
+
+test("GET /reviews/review/user/:userId returns 403 for a private profile viewed by another user", async () => {
+  profileDocuments = [
+    {
+      userId: "profile_user_123",
+      isPrivate: true,
+    },
+  ];
+  foundReviews = [
+    {
+      _id: "review_private_profile",
+      userId: "profile_user_123",
+      spotifyId: "spotify_album_123",
+      title: "Kind of Blue",
+      rating: 5,
+      reviewText: "Hidden profile review.",
+    },
+  ];
+
+  const response = await getUserReviews("profile_user_123");
+
+  assert.equal(response.status, 403);
+  assert.deepEqual(response.body, {
+    error: "Profile is private",
+    isPrivate: true,
+  });
+  assert.deepEqual(profileFindOneCalls, [{ userId: "profile_user_123" }]);
+  assert.equal(findCalls.length, 0);
+});
+
+test("GET /reviews/review/user/:userId allows the owner to fetch their private profile reviews", async () => {
+  authUserId = "profile_user_123";
+  profileDocuments = [
+    {
+      userId: "profile_user_123",
+      isPrivate: true,
+    },
+  ];
+  foundReviews = [
+    {
+      _id: "review_private_profile",
+      userId: "profile_user_123",
+      spotifyId: "spotify_album_123",
+      title: "Kind of Blue",
+      rating: 5,
+      reviewText: "Owner can see this.",
+    },
+  ];
+
+  const response = await getUserReviews("profile_user_123");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(findCalls, [{ userId: "profile_user_123" }]);
+  assert.deepEqual(response.body[0].author, {
+    userId: "profile_user_123",
+    username: "albumboxd user",
+    imageUrl: "",
+  });
 });
 
 test("POST /reviews/review creates a review and returns the Clerk author", async () => {

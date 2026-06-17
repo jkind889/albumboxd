@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@clerk/react";
 import { useParams } from "react-router-dom";
 import ReviewList from "../Components/ReviewList";
+import { getApiErrorMessage } from "../utils/apiErrors";
 
 export function ViewReviews()
 {
@@ -53,7 +54,9 @@ export function ViewReviews()
             }
         });
         if (!res.ok) {
+            const message = await getApiErrorMessage(res, "Failed to delete review");
             console.error("Failed to delete review");
+            setEditMessage(message);
             return;
         }
         setReviews((prev) => prev.filter((review) => review._id !== id));
@@ -74,8 +77,7 @@ export function ViewReviews()
             });
 
             if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.error || "Failed to edit review");
+                throw new Error(await getApiErrorMessage(res, "Failed to edit review"));
             }
 
             const updatedReview = await res.json();
@@ -130,7 +132,7 @@ export function ViewReviews()
             });
 
             if (!response.ok) {
-                throw new Error("Failed to update review like");
+                throw new Error(await getApiErrorMessage(response, "Failed to update review like"));
             }
 
             const data = await response.json();
@@ -144,7 +146,7 @@ export function ViewReviews()
                 likedByViewer: Boolean(review.likedByViewer),
                 likeCount: previousLikeCount,
             });
-            setLikeMessage("Could not update that like.");
+            setLikeMessage(likeError.message || "Could not update that like.");
         }
     }
 

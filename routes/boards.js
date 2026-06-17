@@ -7,6 +7,12 @@ const {
   getOrCreateAlbumCatalog,
   normalizeCatalogAlbum,
 } = require("./utils/albumCatalog");
+const {
+  albumSaveRateLimit,
+  getAuthenticatedUserRateLimitKey,
+  isRateLimitError,
+  sendRateLimitError,
+} = require("./utils/rateLimit");
 
 const router = express.Router();
 const DEFAULT_BOARD_TITLE = "Saved albums";
@@ -277,7 +283,7 @@ router.delete("/:boardId", ensureAuthenticated, async (req, res) => {
   }
 });
 
-router.post("/:boardId/albums", ensureAuthenticated, async (req, res) => {
+router.post("/:boardId/albums", ensureAuthenticated, albumSaveRateLimit, async (req, res) => {
   try {
     const { spotifyId } = req.body;
 
@@ -291,7 +297,9 @@ router.post("/:boardId/albums", ensureAuthenticated, async (req, res) => {
       return res.status(404).json({ error: "Board not found" });
     }
 
-    const catalogAlbum = await getOrCreateAlbumCatalog(spotifyId);
+    const catalogAlbum = await getOrCreateAlbumCatalog(spotifyId, {
+      rateLimitKey: getAuthenticatedUserRateLimitKey(req),
+    });
     const savedAt = new Date();
     const boardItem = await BoardItem.findOneAndUpdate(
       {
@@ -325,6 +333,10 @@ router.post("/:boardId/albums", ensureAuthenticated, async (req, res) => {
     });
   } catch (error) {
     console.log(error);
+    if (isRateLimitError(error)) {
+      return sendRateLimitError(res, error);
+    }
+
     res.status(500).json({ error: "Failed to save album to board" });
   }
 });

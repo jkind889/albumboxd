@@ -2,8 +2,13 @@ const express = require("express");
 const Review = require("../models/Reviews");
 const AlbumCatalog = require("../models/AlbumCatalog");
 const Like = require("../models/Like");
+const UserProfile = require("../models/UserProfile");
 const { clerkClient, getAuth } = require("@clerk/express");
 const { normalizeCatalogAlbum } = require("./utils/albumCatalog");
+const {
+    reviewCreateRateLimit,
+    reviewMutationRateLimit,
+} = require("./utils/rateLimit");
 
 const router = express.Router();
 const DEFAULT_AUTHOR_USERNAME = "albumboxd user";
@@ -11,6 +16,10 @@ const MIN_POPULAR_LIMIT = 5;
 const MAX_POPULAR_LIMIT = 10;
 const DEFAULT_POPULAR_LIMIT = 5;
 const MAX_LIST_LIMIT = 12;
+const PRIVATE_PROFILE_ERROR = {
+    error: "Profile is private",
+    isPrivate: true,
+};
 const POPULAR_WINDOW_DAYS = {
     "7d": 7,
     "30d": 30,
@@ -337,7 +346,7 @@ function getReviewUpdatePayload(body) {
     };
 }
 
-router.post("/review", ensureAuthenticated, async(req, res) =>
+router.post("/review", ensureAuthenticated, reviewCreateRateLimit, async(req, res) =>
     {
         const userId = req.userId;
 
@@ -376,6 +385,12 @@ router.get("/review/user/:userId", async(req, res) => {
             return res.status(400).json({ error: "User id is required" });
         }
 
+        const profile = await UserProfile.findOne({ userId: targetUserId });
+
+        if (profile?.isPrivate && viewerId !== targetUserId) {
+            return res.status(403).json(PRIVATE_PROFILE_ERROR);
+        }
+
         const reviews = await Review.find({ userId: targetUserId }).sort({ date: -1 });
         res.json(await addAuthorsToReviews(reviews, viewerId));
     } catch (error) {
@@ -384,7 +399,7 @@ router.get("/review/user/:userId", async(req, res) => {
     }
 });
 
-router.patch("/review/user/:id", ensureAuthenticated, async(req, res) => {
+router.patch("/review/user/:id", ensureAuthenticated, reviewMutationRateLimit, async(req, res) => {
     try {
         const parsedUpdate = getReviewUpdatePayload(req.body);
 
@@ -410,7 +425,7 @@ router.patch("/review/user/:id", ensureAuthenticated, async(req, res) => {
     }
 });
 
-router.delete("/review/user/:id", ensureAuthenticated, async(req, res) => {
+router.delete("/review/user/:id", ensureAuthenticated, reviewMutationRateLimit, async(req, res) => {
     try {
         await Review.findOneAndDelete({ _id: req.params.id, userId: req.userId });
         res.json({ message: "Review deleted" });

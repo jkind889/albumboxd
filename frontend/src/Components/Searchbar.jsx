@@ -19,8 +19,9 @@ export function SearchBar()
         }
 
         fetch(`http://localhost:3000/search/search?q=${encodeURIComponent(input)}`)
-          .then(res => res.json())
-          .then(data => setSuggestions(data.slice(0, 5)))
+          .then((res) => (res.ok ? res.json() : []))
+          .then((data) => setSuggestions(Array.isArray(data) ? data.slice(0, 5) : []))
+          .catch(() => setSuggestions([]))
           }, 200); // Add a debounce delay of 200ms before making the API call
 
           return () => clearTimeout(timeoutId); // Clear the timeout if the input changes before the fetch completes

@@ -1,5 +1,6 @@
 const AlbumCatalog = require("../../models/AlbumCatalog");
 const { getSpotifyAccessToken } = require("./spotify");
+const { consumeSpotifyRateLimit } = require("./rateLimit");
 
 // Converts raw Spotify album payloads into the fields AlbumBoxd stores in Mongo.
 function normalizeSpotifyAlbum(data) {
@@ -73,7 +74,11 @@ async function upsertAlbumCatalog(albumData) {
   );
 }
 
-async function fetchSpotifyAlbum(spotifyId) {
+async function fetchSpotifyAlbum(spotifyId, options = {}) {
+  if (options.rateLimitKey) {
+    await consumeSpotifyRateLimit(options.rateLimitKey);
+  }
+
   const token = await getSpotifyAccessToken();
 
   const response = await fetch(`https://api.spotify.com/v1/albums/${spotifyId}`, {
@@ -90,14 +95,14 @@ async function fetchSpotifyAlbum(spotifyId) {
 }
 
 // Reads from the catalog first and falls back to Spotify on cache miss.
-async function getOrCreateAlbumCatalog(spotifyId) {
+async function getOrCreateAlbumCatalog(spotifyId, options = {}) {
   const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
 
   if (cachedAlbum && cachedAlbum.tracks?.length) {
     return cachedAlbum;
   }
 
-  const spotifyAlbum = await fetchSpotifyAlbum(spotifyId);
+  const spotifyAlbum = await fetchSpotifyAlbum(spotifyId, options);
   return upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
 }
 

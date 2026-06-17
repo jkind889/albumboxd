@@ -21,6 +21,10 @@ const DEFAULT_ACTIVITY_LIMIT = 20;
 const BOARD_PREVIEW_LIMIT = 4;
 const SPOTIFY_PROFILE_HOST = "open.spotify.com";
 const SPOTIFY_PROFILE_PATH_PREFIX = "/user/";
+const PRIVATE_PROFILE_ERROR = {
+  error: "Profile is private",
+  isPrivate: true,
+};
 
 function ensureAuthenticated(req, res, next) {
   const { userId } = getAuth(req);
@@ -31,6 +35,14 @@ function ensureAuthenticated(req, res, next) {
 
   req.userId = userId;
   next();
+}
+
+function getViewerId(req) {
+  try {
+    return getAuth(req).userId || "";
+  } catch {
+    return "";
+  }
 }
 
 function getCatalogAlbum(favoriteAlbum) {
@@ -171,6 +183,7 @@ async function formatProfile(profile) {
     imageUrl: author.imageUrl,
     bio: source.bio || "",
     spotifyProfileUrl: source.spotifyProfileUrl || "",
+    isPrivate: Boolean(source.isPrivate),
     favoriteAlbums,
     listeningNextAlbum,
     pinnedReview: formatPinnedReview(source.pinnedReviewId),
@@ -242,11 +255,42 @@ async function getOrCreateProfile(userId) {
     userId,
     bio: "",
     spotifyProfileUrl: "",
+    isPrivate: false,
     favoriteAlbums: [],
     listeningNextAlbum: null,
     pinnedReviewId: null,
     pinnedBoardId: null,
   });
+}
+
+async function getProfileAccess(targetUserId, viewerId = "") {
+  if (!(await isFollowableUser(targetUserId))) {
+    return { status: 404, error: { error: "User not found" } };
+  }
+
+  const profile = await UserProfile.findOne({ userId: targetUserId });
+  const isOwner = Boolean(viewerId && viewerId === targetUserId);
+
+  if (profile?.isPrivate && !isOwner) {
+    return { status: 403, error: PRIVATE_PROFILE_ERROR, profile };
+  }
+
+  return { status: 200, profile };
+}
+
+async function formatPrivateProfile(profile, viewerId) {
+  const source = toPlainDocument(profile);
+  const authorsByUserId = await getAuthorsByUserId([source.userId]);
+  const author = authorsByUserId.get(source.userId) || getAuthorFromUser(source.userId);
+  const socialStats = await getSocialStats(source.userId, viewerId);
+
+  return {
+    userId: source.userId,
+    username: author.username,
+    imageUrl: author.imageUrl,
+    isPrivate: true,
+    ...socialStats,
+  };
 }
 
 async function isFollowableUser(userId) {
@@ -799,6 +843,38 @@ router.put("/me", ensureAuthenticated, async(req, res) => {
   }
 });
 
+router.patch("/me", ensureAuthenticated, async(req, res) => {
+  try {
+    if (typeof req.body.isPrivate !== "boolean") {
+      return res.status(400).json({ error: "isPrivate must be true or false" });
+    }
+
+    const profile = await UserProfile.findOneAndUpdate(
+      { userId: req.userId },
+      {
+        $set: {
+          userId: req.userId,
+          isPrivate: req.body.isPrivate,
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+      },
+    )
+      .populate("favoriteAlbums.albumCatalogId")
+      .populate("listeningNextAlbum.albumCatalogId")
+      .populate("pinnedReviewId")
+      .populate("pinnedBoardId");
+
+    res.json(await formatProfileWithSocial(profile, req.userId));
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Failed to update profile" });
+  }
+});
+
 router.put("/:userId/follow", ensureAuthenticated, async(req, res) => {
   try {
     const targetUserId = String(req.params.userId || "").trim();
@@ -852,13 +928,16 @@ router.get("/:userId/boards/:boardId", async(req, res) => {
   try {
     const targetUserId = String(req.params.userId || "").trim();
     const boardId = String(req.params.boardId || "").trim();
+    const viewerId = getViewerId(req);
 
     if (!targetUserId || !boardId) {
       return res.status(400).json({ error: "User id and board id are required" });
     }
 
-    if (!(await isFollowableUser(targetUserId))) {
-      return res.status(404).json({ error: "User not found" });
+    const access = await getProfileAccess(targetUserId, viewerId);
+
+    if (access.status !== 200) {
+      return res.status(access.status).json(access.error);
     }
 
     const board = await Board.findOne({ _id: boardId, userId: targetUserId });
@@ -877,13 +956,16 @@ router.get("/:userId/boards/:boardId", async(req, res) => {
 router.get("/:userId/boards", async(req, res) => {
   try {
     const targetUserId = String(req.params.userId || "").trim();
+    const viewerId = getViewerId(req);
 
     if (!targetUserId) {
       return res.status(400).json({ error: "User id is required" });
     }
 
-    if (!(await isFollowableUser(targetUserId))) {
-      return res.status(404).json({ error: "User not found" });
+    const access = await getProfileAccess(targetUserId, viewerId);
+
+    if (access.status !== 200) {
+      return res.status(access.status).json(access.error);
     }
 
     res.json(await getUserBoards(targetUserId));
@@ -896,13 +978,16 @@ router.get("/:userId/boards", async(req, res) => {
 router.get("/:userId/network", async(req, res) => {
   try {
     const targetUserId = String(req.params.userId || "").trim();
+    const viewerId = getViewerId(req);
 
     if (!targetUserId) {
       return res.status(400).json({ error: "User id is required" });
     }
 
-    if (!(await isFollowableUser(targetUserId))) {
-      return res.status(404).json({ error: "User not found" });
+    const access = await getProfileAccess(targetUserId, viewerId);
+
+    if (access.status !== 200) {
+      return res.status(access.status).json(access.error);
     }
 
     const [followerRows, followingRows] = await Promise.all([
@@ -931,14 +1016,16 @@ router.get("/:userId/network", async(req, res) => {
 router.get("/:userId/activity", async(req, res) => {
   try {
     const targetUserId = String(req.params.userId || "").trim();
-    const { userId: viewerId } = getAuth(req);
+    const viewerId = getViewerId(req);
 
     if (!targetUserId) {
       return res.status(400).json({ error: "User id is required" });
     }
 
-    if (!(await isFollowableUser(targetUserId))) {
-      return res.status(404).json({ error: "User not found" });
+    const access = await getProfileAccess(targetUserId, viewerId);
+
+    if (access.status !== 200) {
+      return res.status(access.status).json(access.error);
     }
 
     res.json(await getUserActivity(targetUserId, { includeSavedAlbums: true, viewerId }));
@@ -951,13 +1038,16 @@ router.get("/:userId/activity", async(req, res) => {
 router.get("/:userId/saved", async(req, res) => {
   try {
     const targetUserId = String(req.params.userId || "").trim();
+    const viewerId = getViewerId(req);
 
     if (!targetUserId) {
       return res.status(400).json({ error: "User id is required" });
     }
 
-    if (!(await isFollowableUser(targetUserId))) {
-      return res.status(404).json({ error: "User not found" });
+    const access = await getProfileAccess(targetUserId, viewerId);
+
+    if (access.status !== 200) {
+      return res.status(access.status).json(access.error);
     }
 
     const savedAlbums = await getDefaultBoardItems(targetUserId);
@@ -972,7 +1062,7 @@ router.get("/:userId/saved", async(req, res) => {
 router.get("/:userId", async(req, res) => {
   try {
     const targetUserId = String(req.params.userId || "").trim();
-    const { userId: viewerId } = getAuth(req);
+    const viewerId = getViewerId(req);
 
     if (!targetUserId) {
       return res.status(400).json({ error: "User id is required" });
@@ -983,6 +1073,11 @@ router.get("/:userId", async(req, res) => {
     }
 
     const profile = await getOrCreateProfile(targetUserId);
+
+    if (profile.isPrivate && viewerId !== targetUserId) {
+      return res.json(await formatPrivateProfile(profile, viewerId));
+    }
+
     res.json(await formatProfileWithSocial(profile, viewerId));
   } catch (error) {
     console.log(error);

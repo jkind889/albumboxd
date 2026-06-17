@@ -147,7 +147,16 @@ async function searchAlbums(query, extraQuery = {}) {
       },
     };
 
-    await route.route.stack[0].handle(req, res);
+    for (const handler of route.route.stack.map((layer) => layer.handle)) {
+      let nextWasCalled = false;
+      await handler(req, res, () => {
+        nextWasCalled = true;
+      });
+
+      if (!nextWasCalled) {
+        break;
+      }
+    }
 
     return {
       status: res.statusCode,
