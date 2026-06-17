@@ -5,6 +5,7 @@ import AlbumReviewFeed from "./AlbumReviewFeed";
 import LikeButton from "./LikeButton";
 import AsyncState from "./Loading/AsyncState";
 import { SignInButton, useAuth } from "@clerk/react";
+import { getApiErrorMessage } from "../utils/apiErrors";
 
 const getDefaultAlbumSocial = () => ({
     savedCount: 0,
@@ -34,6 +35,7 @@ export function AlbumDetail()
     const [albumSocial, setAlbumSocial] = useState(getDefaultAlbumSocial);
     const [expandedSocialSections, setExpandedSocialSections] = useState({});
     const [likeMessage, setLikeMessage] = useState("");
+    const [reviewActionMessage, setReviewActionMessage] = useState("");
     const { getToken, isSignedIn, userId } = useAuth();
     const location = useLocation();
     const canUseAuthenticatedActions = Boolean(isSignedIn && userId);
@@ -243,6 +245,7 @@ export function AlbumDetail()
             return false;
         }
 
+        setReviewActionMessage("");
         const token = await getToken();
         const res = await fetch("http://localhost:3000/reviews/review", {
             method: "POST",
@@ -253,7 +256,9 @@ export function AlbumDetail()
             body: JSON.stringify(review)  
           });
         if (!res.ok) {
+            const message = await getApiErrorMessage(res, "Failed to submit review");
             console.error("Failed to submit review");
+            setReviewActionMessage(message);
             return false;
         }
 
@@ -273,6 +278,7 @@ export function AlbumDetail()
             return;
         }
 
+        setReviewActionMessage("");
         const token = await getToken();
         const res = await fetch(`http://localhost:3000/reviews/review/user/${id}`, {
             method: "DELETE",
@@ -281,7 +287,9 @@ export function AlbumDetail()
             }
         });
         if (!res.ok) {
+            const message = await getApiErrorMessage(res, "Failed to delete review");
             console.error("Failed to delete review");
+            setReviewActionMessage(message);
             return;
         }
         setReviews((prev) => prev.filter((review) => review._id !== id));
@@ -328,7 +336,7 @@ export function AlbumDetail()
             });
 
             if (!response.ok) {
-                throw new Error("Failed to update review like");
+                throw new Error(await getApiErrorMessage(response, "Failed to update review like"));
             }
 
             const data = await response.json();
@@ -342,7 +350,7 @@ export function AlbumDetail()
                 likedByViewer: Boolean(review.likedByViewer),
                 likeCount: previousLikeCount,
             });
-            setLikeMessage("Could not update that like.");
+            setLikeMessage(error.message || "Could not update that like.");
         }
     }
 
@@ -374,7 +382,7 @@ export function AlbumDetail()
             });
 
             if (!response.ok) {
-                throw new Error("Failed to update album like");
+                throw new Error(await getApiErrorMessage(response, "Failed to update album like"));
             }
 
             const data = await response.json();
@@ -385,7 +393,7 @@ export function AlbumDetail()
         } catch (error) {
             console.error(error);
             setAlbumLike(previousAlbumLike);
-            setLikeMessage("Could not update that like.");
+            setLikeMessage(error.message || "Could not update that like.");
         }
     }
 
@@ -462,6 +470,7 @@ export function AlbumDetail()
 
         const wasSaved = isSaved;
         const token = await getToken();
+        setBoardSaveMessage("");
         
 
         const res = await fetch("http://localhost:3000/boards/default/albums", {
@@ -478,8 +487,9 @@ export function AlbumDetail()
         const data = await res.json();
 
         if (!res.ok) {
+            const message = data.error || "Failed to save album to collection. Please try again.";
             console.error("Failed to save album to collection");
-            alert("Failed to save album to collection. Please try again.");
+            setBoardSaveMessage(message);
             return;
         }
         if (res.ok) {
@@ -553,7 +563,7 @@ export function AlbumDetail()
             });
 
             if (!res.ok) {
-                throw new Error("Failed to save album to board");
+                throw new Error(await getApiErrorMessage(res, "Failed to save album to board"));
             }
 
             const data = await res.json();
@@ -571,7 +581,7 @@ export function AlbumDetail()
             await fetchBoards();
         } catch (error) {
             console.error(error);
-            setBoardSaveMessage("Could not save to that board.");
+            setBoardSaveMessage(error.message || "Could not save to that board.");
         } finally {
             setIsSavingBoard(false);
         }
@@ -730,13 +740,19 @@ export function AlbumDetail()
                             />
                         </div>
                         {canUseAuthenticatedActions ? (
-                            <button className="album-side-action" type="button" onClick={() => setIsReviewModalOpen(true)}>
+                            <button className="album-side-action" type="button" onClick={() => {
+                                setReviewActionMessage("");
+                                setIsReviewModalOpen(true);
+                            }}>
                                 <span aria-hidden="true">★</span>
                                 Rate
                             </button>
                         ) : renderSignInAction("Rate", "★")}
                         {canUseAuthenticatedActions ? (
-                            <button className="album-side-action" type="button" onClick={() => setIsReviewModalOpen(true)}>
+                            <button className="album-side-action" type="button" onClick={() => {
+                                setReviewActionMessage("");
+                                setIsReviewModalOpen(true);
+                            }}>
                                 Review or log...
                             </button>
                         ) : renderSignInAction("Review or log...")}
@@ -750,6 +766,7 @@ export function AlbumDetail()
                                 Open in Spotify
                             </a>
                         )}
+                        {boardSaveMessage && <p className="board-save-message">{boardSaveMessage}</p>}
                     </div>
 
                     <div className="album-ratings-panel">
@@ -938,7 +955,11 @@ export function AlbumDetail()
                         <button className="review-modal-close" type="button" onClick={() => setIsReviewModalOpen(false)} aria-label="Close review form">
                             ×
                         </button>
-                        <ReviewForm album={album} onAddReview={addReview} onSubmitted={() => setIsReviewModalOpen(false)} />
+                        {reviewActionMessage && <p className="review-action-message">{reviewActionMessage}</p>}
+                        <ReviewForm album={album} onAddReview={addReview} onSubmitted={() => {
+                            setReviewActionMessage("");
+                            setIsReviewModalOpen(false);
+                        }} />
                     </div>
                 </div>
             )}

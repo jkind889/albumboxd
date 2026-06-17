@@ -163,11 +163,12 @@ export function Albums() {
           errorTitle="Catalog unavailable"
           emptyTitle="No albums matched that search."
         >
-          {albums.map((album) => (
+          {albums.map((album, albumIndex) => (
             <button
               className="catalog-row"
               type="button"
               key={album.id}
+              style={{ "--catalog-row-index": albumIndex }}
               onClick={() => navigate(`/album/${album.id}`)}
             >
               <span className="catalog-cell catalog-album-cell">

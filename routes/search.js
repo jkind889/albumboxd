@@ -6,6 +6,13 @@ const {
     toSearchResult,
     upsertAlbumCatalog,
 } = require("./utils/albumCatalog");
+const {
+    consumeSpotifyRateLimit,
+    getUserOrIpRateLimitKey,
+    isRateLimitError,
+    searchRateLimit,
+    sendRateLimitError,
+} = require("./utils/rateLimit");
 const router = express.Router()
 const SEARCH_RESULT_LIMIT = 24;
 const MAX_SEARCH_RESULT_LIMIT = 24;
@@ -87,12 +94,16 @@ async function getPagedLocalAlbums(query, { limit, skip }) {
     };
 }
 
-async function searchSpotifyAlbums(query, { limit, offset = 0, excludedIds = [] }) {
+async function searchSpotifyAlbums(query, { limit, offset = 0, excludedIds = [], rateLimitKey }) {
     if (limit <= 0) {
         return {
             results: [],
             total: 0,
         };
+    }
+
+    if (rateLimitKey) {
+        await consumeSpotifyRateLimit(rateLimitKey);
     }
 
     const token = await getSpotifyAccessToken();
@@ -133,7 +144,7 @@ async function searchSpotifyAlbums(query, { limit, offset = 0, excludedIds = [] 
     };
 }
 
-async function getPagedSearchResults(query, { page, limit }) {
+async function getPagedSearchResults(query, { page, limit, rateLimitKey }) {
     const pageOffset = (page - 1) * limit;
     const localSearch = await getPagedLocalAlbums(query, {
         limit,
@@ -150,6 +161,7 @@ async function getPagedSearchResults(query, { page, limit }) {
             limit: missingCount,
             offset: spotifyOffset,
             excludedIds: localResults.map((result) => result.id),
+            rateLimitKey,
         });
 
         spotifyResults = spotifySearch.results;
@@ -169,7 +181,7 @@ async function getPagedSearchResults(query, { page, limit }) {
     };
 }
 
-router.get("/search", async(req, res) =>
+router.get("/search", searchRateLimit, async(req, res) =>
 {
     const query = req.query.q?.trim();
 
@@ -178,10 +190,12 @@ router.get("/search", async(req, res) =>
     }
 
     try {
+        const rateLimitKey = getUserOrIpRateLimitKey(req);
+
         if (req.query.page !== undefined) {
             const page = getPositiveInteger(req.query.page, 1);
             const limit = getSearchLimit(req.query.limit);
-            return res.json(await getPagedSearchResults(query, { page, limit }));
+            return res.json(await getPagedSearchResults(query, { page, limit, rateLimitKey }));
         }
 
         // Return local catalog hits first; only ask Spotify when the cache cannot fill the page.
@@ -196,11 +210,16 @@ router.get("/search", async(req, res) =>
         const spotifySearch = await searchSpotifyAlbums(query, {
             limit: spotifyLimit,
             excludedIds: localResults.map((result) => result.id),
+            rateLimitKey,
         });
         const results = [...localResults, ...spotifySearch.results];
 
         res.json(results);
     } catch (error) {
+        if (isRateLimitError(error)) {
+            return sendRateLimitError(res, error);
+        }
+
         res.status(500).json({ error: "Failed to fetch search results" });
     }
 })
