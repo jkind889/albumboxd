@@ -233,6 +233,13 @@ function loadProfileRouter() {
     exports: {
       findOne: async (query) => {
         boardFindOneCalls.push(query);
+
+        if (query.isDefault === true) {
+          return boardDocuments.find((board) => (
+            board.userId === query.userId && board.isDefault === true
+          )) || null;
+        }
+
         return boardDocuments.find((board) => (
           String(board._id) === String(query._id) && board.userId === query.userId
         )) || null;
@@ -1029,10 +1036,19 @@ test("GET /profile/me/activity returns current user's saved and reviewed activit
       date: new Date("2026-06-10T10:00:00.000Z"),
     },
   ];
-  activitySavedAlbumDocuments = [
+  boardDocuments = [
+    {
+      _id: "default_board",
+      userId: "user_clerk_123",
+      title: "Saved albums",
+      isDefault: true,
+    },
+  ];
+  boardItemDocuments = [
     {
       _id: "own_save",
       userId: "user_clerk_123",
+      boardId: "default_board",
       spotifyId: "album_2",
       savedAt: new Date("2026-06-11T10:00:00.000Z"),
       albumCatalogId: {
@@ -1056,8 +1072,11 @@ test("GET /profile/me/activity returns current user's saved and reviewed activit
 
   assert.equal(response.status, 200);
   assert.deepEqual(reviewFindCalls, [{ userId: "user_clerk_123" }]);
-  assert.deepEqual(albumFindCalls, [{ userId: "user_clerk_123" }]);
-  assert.deepEqual(albumPopulateCalls, ["albumCatalogId"]);
+  assert.equal(albumFindCalls.length, 0);
+  assert.deepEqual(boardFindOneCalls, [{ userId: "user_clerk_123", isDefault: true }]);
+  assert.deepEqual(boardItemFindCalls, [{ boardId: "default_board" }]);
+  assert.deepEqual(boardItemPopulateCalls, ["albumCatalogId"]);
+  assert.deepEqual(boardItemLimitCalls, [20]);
   assert.deepEqual(
     response.body.map((activity) => activity.type),
     ["saved_album", "review"],
@@ -1095,10 +1114,19 @@ test("GET /profile/:userId/activity returns public profile saved and reviewed ac
       date: new Date("2026-06-10T10:00:00.000Z"),
     },
   ];
-  activitySavedAlbumDocuments = [
+  boardDocuments = [
+    {
+      _id: "public_default_board",
+      userId: "review_author_1",
+      title: "Saved albums",
+      isDefault: true,
+    },
+  ];
+  boardItemDocuments = [
     {
       _id: "public_save",
       userId: "review_author_1",
+      boardId: "public_default_board",
       spotifyId: "album_2",
       savedAt: new Date("2026-06-12T10:00:00.000Z"),
       albumCatalogId: {
@@ -1117,6 +1145,9 @@ test("GET /profile/:userId/activity returns public profile saved and reviewed ac
 
   assert.equal(response.status, 200);
   assert.deepEqual(reviewExistsCalls, [{ userId: "review_author_1" }]);
+  assert.equal(albumFindCalls.length, 0);
+  assert.deepEqual(boardFindOneCalls, [{ userId: "review_author_1", isDefault: true }]);
+  assert.deepEqual(boardItemFindCalls, [{ boardId: "public_default_board" }]);
   assert.deepEqual(
     response.body.map((activity) => activity.type),
     ["saved_album", "review"],
@@ -1125,10 +1156,19 @@ test("GET /profile/:userId/activity returns public profile saved and reviewed ac
 
 test("GET /profile/:userId/saved returns public profile saved albums newest first", async () => {
   reviewUserIds.add("review_author_1");
-  activitySavedAlbumDocuments = [
+  boardDocuments = [
+    {
+      _id: "public_default_board",
+      userId: "review_author_1",
+      title: "Saved albums",
+      isDefault: true,
+    },
+  ];
+  boardItemDocuments = [
     {
       _id: "older_save",
       userId: "review_author_1",
+      boardId: "public_default_board",
       spotifyId: "album_1",
       savedAt: new Date("2026-06-10T10:00:00.000Z"),
       albumCatalogId: {
@@ -1144,6 +1184,7 @@ test("GET /profile/:userId/saved returns public profile saved albums newest firs
     {
       _id: "newer_save",
       userId: "review_author_1",
+      boardId: "public_default_board",
       spotifyId: "album_2",
       savedAt: new Date("2026-06-12T10:00:00.000Z"),
       albumCatalogId: {
@@ -1159,6 +1200,7 @@ test("GET /profile/:userId/saved returns public profile saved albums newest firs
     {
       _id: "other_user_save",
       userId: "other_user",
+      boardId: "other_default_board",
       spotifyId: "album_3",
       savedAt: new Date("2026-06-13T10:00:00.000Z"),
       albumCatalogId: {
@@ -1176,10 +1218,12 @@ test("GET /profile/:userId/saved returns public profile saved albums newest firs
 
   assert.equal(response.status, 200);
   assert.deepEqual(reviewExistsCalls, [{ userId: "review_author_1" }]);
-  assert.deepEqual(albumFindCalls, [{ userId: "review_author_1" }]);
-  assert.deepEqual(albumPopulateCalls, ["albumCatalogId"]);
-  assert.deepEqual(albumSortCalls, [{ savedAt: -1 }]);
-  assert.equal(albumLimitCalls.length, 0);
+  assert.equal(albumFindCalls.length, 0);
+  assert.deepEqual(boardFindOneCalls, [{ userId: "review_author_1", isDefault: true }]);
+  assert.deepEqual(boardItemFindCalls, [{ boardId: "public_default_board" }]);
+  assert.deepEqual(boardItemPopulateCalls, ["albumCatalogId"]);
+  assert.deepEqual(boardItemSortCalls, [{ savedAt: -1 }]);
+  assert.equal(boardItemLimitCalls.length, 0);
   assert.deepEqual(
     response.body.map((album) => album.spotifyId),
     ["album_2", "album_1"],
@@ -1215,6 +1259,7 @@ test("GET /profile/:userId/saved returns 404 for a user without reviews", async 
   assert.equal(response.status, 404);
   assert.deepEqual(response.body, { error: "User not found" });
   assert.equal(albumFindCalls.length, 0);
+  assert.equal(boardItemFindCalls.length, 0);
 });
 
 test("GET /profile/:userId/boards/:boardId returns a public read-only board", async () => {

@@ -2904,6 +2904,11 @@ body:has(.profile-network-page),
   align-items: start;
 }
 
+.profile-review-tab {
+  display: grid;
+  gap: 1rem;
+}
+
 .profile-panel,
 .profile-empty-state,
 .profile-review-card,

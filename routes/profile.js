@@ -3,7 +3,6 @@ const { clerkClient, getAuth } = require("@clerk/express");
 const UserProfile = require("../models/UserProfile");
 const Follow = require("../models/Follow");
 const Review = require("../models/Reviews");
-const Album = require("../models/Albums");
 const Board = require("../models/Board");
 const BoardItem = require("../models/BoardItem");
 const Like = require("../models/Like");
@@ -130,6 +129,21 @@ async function formatBoardDetail(board) {
     ...summary,
     albums: items.map(formatSavedAlbum),
   };
+}
+
+async function getDefaultBoardItems(userId, { limit } = {}) {
+  const defaultBoard = await Board.findOne({ userId, isDefault: true });
+
+  if (!defaultBoard) {
+    return [];
+  }
+
+  const source = toPlainDocument(defaultBoard);
+  const query = BoardItem.find({ boardId: source._id })
+    .populate("albumCatalogId")
+    .sort({ savedAt: -1 });
+
+  return typeof limit === "number" ? query.limit(limit) : query;
 }
 
 async function formatProfile(profile) {
@@ -391,10 +405,7 @@ async function getUserActivity(userId, { includeSavedAlbums, viewerId = "" }) {
   const [reviews, savedAlbums] = await Promise.all([
     Review.find({ userId }).sort({ date: -1 }).limit(DEFAULT_ACTIVITY_LIMIT),
     includeSavedAlbums
-      ? Album.find({ userId })
-        .populate("albumCatalogId")
-        .sort({ savedAt: -1 })
-        .limit(DEFAULT_ACTIVITY_LIMIT)
+      ? getDefaultBoardItems(userId, { limit: DEFAULT_ACTIVITY_LIMIT })
       : Promise.resolve([]),
   ]);
 
@@ -747,9 +758,7 @@ router.get("/:userId/saved", async(req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const savedAlbums = await Album.find({ userId: targetUserId })
-      .populate("albumCatalogId")
-      .sort({ savedAt: -1 });
+    const savedAlbums = await getDefaultBoardItems(targetUserId);
 
     res.json(savedAlbums.map(formatSavedAlbum));
   } catch (error) {

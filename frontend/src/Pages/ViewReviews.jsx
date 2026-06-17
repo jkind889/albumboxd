@@ -152,23 +152,25 @@ export function ViewReviews()
 
 
 
-    const recentReviews = useMemo(() => {
+    const dateSortedReviews = useMemo(() => {
         const sortDirection = reviewDateSort === "earliest" ? 1 : -1;
 
         return [...reviews]
-            .sort((a, b) => sortDirection * (new Date(a.date) - new Date(b.date)))
-            .slice(0, 5);
+            .sort((a, b) => sortDirection * (new Date(a.date) - new Date(b.date)));
     }, [reviews, reviewDateSort]);
 
-    const popularReviews = useMemo(() => {
+    const mostLikedReviews = useMemo(() => {
         return [...reviews]
             .sort((a, b) => (
                 (Number(b.likeCount) || 0) - (Number(a.likeCount) || 0)
                 || (Number(b.rating) || 0) - (Number(a.rating) || 0)
                 || new Date(b.date) - new Date(a.date)
-            ))
-            .slice(0, 5);
+            ));
     }, [reviews]);
+
+    const dateSortedReviewHeading = reviewDateSort === "earliest"
+        ? "Earliest Reviews"
+        : "Latest Reviews";
 
 
 
@@ -178,7 +180,7 @@ export function ViewReviews()
                 <div className="reviews-section-header">
                     <div>
                         <p className="reviews-kicker">Review shelf</p>
-                        <h1>Reviews</h1>
+                        <h1>{dateSortedReviewHeading}</h1>
                     </div>
                     <div className="reviews-sort-control">
                         <label htmlFor="review-date-sort">When reviewed</label>
@@ -195,7 +197,7 @@ export function ViewReviews()
                 {error && <p className="review-list-error">{error}</p>}
                 <ReviewList
                     listId="recent"
-                    reviews={recentReviews}
+                    reviews={dateSortedReviews}
                     onRemoveReview={canManageReviews ? removeReview : undefined}
                     onEditReview={canManageReviews ? editReview : undefined}
                     editingReview={editingReview}
@@ -212,11 +214,11 @@ export function ViewReviews()
 
             <section className="reviews-section">
                 <div className="reviews-section-header">
-                    <h2>Highest Rated</h2>
+                    <h2>Most Liked</h2>
                 </div>
                 <ReviewList
-                    listId="highest-rated"
-                    reviews={popularReviews}
+                    listId="most-liked"
+                    reviews={mostLikedReviews}
                     onRemoveReview={canManageReviews ? removeReview : undefined}
                     onEditReview={canManageReviews ? editReview : undefined}
                     editingReview={editingReview}

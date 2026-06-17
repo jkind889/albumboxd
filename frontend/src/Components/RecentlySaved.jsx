@@ -7,13 +7,14 @@ export function RecentlySaved() {
     useEffect(() => {
         async function fetchSavedAlbums() {
             const token = await getToken();
-            const res = await fetch("http://localhost:3000/collections/collection", {
+            const res = await fetch("http://localhost:3000/boards/default", {
                 headers: {
                     "Authorization": `Bearer ${token}`
                 }
             });
             const saved = await res.json();
-            setSavedAlbums(Array.isArray(saved) ? saved.slice(0, 5) : []); // Show only the 5 most recently saved albums
+            const savedAlbums = Array.isArray(saved.albums) ? saved.albums : [];
+            setSavedAlbums(savedAlbums.slice(0, 5)); // Show only the 5 most recently saved albums
         }
         fetchSavedAlbums();
     }, [getToken]);

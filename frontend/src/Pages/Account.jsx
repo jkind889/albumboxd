@@ -20,6 +20,8 @@ const tabs = [
   { id: "settings", label: "Settings" },
 ];
 
+const REVIEW_PREVIEW_LIMIT = 2;
+
 function formatDate(value) {
   if (!value) {
     return "Date unavailable";
@@ -205,14 +207,14 @@ export function Account() {
           ]);
         } else {
           const [
-            savedResponse,
+            defaultBoardResponse,
             reviewsResponse,
             profileResponse,
             activityResponse,
             networkResponse,
             boardsResponse,
           ] = await Promise.all([
-            fetch("http://localhost:3000/collections/collection", { headers }),
+            fetch("http://localhost:3000/boards/default", { headers }),
             fetch("http://localhost:3000/reviews/review/user/", { headers }),
             fetch("http://localhost:3000/profile/me", { headers }),
             fetch("http://localhost:3000/profile/me/activity", { headers }),
@@ -221,7 +223,7 @@ export function Account() {
           ]);
 
           if (
-            !savedResponse.ok
+            !defaultBoardResponse.ok
             || !reviewsResponse.ok
             || !profileResponse.ok
             || !activityResponse.ok
@@ -231,14 +233,20 @@ export function Account() {
             throw new Error("Failed to load profile data");
           }
 
-          [savedData, reviewsData, profileData, activityData, networkData, boardsData] = await Promise.all([
-            savedResponse.json(),
+          const [defaultBoardData, nextReviewsData, nextProfileData, nextActivityData, nextNetworkData, nextBoardsData] = await Promise.all([
+            defaultBoardResponse.json(),
             reviewsResponse.json(),
             profileResponse.json(),
             activityResponse.json(),
             networkResponse.json(),
             boardsResponse.json(),
           ]);
+          savedData = Array.isArray(defaultBoardData.albums) ? defaultBoardData.albums : [];
+          reviewsData = nextReviewsData;
+          profileData = nextProfileData;
+          activityData = nextActivityData;
+          networkData = nextNetworkData;
+          boardsData = nextBoardsData;
         }
 
         if (!isCurrent) {
@@ -345,12 +353,15 @@ export function Account() {
     [...boards].sort((first, second) => Number(second.isDefault) - Number(first.isDefault)
       || new Date(second.updatedAt || 0) - new Date(first.updatedAt || 0))
   ), [boards]);
-  const latestReviews = useMemo(() => sortedReviews.slice(0, 2), [sortedReviews]);
+  const latestReviews = useMemo(() => sortedReviews.slice(0, REVIEW_PREVIEW_LIMIT), [sortedReviews]);
+  const previewPopularReviews = useMemo(() => (
+    popularReviews.slice(0, REVIEW_PREVIEW_LIMIT)
+  ), [popularReviews]);
   const latestSidebarActivity = useMemo(() => activityItems.slice(0, 4), [activityItems]);
   const favoriteAlbums = profile.favoriteAlbums;
   const profileUserId = profile.userId || publicUserId || user?.id || "";
-  const moreReviewsPath = isPublicProfile
-    ? `/profile/${encodeURIComponent(publicUserId)}/reviews`
+  const moreReviewsPath = profileUserId
+    ? `/profile/${encodeURIComponent(profileUserId)}/reviews`
     : "/viewreviews";
   const socialPath = isPublicProfile && profileUserId
     ? `/profile/${encodeURIComponent(profileUserId)}/network`
@@ -359,7 +370,7 @@ export function Account() {
   async function removeSavedAlbum(spotifyId) {
     const token = await getToken();
     const response = await fetch(
-      `http://localhost:3000/collections/collection/album/${spotifyId}`,
+      `http://localhost:3000/boards/default/albums/${spotifyId}`,
       {
         method: "DELETE",
         headers: {
@@ -567,7 +578,6 @@ export function Account() {
   ];
 
   function renderOverview() {
-    const previewPopularReviews = popularReviews.slice(0, 2);
     const pinnedBoardPath = profile.pinnedBoard?._id
       ? isPublicProfile
         ? `/profile/${encodeURIComponent(profileUserId)}/boards/${profile.pinnedBoard._id}`
@@ -1004,42 +1014,70 @@ export function Account() {
       );
     }
 
+    const shouldShowMoreReviews = reviews.length > REVIEW_PREVIEW_LIMIT;
+    const renderReviewCard = (review) => (
+      <article className="profile-review-card" key={review._id}>
+        <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
+          <AlbumCover src={review.cover} title={review.title} />
+          <div>
+            <h3>{review.title || "Untitled album"}</h3>
+            <p>{review.artist || "Artist unknown"}</p>
+          </div>
+        </Link>
+        <div className="profile-review-meta">
+          <span>{review.rating}/5</span>
+          <time>{formatDate(review.date)}</time>
+        </div>
+        <p className="profile-review-copy">{review.reviewText}</p>
+        <div className="review-card-actions">
+          <LikeButton
+            liked={Boolean(review.likedByViewer)}
+            count={review.likeCount}
+            label="review"
+            message={likeMessage}
+            onToggle={() => toggleReviewLike(review)}
+          />
+        </div>
+        {canManageProfile && (
+          <button
+            className="profile-secondary-button"
+            type="button"
+            onClick={() => removeReview(review._id)}
+          >
+            Delete Review
+          </button>
+        )}
+      </article>
+    );
+
     return (
-      <div className="profile-review-list">
-        {sortedReviews.map((review) => (
-          <article className="profile-review-card" key={review._id}>
-            <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
-              <AlbumCover src={review.cover} title={review.title} />
-              <div>
-                <h3>{review.title || "Untitled album"}</h3>
-                <p>{review.artist || "Artist unknown"}</p>
-              </div>
-            </Link>
-            <div className="profile-review-meta">
-              <span>{review.rating}/5</span>
-              <time>{formatDate(review.date)}</time>
-            </div>
-            <p className="profile-review-copy">{review.reviewText}</p>
-            <div className="review-card-actions">
-              <LikeButton
-                liked={Boolean(review.likedByViewer)}
-                count={review.likeCount}
-                label="review"
-                message={likeMessage}
-                onToggle={() => toggleReviewLike(review)}
-              />
-            </div>
-            {canManageProfile && (
-              <button
-                className="profile-secondary-button"
-                type="button"
-                onClick={() => removeReview(review._id)}
+      <div className="profile-review-tab">
+        <section className="profile-panel">
+          <div className="profile-section-header">
+            <h2>Popular Reviews</h2>
+            {shouldShowMoreReviews && (
+              <Link
+                className="profile-more-link"
+                to={moreReviewsPath}
+                state={{ profileUser: publicProfileState }}
               >
-                Delete Review
-              </button>
+                More
+              </Link>
             )}
-          </article>
-        ))}
+          </div>
+          <div className="profile-review-list">
+            {previewPopularReviews.map(renderReviewCard)}
+          </div>
+        </section>
+
+        <section className="profile-panel">
+          <div className="profile-section-header">
+            <h2>Latest Reviews</h2>
+          </div>
+          <div className="profile-review-list">
+            {latestReviews.map(renderReviewCard)}
+          </div>
+        </section>
       </div>
     );
   }
