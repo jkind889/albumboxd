@@ -410,7 +410,7 @@ router.patch("/review/user/:id", ensureAuthenticated, reviewMutationRateLimit, a
         const review = await Review.findOneAndUpdate(
             { _id: req.params.id, userId: req.userId },
             { $set: parsedUpdate.update },
-            { new: true, runValidators: true }
+            { returnDocument: "after", runValidators: true }
         );
 
         if (!review) {

@@ -826,7 +826,7 @@ router.put("/me", ensureAuthenticated, async(req, res) => {
         },
       },
       {
-        new: true,
+        returnDocument: "after",
         upsert: true,
         setDefaultsOnInsert: true,
       },
@@ -858,7 +858,7 @@ router.patch("/me", ensureAuthenticated, async(req, res) => {
         },
       },
       {
-        new: true,
+        returnDocument: "after",
         upsert: true,
         setDefaultsOnInsert: true,
       },

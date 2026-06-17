@@ -70,7 +70,7 @@ async function upsertAlbumCatalog(albumData) {
   return AlbumCatalog.findOneAndUpdate(
     { spotifyId: albumData.spotifyId },
     { $set: albumData },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
+    { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
   );
 }
 

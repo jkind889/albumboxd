@@ -743,7 +743,7 @@ test("PATCH /reviews/review/user/:id updates an owned review and returns the Cle
         reviewText: "Still brilliant after another listen.",
       },
     },
-    options: { new: true, runValidators: true },
+    options: { returnDocument: "after", runValidators: true },
   });
   assert.deepEqual(getUserListCalls, [{ userId: ["user_clerk_123"] }]);
   assert.equal(response.body.title, "Kind of Blue");
