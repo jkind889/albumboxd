@@ -203,10 +203,10 @@ export function Account() {
 
           if (!(profileData.isPrivate && !profileData.isCurrentUser)) {
             const [savedResponse, reviewsResponse, activityResponse, boardsResponse] = await Promise.all([
-              fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/saved`),
+              fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/saved`, { headers }),
               fetch(`${API_BASE_URL}/reviews/review/user/${encodedPublicUserId}`, { headers }),
               fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/activity`, { headers }),
-              fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/boards`),
+              fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/boards`, { headers }),
             ]);
 
             if (
