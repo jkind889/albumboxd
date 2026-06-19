@@ -210,7 +210,7 @@ export function AlbumDetail()
                 const res = await fetch(`${API_BASE_URL}/albums/album/${id}`);
 
                 if (!res.ok) {
-                    throw new Error("Failed to fetch album");
+                    throw new Error(await getApiErrorMessage(res, "Failed to fetch album"));
                 }
 
                 const data = await res.json();
@@ -223,7 +223,7 @@ export function AlbumDetail()
 
                 if (!shouldIgnore) {
                     setAlbum(null);
-                    setAlbumError("Could not load this album.");
+                    setAlbumError(error.message || "Could not load this album.");
                 }
             } finally {
                 if (!shouldIgnore) {
@@ -485,14 +485,13 @@ export function AlbumDetail()
                 spotifyId: album.id,
              }),
         });
-        const data = await res.json();
-
         if (!res.ok) {
-            const message = data.error || "Failed to save album to collection. Please try again.";
+            const message = await getApiErrorMessage(res, "Failed to save album to collection. Please try again.");
             console.error("Failed to save album to collection");
             setBoardSaveMessage(message);
             return;
         }
+        const data = await res.json();
         if (res.ok) {
             setIsSaved(true);
             if (!wasSaved) {

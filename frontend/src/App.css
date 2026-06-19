@@ -229,6 +229,19 @@ body:has(.edit-profile-page),
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.32);
 }
 
+.search-dropdown-message {
+  margin: 0;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  background: #2a1114;
+  color: #fecaca;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.32);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 0.7rem 0.8rem;
+}
+
 .suggestions-dropdown li {
   display: flex;
   align-items: center;
