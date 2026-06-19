@@ -6,6 +6,7 @@ const Like = require("../models/Like");
 const Review = require("../models/Reviews");
 const { clerkClient, getAuth } = require("@clerk/express");
 const {
+    getAlbumCatalogDetails,
     getOrCreateAlbumCatalog,
     normalizeCatalogAlbum,
 } = require("./utils/albumCatalog");
@@ -218,10 +219,18 @@ router.get("/album/:id/social", async(req, res) => {
 router.get("/album/:id", async(req, res) =>
 {
     try {
-        const album = await getOrCreateAlbumCatalog(req.params.id, {
+        const { album, isPartial, enrichmentError } = await getAlbumCatalogDetails(req.params.id, {
             rateLimitKey: getUserOrIpRateLimitKey(req),
         });
-        res.json(normalizeCatalogAlbum(album));
+
+        if (enrichmentError) {
+            console.warn(`Spotify enrichment failed for album ${req.params.id}:`, enrichmentError.message);
+        }
+
+        res.json({
+            ...normalizeCatalogAlbum(album),
+            isPartial,
+        });
     } catch (error) {
         if (isRateLimitError(error)) {
             return sendRateLimitError(res, error);

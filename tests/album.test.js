@@ -15,6 +15,8 @@ let createdAlbum = null;
 let catalogAlbum = null;
 let catalogAlbums = [];
 let getOrCreateError = null;
+let detailIsPartial = false;
+let detailEnrichmentError = null;
 let catalogFindError = null;
 let shouldRejectClerkLookup = false;
 const createCalls = [];
@@ -119,6 +121,17 @@ function loadAlbumRouter() {
     filename: albumCatalogHelperPath,
     loaded: true,
     exports: {
+      getAlbumCatalogDetails: async (spotifyId) => {
+        getOrCreateCalls.push(spotifyId);
+        if (getOrCreateError) {
+          throw getOrCreateError;
+        }
+        return {
+          album: catalogAlbum,
+          isPartial: detailIsPartial,
+          enrichmentError: detailEnrichmentError,
+        };
+      },
       getOrCreateAlbumCatalog: async (spotifyId) => {
         getOrCreateCalls.push(spotifyId);
         if (getOrCreateError) {
@@ -267,6 +280,8 @@ test.beforeEach(() => {
   authUserId = "user_clerk_123";
   createdAlbum = null;
   getOrCreateError = null;
+  detailIsPartial = false;
+  detailEnrichmentError = null;
   catalogFindError = null;
   shouldRejectClerkLookup = false;
   catalogAlbum = {
@@ -465,6 +480,28 @@ test("GET /albums/album/:id returns a cached or newly cached catalog album", asy
   assert.equal(response.body.id, "spotify_album_123");
   assert.equal(response.body.title, "Kind of Blue");
   assert.deepEqual(response.body.tracks, catalogAlbum.tracks);
+  assert.equal(response.body.isPartial, false);
+});
+
+test("GET /albums/album/:id marks cached fallback details as partial", async () => {
+  catalogAlbum = { ...catalogAlbum, tracks: [] };
+  detailIsPartial = true;
+  detailEnrichmentError = new Error("Spotify album fetch failed with status 502");
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  let response;
+
+  try {
+    response = await callRoute("get", "/album/:id", {
+      params: { id: "spotify_album_123" },
+    });
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.isPartial, true);
+  assert.deepEqual(response.body.tracks, []);
 });
 
 test("GET /albums/album/:id returns 500 when catalog lookup fails", async () => {

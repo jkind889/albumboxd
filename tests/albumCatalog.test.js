@@ -206,3 +206,92 @@ test("getOrCreateAlbumCatalog returns cached albums that already have tracks", a
     global.fetch = originalFetch;
   }
 });
+
+test("getAlbumCatalogDetails returns a complete cached album without calling Spotify", async () => {
+  cachedAlbum = {
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    tracks: [{ spotifyId: "track_1", title: "So What" }],
+  };
+  const originalFetch = global.fetch;
+  global.fetch = async () => {
+    throw new Error("Spotify should not be called for complete cached albums");
+  };
+
+  try {
+    const { getAlbumCatalogDetails } = loadAlbumCatalogHelper();
+    const result = await getAlbumCatalogDetails("spotify_album_123");
+
+    assert.equal(result.album, cachedAlbum);
+    assert.equal(result.isPartial, false);
+    assert.equal(findOneAndUpdateCalls.length, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("getAlbumCatalogDetails enriches an incomplete cached album", async () => {
+  cachedAlbum = {
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    tracks: [],
+  };
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => spotifyAlbum,
+  });
+
+  try {
+    const { getAlbumCatalogDetails } = loadAlbumCatalogHelper();
+    const result = await getAlbumCatalogDetails("spotify_album_123");
+
+    assert.equal(result.isPartial, false);
+    assert.equal(result.album.tracks.length, 2);
+    assert.equal(findOneAndUpdateCalls.length, 1);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("getAlbumCatalogDetails returns cached metadata when enrichment fails", async () => {
+  cachedAlbum = {
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    tracks: [],
+  };
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: false, status: 502 });
+
+  try {
+    const { getAlbumCatalogDetails } = loadAlbumCatalogHelper();
+    const result = await getAlbumCatalogDetails("spotify_album_123");
+
+    assert.equal(result.album, cachedAlbum);
+    assert.equal(result.isPartial, true);
+    assert.match(result.enrichmentError.message, /status 502/);
+    assert.equal(findOneAndUpdateCalls.length, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("getAlbumCatalogDetails throws when no cache exists and Spotify fails", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: false, status: 502 });
+
+  try {
+    const { getAlbumCatalogDetails } = loadAlbumCatalogHelper();
+
+    await assert.rejects(
+      getAlbumCatalogDetails("spotify_album_123"),
+      /status 502/,
+    );
+    assert.equal(findOneAndUpdateCalls.length, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

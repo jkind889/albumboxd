@@ -897,7 +897,11 @@ export function AlbumDetail()
                                             )}
                                         </>
                                     ) : (
-                                        <p className="album-empty-copy">No tracks available.</p>
+                                        <p className="album-empty-copy">
+                                            {album.isPartial
+                                                ? "Track details are temporarily unavailable."
+                                                : "No tracks available."}
+                                        </p>
                                     )}
                                 </div>
                             )}

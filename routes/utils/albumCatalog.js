@@ -106,8 +106,41 @@ async function getOrCreateAlbumCatalog(spotifyId, options = {}) {
   return upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
 }
 
+// Album detail reads can degrade to cached metadata when Spotify enrichment fails.
+async function getAlbumCatalogDetails(spotifyId, options = {}) {
+  const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
+
+  if (cachedAlbum?.tracks?.length) {
+    return {
+      album: cachedAlbum,
+      isPartial: false,
+    };
+  }
+
+  try {
+    const spotifyAlbum = await fetchSpotifyAlbum(spotifyId, options);
+    const album = await upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
+
+    return {
+      album,
+      isPartial: false,
+    };
+  } catch (error) {
+    if (!cachedAlbum) {
+      throw error;
+    }
+
+    return {
+      album: cachedAlbum,
+      isPartial: true,
+      enrichmentError: error,
+    };
+  }
+}
+
 module.exports = {
   fetchSpotifyAlbum,
+  getAlbumCatalogDetails,
   getOrCreateAlbumCatalog,
   normalizeCatalogAlbum,
   normalizeSpotifyAlbum,
