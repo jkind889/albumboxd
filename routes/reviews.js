@@ -326,22 +326,36 @@ function ensureAuthenticated(req, res, next) {
     next();
 }
 
-function getReviewUpdatePayload(body) {
-    const reviewText = String(body?.reviewText || "").trim();
+function parseReviewRating(body) {
     const rating = Number(body?.rating);
-
-    if (!reviewText) {
-        return { error: "Review text is required" };
-    }
 
     if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
         return { error: "Rating must be between 1 and 5" };
     }
 
+    if (!Number.isInteger(rating * 2)) {
+        return { error: "Rating must be a whole or half number" };
+    }
+
+    return { rating };
+}
+
+function getReviewUpdatePayload(body) {
+    const reviewText = String(body?.reviewText || "").trim();
+    const parsedRating = parseReviewRating(body);
+
+    if (!reviewText) {
+        return { error: "Review text is required" };
+    }
+
+    if (parsedRating.error) {
+        return { error: parsedRating.error };
+    }
+
     return {
         update: {
             reviewText,
-            rating,
+            rating: parsedRating.rating,
         },
     };
 }
@@ -349,11 +363,16 @@ function getReviewUpdatePayload(body) {
 router.post("/review", ensureAuthenticated, reviewCreateRateLimit, async(req, res) =>
     {
         const userId = req.userId;
+        const parsedRating = parseReviewRating(req.body);
+
+        if (parsedRating.error) {
+            return res.status(400).json({ error: parsedRating.error });
+        }
 
 
         try {
             const review = await Review.create(
-                { ...req.body, userId }
+                { ...req.body, rating: parsedRating.rating, userId }
             );
             const [reviewWithAuthor] = await addAuthorsToReviews([review], userId);
             res.status(201).json(reviewWithAuthor);
