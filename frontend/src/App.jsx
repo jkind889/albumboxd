@@ -13,6 +13,7 @@ import Boards from "./Pages/Boards";
 import BoardDetail from "./Pages/BoardDetail";
 import Notifications from "./Pages/Notifications";
 import ProtectedRoute from "./Components/ProtectedRoute";
+import Explore from "./Pages/Explore";
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 export function App() {
@@ -26,6 +27,7 @@ export function App() {
             <Route path="/albums" element={<Albums />} />
             <Route path="/boards" element={<Boards />} />
             <Route path="/boards/:boardId" element={<BoardDetail />} />
+            <Route path="/explore" element = {<Explore/>} />
             <Route
               path="/collection"
               element={<Navigate to="/account" state={{ activeTab: "saved" }} replace />}

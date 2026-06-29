@@ -75,7 +75,7 @@ export function SearchBar()
 
         localStorage.setItem("history", JSON.stringify(limited));
 
-        navigate(`/search?q=${encodeURIComponent(input)}`)
+        navigate(`/explore?q=${encodeURIComponent(input)}`)
     };
 
 
