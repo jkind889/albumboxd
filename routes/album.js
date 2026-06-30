@@ -21,6 +21,7 @@ const router = express.Router();
 const CATALOG_PAGE_LIMIT = 24;
 const MAX_CATALOG_PAGE_LIMIT = 24;
 const DEFAULT_SOCIAL_USERNAME = "albumboxd user";
+const RATING_DISTRIBUTION_BUCKETS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
 
 function ensureAuthenticated(req, res, next) {
     const { userId } = getAuth(req);
@@ -99,6 +100,48 @@ async function getSocialUsersById(userIds) {
 
 function getUniqueUserIds(documents) {
     return [...new Set(documents.map(toPlainDocument).map((document) => document.userId).filter(Boolean))];
+}
+
+function getEmptyRatingDistribution() {
+    return RATING_DISTRIBUTION_BUCKETS.map((rating) => ({
+        rating,
+        count: 0,
+    }));
+}
+
+async function getAlbumRatingSummary(spotifyId) {
+    const distributionRows = await Review.aggregate([
+        { $match: { spotifyId } },
+        {
+            $group: {
+                _id: "$rating",
+                count: { $sum: 1 },
+            },
+        },
+        {
+            $project: {
+                _id: 0,
+                rating: "$_id",
+                count: 1,
+            },
+        },
+        { $sort: { rating: 1 } },
+    ]);
+    const distributionCounts = new Map(
+        distributionRows.map((row) => [Number(row.rating), Number(row.count) || 0]),
+    );
+    const ratingDistribution = getEmptyRatingDistribution().map((bucket) => ({
+        ...bucket,
+        count: distributionCounts.get(bucket.rating) || 0,
+    }));
+    const reviewCount = ratingDistribution.reduce((total, bucket) => total + bucket.count, 0);
+    const ratingTotal = ratingDistribution.reduce((total, bucket) => total + (bucket.rating * bucket.count), 0);
+
+    return {
+        reviewCount,
+        averageRating: reviewCount ? Math.round((ratingTotal / reviewCount) * 10) / 10 : null,
+        ratingDistribution,
+    };
 }
 
 async function getFollowedAlbumSocialContext(spotifyId, viewerId) {
@@ -197,16 +240,16 @@ router.get("/album/:id/social", async(req, res) => {
         }
 
         const viewerId = getViewerId(req);
-        const [savedCount, reviewCount, followedSocialContext] = await Promise.all([
+        const [savedCount, ratingSummary, followedSocialContext] = await Promise.all([
             Album.countDocuments({ spotifyId }),
-            Review.countDocuments({ spotifyId }),
+            getAlbumRatingSummary(spotifyId),
             getFollowedAlbumSocialContext(spotifyId, viewerId),
         ]);
 
         res.json({
             spotifyId,
             savedCount,
-            reviewCount,
+            ...ratingSummary,
             ...followedSocialContext,
         });
     } catch (error) {

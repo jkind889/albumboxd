@@ -3255,15 +3255,33 @@ html:has(.search-results-page) .search-submit {
 .album-rating-bars {
   display: flex;
   align-items: end;
-  gap: 0.22rem;
-  min-height: 48px;
+  gap: 0.28rem;
+  min-height: 76px;
 }
 
-.album-rating-bars span {
+.album-rating-bucket {
+  display: grid;
+  grid-template-rows: 1rem 48px 1rem;
+  justify-items: center;
+  align-items: end;
+  gap: 0.2rem;
+  min-width: 16px;
+}
+
+.album-rating-count,
+.album-rating-label {
+  color: #94a3b8;
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.album-rating-bar {
   width: 14px;
   height: var(--bar-height);
   border-radius: 3px 3px 0 0;
   background: #5f6f81;
+  transition: height 160ms ease;
 }
 
 .review-form-header {
