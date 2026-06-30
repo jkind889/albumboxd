@@ -9,7 +9,6 @@
 .app-shell:has(.album-detail-page),
 .app-shell:has(.front-page),
 .app-shell:has(.search-results-page),
-.app-shell:has(.explore-page),
 .app-shell:has(.reviews-page),
 .app-shell:has(.notifications-page),
 .app-shell:has(.catalog-page),
@@ -34,9 +33,6 @@ body:has(.front-page),
 html:has(.search-results-page),
 body:has(.search-results-page),
 #root:has(.search-results-page),
-html:has(.explore-page),
-body:has(.explore-page),
-#root:has(.explore-page),
 html:has(.reviews-page),
 body:has(.reviews-page),
 #root:has(.reviews-page),
@@ -741,8 +737,7 @@ body:has(.edit-profile-page),
 /* Editorial front page */
 html:has(.front-page) .site-header,
 html:has(.catalog-page) .site-header,
-html:has(.search-results-page) .site-header,
-html:has(.explore-page) .site-header {
+html:has(.search-results-page) .site-header {
   background: #050505;
   border-bottom: 0;
   box-shadow: none;
@@ -750,15 +745,13 @@ html:has(.explore-page) .site-header {
 
 html:has(.front-page) .site-navbar,
 html:has(.catalog-page) .site-navbar,
-html:has(.search-results-page) .site-navbar,
-html:has(.explore-page) .site-navbar {
+html:has(.search-results-page) .site-navbar {
   min-height: 54px;
 }
 
 html:has(.front-page) .site-navbar .navbar-brand,
 html:has(.catalog-page) .site-navbar .navbar-brand,
-html:has(.search-results-page) .site-navbar .navbar-brand,
-html:has(.explore-page) .site-navbar .navbar-brand {
+html:has(.search-results-page) .site-navbar .navbar-brand {
   color: #f4512c;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 1rem;
@@ -770,9 +763,7 @@ html:has(.front-page) .nav-auth-button,
 html:has(.catalog-page) .site-navbar .nav-link,
 html:has(.catalog-page) .nav-auth-button,
 html:has(.search-results-page) .site-navbar .nav-link,
-html:has(.search-results-page) .nav-auth-button,
-html:has(.explore-page) .site-navbar .nav-link,
-html:has(.explore-page) .nav-auth-button {
+html:has(.search-results-page) .nav-auth-button {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.72rem;
   font-weight: 500;
@@ -783,9 +774,7 @@ html:has(.front-page) .search-submit,
 html:has(.catalog-page) .search-input,
 html:has(.catalog-page) .search-submit,
 html:has(.search-results-page) .search-input,
-html:has(.search-results-page) .search-submit,
-html:has(.explore-page) .search-input,
-html:has(.explore-page) .search-submit {
+html:has(.search-results-page) .search-submit {
   height: 32px;
   min-height: 32px;
   border-color: #292929;
@@ -798,8 +787,7 @@ html:has(.explore-page) .search-submit {
 
 html:has(.front-page) .search-submit,
 html:has(.catalog-page) .search-submit,
-html:has(.search-results-page) .search-submit,
-html:has(.explore-page) .search-submit {
+html:has(.search-results-page) .search-submit {
   background: #111111;
 }
 
@@ -1575,6 +1563,9 @@ html:has(.explore-page) .search-submit {
   --search-accent: #f4512c;
   --search-line: #242424;
   --search-muted: #8c8c8c;
+  --explore-line: rgba(248, 250, 252, 0.16);
+  --explore-muted: #8a8a8a;
+  box-sizing: border-box;
   width: min(100%, 1180px);
   margin: 0 auto;
   padding: 3rem clamp(18px, 4vw, 48px) 4rem;
@@ -2326,7 +2317,8 @@ html:has(.explore-page) .search-submit {
 }
 
 .search-view-toggle.profile-view-toggle {
-  min-width: 142px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 210px;
   border-color: var(--search-line);
   border-radius: 0;
   background: #050505;
@@ -2528,19 +2520,12 @@ html:has(.explore-page) .search-submit {
   background-size: 220% 100%;
 }
 
-.explore-page {
-  --explore-line: rgba(248, 250, 252, 0.16);
-  --explore-muted: #8a8a8a;
-  min-height: calc(100vh - 50px - var(--app-shell-padding));
-  margin: 0 calc(var(--app-shell-padding) * -1) calc(var(--app-shell-padding) * -1);
-  padding: 0;
-  background: #000000;
-}
-
 .explore-flow-shell {
   width: 100%;
-  height: calc(100vh - 54px - var(--app-shell-padding));
+  height: min(68vh, 720px);
   min-height: 520px;
+  margin-top: 1.5rem;
+  border: 1px solid var(--search-line);
   background: #000000;
 }
 
@@ -5568,6 +5553,10 @@ html:has(.explore-page) .search-submit {
 
   .search-view-toggle.profile-view-toggle {
     width: 100%;
+  }
+
+  .explore-flow-shell {
+    min-height: 440px;
   }
 
   .results-list .result-card {
