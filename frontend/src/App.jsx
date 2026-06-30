@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Routes, Route, useLocation } from "react-router-dom";
+import 'bootstrap/dist/css/bootstrap.min.css';
 import "./App.css";
 import SearchResults from "./Pages/SearchResults";
 import Albums from "./Pages/Albums";
@@ -13,7 +14,6 @@ import Boards from "./Pages/Boards";
 import BoardDetail from "./Pages/BoardDetail";
 import Notifications from "./Pages/Notifications";
 import ProtectedRoute from "./Components/ProtectedRoute";
-import 'bootstrap/dist/css/bootstrap.min.css';
 
 function ExploreRedirect() {
   const location = useLocation();

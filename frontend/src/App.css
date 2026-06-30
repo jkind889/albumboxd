@@ -1,60 +1,44 @@
-.app-shell {
+:root {
+  color-scheme: dark;
   --app-shell-padding: 1.5rem;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: var(--app-shell-padding);
+  --app-bg: #050505;
+  --app-surface: #101010;
+  --app-surface-strong: #151515;
+  --app-line: #242424;
+  --app-line-strong: #343434;
+  --app-text: #efefef;
+  --app-muted: #8c8c8c;
+  --app-soft: #b9b9b9;
+  --app-accent: #744e96;
+  --app-danger: #f87171;
+  --app-success: #86efac;
+  --app-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --app-display-font: "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif;
 }
 
-.app-shell:has(.profile-page),
-.app-shell:has(.album-detail-page),
-.app-shell:has(.front-page),
-.app-shell:has(.search-results-page),
-.app-shell:has(.reviews-page),
-.app-shell:has(.notifications-page),
-.app-shell:has(.catalog-page),
-.app-shell:has(.boards-page),
-.app-shell:has(.board-detail-page),
-.app-shell:has(.profile-network-page),
-.app-shell:has(.edit-profile-page) {
+html,
+body,
+#root {
+  min-height: 100%;
+  background: var(--app-bg);
+}
+
+body {
+  margin: 0;
+  color: var(--app-text);
+  font-family: var(--app-font);
+}
+
+.app-shell {
   max-width: none;
   min-height: 100vh;
-  background: #000000;
+  margin: 0 auto;
+  padding: var(--app-shell-padding);
+  background: var(--app-bg);
 }
 
-html:has(.profile-page),
-body:has(.profile-page),
-#root:has(.profile-page),
-html:has(.album-detail-page),
-body:has(.album-detail-page),
-#root:has(.album-detail-page),
-html:has(.front-page),
-body:has(.front-page),
-#root:has(.front-page),
-html:has(.search-results-page),
-body:has(.search-results-page),
-#root:has(.search-results-page),
-html:has(.reviews-page),
-body:has(.reviews-page),
-#root:has(.reviews-page),
-html:has(.notifications-page),
-body:has(.notifications-page),
-#root:has(.notifications-page),
-html:has(.catalog-page),
-body:has(.catalog-page),
-#root:has(.catalog-page),
-html:has(.boards-page),
-body:has(.boards-page),
-#root:has(.boards-page),
-html:has(.board-detail-page),
-body:has(.board-detail-page),
-#root:has(.board-detail-page),
-html:has(.profile-network-page),
-body:has(.profile-network-page),
-#root:has(.profile-network-page),
-html:has(.edit-profile-page),
-body:has(.edit-profile-page),
-#root:has(.edit-profile-page) {
-  background: #000000;
+.app-shell main {
+  min-height: calc(100vh - 54px - var(--app-shell-padding));
 }
 
 .site-header {
@@ -62,13 +46,13 @@ body:has(.edit-profile-page),
   top: 0;
   z-index: 20;
   margin: calc(var(--app-shell-padding) * -1) calc(var(--app-shell-padding) * -1) 0;
-  background: #18181b;
-  border-bottom: 1px solid #2f3035;
-  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.28);
+  background: var(--app-bg);
+  border-bottom: 1px solid var(--app-line);
+  box-shadow: none;
 }
 
 .site-navbar {
-  min-height: 50px;
+  min-height: 54px;
   padding: 0 0.8rem;
 }
 
@@ -85,8 +69,10 @@ body:has(.edit-profile-page),
 }
 
 .site-navbar .navbar-brand {
-  color: #f4f4f5;
-  font-weight: 800;
+  color: var(--app-accent);
+  font-family: var(--app-font);
+  font-size: 1rem;
+  font-weight: 500;
   letter-spacing: 0;
 }
 
@@ -100,8 +86,10 @@ body:has(.edit-profile-page),
 }
 
 .site-navbar .nav-link {
-  color: #e5e7eb;
-  font-weight: 700;
+  color: var(--app-text);
+  font-family: var(--app-font);
+  font-size: 0.72rem;
+  font-weight: 500;
   padding: 0.45rem 0.7rem;
 }
 
@@ -154,13 +142,15 @@ body:has(.edit-profile-page),
 }
 
 .nav-auth-button {
-  min-height: 34px;
+  min-height: 32px;
   padding: 0.35rem 0.75rem;
-  border: 1px solid #3a3a40;
-  border-radius: 6px;
-  background: #2f3035;
-  color: #f4f4f5;
-  font-weight: 800;
+  border: 1px solid var(--app-line);
+  border-radius: 0;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font-family: var(--app-font);
+  font-size: 0.72rem;
+  font-weight: 500;
 }
 
 .nav-auth-button-secondary {
@@ -168,8 +158,8 @@ body:has(.edit-profile-page),
 }
 
 .nav-auth-button:hover {
-  border-color: #ffffff;
-  background: #3a3a40;
+  border-color: var(--app-accent);
+  background: var(--app-surface-strong);
 }
 
 .search-form {
@@ -181,33 +171,37 @@ body:has(.edit-profile-page),
 
 .search-input {
   min-width: 0;
-  height: 36px;
-  border: 1px solid #8f8f99;
-  border-radius: 6px 0 0 6px;
-  background: #0e0e10;
-  color: #f4f4f5;
+  height: 32px;
+  border: 1px solid var(--app-line);
+  border-radius: 0;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: var(--app-font);
+  font-size: 0.7rem;
   padding: 0 0.8rem;
   outline: none;
 }
 
 .search-input:focus {
-  border-color: #ffffff;
-  box-shadow: inset 0 0 0 1px #ffffff;
+  border-color: var(--app-accent);
+  box-shadow: inset 0 0 0 1px var(--app-accent);
 }
 
 .search-submit {
   width: 76px;
-  min-height: 36px;
-  border: 1px solid #2f3035;
+  min-height: 32px;
+  border: 1px solid var(--app-line);
   border-left: 0;
-  border-radius: 0 6px 6px 0;
-  background: #2f3035;
-  color: #f4f4f5;
-  font-weight: 800;
+  border-radius: 0;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font-family: var(--app-font);
+  font-size: 0.7rem;
+  font-weight: 500;
 }
 
 .search-submit:hover {
-  background: #3a3a40;
+  background: var(--app-surface-strong);
 }
 
 .search-dropdown-wrap {
@@ -221,10 +215,10 @@ body:has(.edit-profile-page),
 .suggestions-dropdown {
   margin: 0;
   padding: 0.35rem;
-  border: 1px solid #3a3a40;
-  border-radius: 6px;
-  background: #18181b;
-  color: #f4f4f5;
+  border: 1px solid var(--app-line-strong);
+  border-radius: 0;
+  background: var(--app-surface);
+  color: var(--app-text);
   list-style: none;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.32);
 }
@@ -248,13 +242,13 @@ body:has(.edit-profile-page),
   gap: 0.4rem;
   min-height: 44px;
   padding: 0.4rem 0.5rem;
-  border-radius: 5px;
+  border-radius: 0;
   cursor: pointer;
   overflow-wrap: anywhere;
 }
 
 .suggestions-dropdown li:hover {
-  background: #2f3035;
+  background: var(--app-surface-strong);
 }
 
 .front-page {
@@ -609,7 +603,7 @@ body:has(.edit-profile-page),
   }
 
   .site-navbar-left {
-    display: none;
+    display: none !important;
   }
 
   .front-hero {
@@ -752,7 +746,7 @@ html:has(.search-results-page) .site-navbar {
 html:has(.front-page) .site-navbar .navbar-brand,
 html:has(.catalog-page) .site-navbar .navbar-brand,
 html:has(.search-results-page) .site-navbar .navbar-brand {
-  color: #f4512c;
+  color: #744e96;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 1rem;
   font-weight: 500;
@@ -792,7 +786,7 @@ html:has(.search-results-page) .search-submit {
 }
 
 .front-page {
-  --front-accent: #f4512c;
+  --front-accent: #744e96;
   --front-line: #242424;
   --front-muted: #8c8c8c;
   position: relative;
@@ -898,14 +892,14 @@ html:has(.search-results-page) .search-submit {
 
 .front-wordmark {
   position: absolute;
-  bottom: -0.14em;
+  bottom: clamp(12px, 2.3vh, 24px);
   left: clamp(20px, 3.5vw, 58px);
   color: var(--front-accent);
   font-family: "Avenir Next Condensed", "Helvetica Neue", Arial, sans-serif;
-  font-size: clamp(10rem, 33vw, 27rem);
+  font-size: clamp(8rem, min(30vw, 39vh), 24rem);
   font-stretch: condensed;
   font-weight: 100;
-  line-height: 0.72;
+  line-height: 0.82;
   letter-spacing: -0.08em;
   white-space: nowrap;
   transform: scaleX(0.95);
@@ -1144,7 +1138,7 @@ html:has(.search-results-page) .search-submit {
   right: clamp(24px, 4vw, 76px);
   z-index: 2;
   display: grid;
-  width: min(34vw, 360px);
+  width: min(30vw, 32vh, 320px);
   max-width: calc(100% - clamp(48px, 8vw, 152px));
   color: #d8d8d8;
   text-decoration: none;
@@ -1193,7 +1187,7 @@ html:has(.search-results-page) .search-submit {
 }
 
 .front-lead-empty {
-  min-height: 220px;
+  min-height: min(220px, 32vh);
   place-content: center;
   border: 1px solid var(--front-line);
   padding: 1rem;
@@ -1439,7 +1433,8 @@ html:has(.search-results-page) .search-submit {
   }
 
   .front-wordmark {
-    font-size: clamp(9rem, 46vw, 20rem);
+    bottom: clamp(14px, 2.6vh, 24px);
+    font-size: clamp(7.5rem, min(40vw, 30vh), 16rem);
   }
 
   .featured-catalog {
@@ -1462,7 +1457,7 @@ html:has(.search-results-page) .search-submit {
   .front-lead {
     top: 22%;
     right: 18px;
-    width: min(46vw, 280px);
+    width: min(40vw, 28vh, 240px);
   }
 
   .front-album-tape {
@@ -1492,9 +1487,9 @@ html:has(.search-results-page) .search-submit {
   }
 
   .front-wordmark {
-    bottom: -0.1em;
+    bottom: clamp(14px, 3vh, 22px);
     left: 14px;
-    font-size: clamp(7.25rem, 45vw, 12rem);
+    font-size: clamp(6.4rem, min(42vw, 24vh), 10rem);
     transform: scaleX(0.92);
   }
 
@@ -1502,12 +1497,13 @@ html:has(.search-results-page) .search-submit {
     top: 38%;
     right: 18px;
     left: 18px;
-    width: auto;
+    width: min(44vw, 24vh, 180px);
     max-width: none;
+    justify-self: end;
   }
 
   .front-lead-empty {
-    min-height: 188px;
+    min-height: min(188px, 24vh);
   }
 
   .front-lead-label {
@@ -1560,7 +1556,7 @@ html:has(.search-results-page) .search-submit {
 }
 
 .search-results-page {
-  --search-accent: #f4512c;
+  --search-accent: #744e96;
   --search-line: #242424;
   --search-muted: #8c8c8c;
   --explore-line: rgba(248, 250, 252, 0.16);
@@ -1575,7 +1571,7 @@ html:has(.search-results-page) .search-submit {
 }
 
 .catalog-page {
-  --catalog-accent: #f4512c;
+  --catalog-accent: #744e96;
   --catalog-line: #242424;
   --catalog-muted: #8c8c8c;
   width: min(100%, 1180px);
@@ -6046,6 +6042,506 @@ html:has(.search-results-page) .search-submit {
   .async-skeleton-detail {
     max-width: calc(100% - 2rem);
   }
+}
+
+/* Shared route treatment */
+.catalog-page,
+.search-results-page,
+.album-detail-page,
+.reviews-page,
+.notifications-page,
+.boards-page,
+.board-detail-page,
+.profile-page,
+.profile-network-page,
+.edit-profile-page {
+  box-sizing: border-box;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: var(--app-font);
+}
+
+.album-detail-page,
+.reviews-page,
+.notifications-page,
+.boards-page,
+.board-detail-page,
+.profile-page,
+.profile-network-page,
+.edit-profile-page {
+  padding: 3rem clamp(18px, 4vw, 48px) 4rem;
+}
+
+.profile-page,
+.album-detail-page,
+.reviews-page,
+.edit-profile-page,
+.profile-network-page {
+  width: min(100%, 1080px);
+}
+
+.notifications-page {
+  width: min(100%, 920px);
+}
+
+.boards-page,
+.board-detail-page {
+  width: min(100%, 1180px);
+}
+
+.boards-kicker,
+.profile-kicker,
+.reviews-kicker,
+.album-detail-kicker,
+.review-form-kicker,
+.catalog-kicker,
+.search-results-kicker,
+.album-panel-header,
+.album-section-heading h2,
+.profile-section-header h2,
+.notification-copy span,
+.profile-activity-item span,
+.profile-pin-card span,
+.profile-saved-date span,
+.profile-sidebar-facts dt,
+.profile-sidebar-section h3,
+.profile-sidebar-log span,
+.profile-sidebar-activity-row span,
+.edit-profile-field span,
+.reviews-sort-control {
+  color: var(--app-accent);
+  font-family: var(--app-font);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.boards-header h1,
+.boards-empty h1,
+.board-detail-header h1,
+.reviews-section-header h1,
+.reviews-section-header h2,
+.notifications-header h1,
+.profile-network-header h1,
+.edit-profile-header h1 {
+  color: var(--app-accent);
+  font-family: var(--app-display-font);
+  font-size: clamp(3.6rem, 10vw, 8rem);
+  font-stretch: condensed;
+  font-weight: 100;
+  letter-spacing: -0.08em;
+  line-height: 0.78;
+  text-transform: uppercase;
+  transform: scaleX(0.95);
+  transform-origin: bottom left;
+}
+
+.profile-identity h1,
+.album-title-block h1 {
+  color: var(--app-text);
+  font-family: var(--app-display-font);
+  font-stretch: condensed;
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+
+.profile-panel,
+.profile-empty-state,
+.profile-review-card,
+.profile-album-card,
+.profile-settings-panel,
+.profile-stat-grid div,
+.profile-activity-item,
+.profile-mini-album,
+.profile-pin-card,
+.profile-favorite-card,
+.profile-saved-row,
+.profile-sidebar-card,
+.profile-sidebar-activity-row,
+.profile-network-row,
+.edit-profile-panel,
+.edit-profile-selected-album,
+.edit-profile-search-result,
+.album-poster-card,
+.album-ratings-panel,
+.album-social-panel,
+.album-info-panel,
+.review-form-card,
+.album-review-column,
+.album-review-card,
+.review-card,
+.review-list-empty,
+.notifications-list,
+.notification-row,
+.boards-empty,
+.board-preview-grid,
+.board-album-card,
+.board-album-row,
+.popular-album-card,
+.popular-albums-empty,
+.results-empty,
+.async-state-message,
+.async-skeleton-card,
+.async-skeleton-profile,
+.async-skeleton-detail,
+.async-skeleton-page {
+  border: 1px solid var(--app-line);
+  border-radius: 0;
+  background: var(--app-bg);
+  box-shadow: none;
+}
+
+.profile-activity-item:hover,
+.profile-mini-album:hover,
+.profile-album-card:hover,
+.profile-pin-card:hover,
+.profile-favorite-card:hover,
+.profile-saved-row:hover,
+.profile-sidebar-activity-row:hover,
+.profile-network-row:hover,
+.edit-profile-selected-album:hover,
+.edit-profile-search-result:hover,
+.notification-row:hover,
+.popular-album-card:hover,
+.board-card:hover .board-preview-grid,
+.board-album-card:hover,
+.board-album-row:hover {
+  border-color: var(--app-accent);
+  background: var(--app-surface);
+  color: var(--app-text);
+  box-shadow: none;
+  transform: translateX(-4px);
+}
+
+.album-action-button,
+.album-primary-link,
+.review-submit-button,
+.review-edit-button,
+.review-delete-button,
+.album-more-link,
+.review-modal-close,
+.album-side-action,
+.album-social-toggle,
+.profile-edit-link,
+.profile-follow-button,
+.profile-secondary-button,
+.profile-sidebar-button,
+.board-create-form button,
+.board-title-form button,
+.board-danger-button,
+.board-album-card button,
+.board-album-row button,
+.board-save-create button,
+.edit-profile-album-actions button,
+.search-pagination button,
+.reviews-sort-control select {
+  border: 1px solid var(--app-line);
+  border-radius: 0;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: var(--app-font);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.album-action-button:hover,
+.album-primary-link:hover,
+.review-submit-button:hover,
+.review-edit-button:hover,
+.review-delete-button:hover,
+.album-more-link:hover,
+.review-modal-close:hover,
+.album-side-action:hover,
+.album-social-toggle:hover,
+.profile-edit-link:hover,
+.profile-follow-button:hover,
+.profile-secondary-button:hover,
+.profile-sidebar-button:hover,
+.board-create-form button:hover,
+.board-title-form button:hover,
+.board-danger-button:hover,
+.board-album-card button:hover,
+.board-album-row button:hover,
+.board-save-create button:hover,
+.edit-profile-album-actions button:hover:not(:disabled),
+.search-pagination button:hover:not(:disabled),
+.reviews-sort-control select:focus {
+  border-color: var(--app-accent);
+  background: var(--app-surface);
+  color: var(--app-text);
+  outline: none;
+  transform: translateX(-2px);
+}
+
+.board-create-form input,
+.board-title-form input,
+.board-detail-actions input,
+.board-save-create input,
+.review-form-field input,
+.review-form-field textarea,
+.review-edit-field input,
+.review-edit-field textarea,
+.edit-profile-field input,
+.edit-profile-field select,
+.edit-profile-field textarea {
+  border: 1px solid var(--app-line);
+  border-radius: 0;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: var(--app-font);
+}
+
+.board-create-form input:focus,
+.board-title-form input:focus,
+.board-detail-actions input:focus,
+.board-save-create input:focus,
+.review-form-field input:focus,
+.review-form-field textarea:focus,
+.review-edit-field input:focus,
+.review-edit-field textarea:focus,
+.edit-profile-field input:focus,
+.edit-profile-field select:focus,
+.edit-profile-field textarea:focus {
+  border-color: var(--app-accent);
+  box-shadow: inset 0 0 0 1px var(--app-accent);
+  outline: none;
+}
+
+.album-tabs,
+.profile-tabs,
+.profile-view-toggle,
+.search-view-toggle.profile-view-toggle,
+.album-side-actions {
+  border: 1px solid var(--app-line);
+  border-radius: 0;
+  background: var(--app-bg);
+  box-shadow: none;
+}
+
+.album-tab,
+.profile-tab,
+.profile-view-toggle button {
+  border-radius: 0;
+  color: var(--app-muted);
+  font-family: var(--app-font);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.album-tab:hover,
+.profile-tab:hover,
+.profile-view-toggle button:hover,
+.album-tab-active,
+.profile-tab-active,
+.profile-view-toggle-active {
+  border-bottom-color: var(--app-accent);
+  background: var(--app-surface);
+  color: var(--app-text);
+}
+
+.album-meta-line,
+.album-facts dt,
+.album-facts dd,
+.album-tracklist li,
+.album-track-number,
+.album-track-duration,
+.album-ratings-panel p,
+.album-review-copy,
+.review-card-copy,
+.review-list-empty p,
+.album-empty-copy,
+.board-card p,
+.board-detail-header p,
+.board-album-card p,
+.board-album-row em,
+.profile-bio,
+.profile-empty-state p,
+.profile-activity-item p,
+.profile-mini-album p,
+.profile-album-card p,
+.profile-review-album p,
+.profile-review-copy,
+.profile-saved-toolbar p,
+.profile-saved-album p,
+.profile-sidebar-heading p,
+.profile-sidebar-bio,
+.profile-sidebar-section p,
+.profile-network-row p,
+.notification-copy p,
+.notification-row time,
+.review-card-meta,
+.review-card-title-row span,
+.edit-profile-current-value,
+.edit-profile-selected-album p,
+.edit-profile-search-result p,
+.popular-album-info p,
+.popular-album-stats span,
+.async-state-message p {
+  color: var(--app-muted);
+}
+
+.board-card h2,
+.board-album-card h2,
+.board-album-row strong,
+.album-info-panel h2,
+.review-form-header h2,
+.album-social-stats strong,
+.album-rating-summary strong,
+.album-review-meta strong,
+.album-review-author-link,
+.review-card-title-row h2,
+.review-card-rating,
+.profile-section-header h2,
+.profile-empty-state h3,
+.profile-activity-item h3,
+.profile-mini-album h3,
+.profile-review-card h3,
+.profile-album-card h3,
+.profile-pin-card h3,
+.profile-favorite-card h3,
+.profile-saved-toolbar h2,
+.profile-saved-album h3,
+.profile-review-meta span,
+.profile-sidebar-heading h2,
+.profile-sidebar-facts dd,
+.profile-sidebar-log strong,
+.profile-sidebar-activity-row strong,
+.profile-network-row h2,
+.edit-profile-selected-album h3,
+.edit-profile-search-result h3,
+.notification-copy h2,
+.popular-album-info h4,
+.async-state-message h3 {
+  color: var(--app-text);
+}
+
+.profile-cover,
+.profile-cover-fallback,
+.profile-pin-card .board-preview-grid,
+.edit-profile-cover,
+.edit-profile-cover-fallback,
+.review-card-image,
+.review-card-image-fallback,
+.popular-album-cover,
+.popular-album-cover-fallback,
+.board-album-card img,
+.board-album-card a > span,
+.board-album-row img,
+.board-album-row span,
+.album-poster-fallback,
+.front-cover-fallback {
+  border-radius: 0;
+  background: var(--app-surface);
+}
+
+.popular-album-stats span,
+.popular-album-rank,
+.edit-profile-rank,
+.nav-notification-badge {
+  border-radius: 0;
+  background: var(--app-surface);
+  color: var(--app-text);
+}
+
+.like-button {
+  border-radius: 0;
+  background: var(--app-bg);
+}
+
+.like-button:hover,
+.like-button-active {
+  border-color: var(--app-danger);
+  background: #1d0c0c;
+  color: #fecaca;
+}
+
+.edit-profile-status {
+  color: var(--app-success);
+}
+
+.boards-error,
+.edit-profile-error,
+.review-edit-error,
+.review-action-message,
+.like-message {
+  color: var(--app-danger);
+}
+
+.async-skeleton-line,
+.async-skeleton-cover,
+.async-skeleton-thumb,
+.async-skeleton-avatar,
+.async-skeleton-poster,
+.async-skeleton-pill-row span {
+  border-radius: 0;
+  background: linear-gradient(90deg, #101010 0%, #242424 45%, #101010 90%);
+  background-size: 220% 100%;
+}
+
+@media (max-width: 640px) {
+  .album-detail-page,
+  .reviews-page,
+  .notifications-page,
+  .boards-page,
+  .board-detail-page,
+  .profile-page,
+  .profile-network-page,
+  .edit-profile-page {
+    padding: 2rem 18px 3rem;
+  }
+
+  .boards-header h1,
+  .boards-empty h1,
+  .board-detail-header h1,
+  .reviews-section-header h1,
+  .reviews-section-header h2,
+  .notifications-header h1,
+  .profile-network-header h1,
+  .edit-profile-header h1 {
+    font-size: clamp(3.2rem, 22vw, 5.8rem);
+  }
+}
+
+@media (max-width: 980px) {
+  .site-header .navbar-collapse.site-navbar-left {
+    display: none !important;
+  }
+}
+
+.catalog-header h1,
+.search-results-header h2,
+.boards-header h1,
+.reviews-section-header h1,
+.notifications-header h1,
+.profile-network-header h1,
+.edit-profile-header h1 {
+  display: none;
+}
+
+.catalog-header,
+.search-results-header {
+  align-items: center;
+}
+
+.catalog-kicker,
+.search-results-kicker {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+}
+
+.catalog-header p:last-child,
+.search-results-toolbar {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.search-results-toolbar,
+.catalog-header p:last-child {
+  grid-row: 1;
 }
 
 .featuregrid
