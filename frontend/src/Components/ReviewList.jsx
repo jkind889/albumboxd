@@ -51,6 +51,7 @@ function ReviewEditForm({
                     type="number"
                     min="1"
                     max="5"
+                    step="0.5"
                     required
                     value={editRating}
                     onChange={(event) => setEditRating(event.target.value)}

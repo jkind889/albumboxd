@@ -707,6 +707,33 @@ test("POST /reviews/review creates a review and returns the Clerk author", async
   });
 });
 
+test("POST /reviews/review accepts a half-star rating", async () => {
+  const response = await postReview({
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    rating: 4.5,
+    reviewText: "A forever record.",
+  });
+
+  assert.equal(response.status, 201);
+  assert.equal(createCalls[0].rating, 4.5);
+});
+
+test("POST /reviews/review rejects a non-half decimal rating", async () => {
+  const response = await postReview({
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    rating: 4.2,
+    reviewText: "A forever record.",
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "Rating must be a whole or half number" });
+  assert.equal(createCalls.length, 0);
+});
+
 test("PATCH /reviews/review/user/:id updates an owned review and returns the Clerk author", async () => {
   clerkUsers = [
     {
@@ -763,6 +790,39 @@ test("PATCH /reviews/review/user/:id rejects an invalid rating", async () => {
 
   assert.equal(response.status, 400);
   assert.deepEqual(response.body, { error: "Rating must be between 1 and 5" });
+  assert.equal(findOneAndUpdateCalls.length, 0);
+});
+
+test("PATCH /reviews/review/user/:id accepts a half-star rating", async () => {
+  updatedReview = {
+    _id: "review_123",
+    userId: "user_clerk_123",
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    cover: "https://example.com/kind-of-blue.jpg",
+    rating: 4.5,
+    reviewText: "Still brilliant after another listen.",
+    date: new Date("2026-06-01T12:00:00.000Z"),
+  };
+
+  const response = await patchReview("review_123", {
+    rating: 4.5,
+    reviewText: "Still brilliant after another listen.",
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(findOneAndUpdateCalls[0].update.$set.rating, 4.5);
+});
+
+test("PATCH /reviews/review/user/:id rejects a non-half decimal rating", async () => {
+  const response = await patchReview("review_123", {
+    rating: 4.2,
+    reviewText: "Close but not on the scale.",
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "Rating must be a whole or half number" });
   assert.equal(findOneAndUpdateCalls.length, 0);
 });
 

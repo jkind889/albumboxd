@@ -1,9 +1,170 @@
 import { API_BASE_URL } from "../config/api";
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { memo, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useSearchParams } from "react-router-dom";     
+import { ReactFlow, Background, Controls, Handle, Position } from "@xyflow/react";
 import AsyncState from "../Components/Loading/AsyncState";
 import { getApiErrorMessage } from "../utils/apiErrors";
+import "@xyflow/react/dist/style.css";
+
+const SEARCH_VIEW_MODES = new Set(["grid", "list", "graph"]);
+
+const AlbumNode = memo(function AlbumNode({ data }) {
+  const title = data.title || "Untitled album";
+  const artist = data.artist || "Unknown artist";
+
+  return (
+    <article className="explore-album-node">
+      <Link to={`/album/${data.id}`}>
+        <Handle className="explore-node-handle" type="target" position={Position.Top} />
+        {data.cover ? (
+          <img className="explore-album-cover" src={data.cover} alt={`${title} cover`} />
+        ) : (
+          <div className="explore-album-cover explore-album-cover-fallback" aria-hidden="true">
+            {title.slice(0, 1)}
+          </div>
+        )}
+        <div className="explore-album-copy">
+          <strong>{title}</strong>
+          <span>{artist}</span>
+        </div>
+      </Link>
+    </article>
+  );
+});
+
+const ArtistNode = memo(function ArtistNode({ data }) {
+  return (
+    <div className="explore-artist-node">
+      <span>{data.label}</span>
+      <Handle className="explore-node-handle" type="source" position={Position.Bottom} />
+    </div>
+  );
+});
+
+const nodeTypes = {
+  albumNode: AlbumNode,
+  artistNode: ArtistNode,
+};
+
+const GRAPH_ALBUMS_PER_COLUMN = 4;
+const GRAPH_ALBUM_COLUMN_GAP = 220;
+const GRAPH_ALBUM_ROW_GAP = 255;
+const GRAPH_ARTIST_GROUP_GAP = 170;
+const GRAPH_START_X = 90;
+const GRAPH_ARTIST_Y = 90;
+const GRAPH_ALBUM_START_Y = 250;
+
+function getArtistLabel(album) {
+  return album.artist || "Unknown artist";
+}
+
+function getArtistNodeId(artistLabel) {
+  return `artist:${artistLabel}`;
+}
+
+function buildGraphElements(results) {
+  const uniqueArtists = [...new Set(results.map((album) => getArtistLabel(album)))];
+  const albumsByArtist = new Map();
+
+  for (const album of results) {
+    const artistLabel = getArtistLabel(album);
+    albumsByArtist.set(artistLabel, (albumsByArtist.get(artistLabel) || 0) + 1);
+  }
+
+  let nextArtistX = GRAPH_START_X;
+  const artistLayouts = new Map();
+
+  for (const artistLabel of uniqueArtists) {
+    const albumCount = albumsByArtist.get(artistLabel) || 1;
+    const columnCount = Math.max(1, Math.ceil(albumCount / GRAPH_ALBUMS_PER_COLUMN));
+    const groupWidth = (columnCount - 1) * GRAPH_ALBUM_COLUMN_GAP;
+
+    artistLayouts.set(artistLabel, {
+      startX: nextArtistX,
+      centerX: nextArtistX + (groupWidth / 2),
+    });
+
+    nextArtistX += (columnCount * GRAPH_ALBUM_COLUMN_GAP) + GRAPH_ARTIST_GROUP_GAP;
+  }
+
+  const artistNodes = uniqueArtists.map((artistLabel) => {
+    const layout = artistLayouts.get(artistLabel);
+
+    return {
+      id: getArtistNodeId(artistLabel),
+      position: {
+        x: layout.centerX,
+        y: GRAPH_ARTIST_Y,
+      },
+      data: {
+        label: artistLabel,
+      },
+      type: "artistNode",
+    };
+  });
+
+  const artistAlbumIndexes = new Map();
+  const albumNodes = results.map((album) => {
+    const artistLabel = getArtistLabel(album);
+    const albumIndexForArtist = artistAlbumIndexes.get(artistLabel) || 0;
+    const layout = artistLayouts.get(artistLabel);
+    const column = Math.floor(albumIndexForArtist / GRAPH_ALBUMS_PER_COLUMN);
+    const row = albumIndexForArtist % GRAPH_ALBUMS_PER_COLUMN;
+
+    artistAlbumIndexes.set(artistLabel, albumIndexForArtist + 1);
+
+    return {
+      id: album.id,
+      position: {
+        x: layout.startX + (column * GRAPH_ALBUM_COLUMN_GAP),
+        y: GRAPH_ALBUM_START_Y + (row * GRAPH_ALBUM_ROW_GAP),
+      },
+      data: {
+        title: album.title,
+        artist: artistLabel,
+        cover: album.cover,
+        id: album.id,
+      },
+      type: "albumNode",
+    };
+  });
+
+  const edges = results.map((album) => {
+    const artistLabel = getArtistLabel(album);
+
+    return {
+      id: `${getArtistNodeId(artistLabel)}-${album.id}`,
+      source: getArtistNodeId(artistLabel),
+      target: album.id,
+    };
+  });
+
+  return {
+    nodes: [...artistNodes, ...albumNodes],
+    edges,
+  };
+}
+
+function SearchResultsGraph({ results }) {
+  const graph = useMemo(() => buildGraphElements(results), [results]);
+
+  return (
+    <div className="explore-flow-shell">
+      <ReactFlow
+        nodes={graph.nodes}
+        edges={graph.edges}
+        nodeTypes={nodeTypes}
+        colorMode="dark"
+        fitView
+        nodesDraggable={false}
+      >
+        <Background color="#2f3035" gap={28} />
+        <Controls />
+      </ReactFlow>
+    </div>
+  );
+}
 
 export function SearchResults()
 {
@@ -11,12 +172,13 @@ export function SearchResults()
   const [hasNextPage, setHasNextPage] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const navigate = useNavigate();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const page = Math.max(Number.parseInt(searchParams.get("page") || "1", 10) || 1, 1);
-  
+  const viewParam = searchParams.get("view") || "grid";
+  const viewMode = SEARCH_VIEW_MODES.has(viewParam) ? viewParam : "grid";
+
 
     useEffect(() =>{
       let shouldIgnore = false;
@@ -26,6 +188,7 @@ export function SearchResults()
           setResults([])
           setHasNextPage(false)
           setError("")
+          setLoading(false);
           return;
         }
 
@@ -77,18 +240,74 @@ export function SearchResults()
     setSearchParams(nextParams);
   }
 
-  
+  function updateView(nextViewMode) {
+    const nextParams = new URLSearchParams(searchParams);
 
+    if (nextViewMode === "grid") {
+      nextParams.delete("view");
+    } else {
+      nextParams.set("view", nextViewMode);
+    }
+
+    setSearchParams(nextParams);
+  }
+
+  function renderResults() {
+    if (viewMode === "graph") {
+      return <SearchResultsGraph results={searchresults} />;
+    }
+
+    return (
+      <div className={viewMode === "list" ? "results-list" : "results-grid"}>
+        {Array.isArray(searchresults) && searchresults.map((result) => (
+          <Link className="result-card" key={result.id} to={`/album/${result.id}`}>
+            <img className="result-cover" src={result.cover} alt={`${result.title} cover`} />
+            <span className="result-copy">
+              <h3>{result.title}</h3>
+              <p>{result.artist}</p>
+            </span>
+            <span className="result-year">{result.year || "Year unknown"}</span>
+          </Link>
+        ))}
+      </div>
+    );
+  }
+  
   return (
     <section className="search-results-page">
         <div className="search-results-header">
           <p className="search-results-kicker">Search results</p>
-          <h2>{query ? `Albums matching "${query}"` : "Search for an album"}</h2>
-          <p className="search-results-summary">
-            {loading
-              ? "Loading albums..."
-              : `${searchresults.length} album${searchresults.length === 1 ? "" : "s"} on page ${page}`}
-          </p>
+          <h2>{query || "Search"}</h2>
+          <div className="search-results-toolbar">
+            <p className="search-results-summary">
+              {loading
+                ? "Loading albums..."
+                : `${searchresults.length} album${searchresults.length === 1 ? "" : "s"} on page ${page}`}
+            </p>
+            <div className="profile-view-toggle search-view-toggle" aria-label="Search results view">
+              <button
+                className={viewMode === "grid" ? "profile-view-toggle-active" : ""}
+                type="button"
+                onClick={() => updateView("grid")}
+              >
+                Grid
+              </button>
+              <button
+                className={viewMode === "list" ? "profile-view-toggle-active" : ""}
+                type="button"
+                onClick={() => updateView("list")}
+              >
+                List
+              </button>
+              <button
+                className={viewMode === "graph" ? "profile-view-toggle-active" : ""}
+                type="button"
+                onClick={() => updateView("graph")}
+              >
+                Graph
+              </button>
+            </div>
+          </div>
         </div>
 
         <AsyncState
@@ -100,17 +319,7 @@ export function SearchResults()
           errorTitle="Search unavailable"
           emptyTitle="No albums matched that search."
         >
-          <div className="results-grid">
-            {Array.isArray(searchresults) && searchresults.map((result) => (
-              // When a result is clicked, navigate to the album detail page using the album's ID
-              <article className="result-card" key={result.id} onClick={() => navigate(`/album/${result.id}`)}>
-                <img className="result-cover" src={result.cover} alt={`${result.title} cover`} />
-                <h3>{result.title}</h3>
-                <p>{result.artist}</p>
-                <span className="result-year">{result.year || "Year unknown"}</span>
-              </article>
-            ))}
-          </div>
+          {renderResults()}
         </AsyncState>
 
         {query && (page > 1 || hasNextPage) && (
@@ -132,6 +341,7 @@ export function SearchResults()
             </button>
           </div>
         )}
+
     </section>
   )
 

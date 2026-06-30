@@ -77,6 +77,9 @@ function Navbar()
                                 <li className="nav-item">
                                     <Link to="/boards" className="nav-link active">Boards</Link>
                                 </li>
+                                <li className="nav-item">
+                                    <Link to="/search?view=graph" className="nav-link active">Explore</Link>
+                                </li>
                             </ul>
                         </div>
                         <div className="site-navbar-search">

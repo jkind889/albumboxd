@@ -29,6 +29,10 @@ const reviewSchema = new mongoose.Schema({
         required: true,
         min: 1,
         max: 5,
+        validate: {
+            validator: (value) => Number.isInteger(value * 2),
+            message: "Rating must be a whole or half number",
+        },
     },
     date: {
         type: Date,

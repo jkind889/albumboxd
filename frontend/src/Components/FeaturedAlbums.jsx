@@ -1,123 +1,102 @@
-import { API_BASE_URL } from "../config/api";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { API_BASE_URL } from "../config/api";
 
-export function FeaturedAlbums({ limit = 5 }) {
+function ArrowIcon() {
+    return (
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+            <path d="M5 12h13M13 6l6 6-6 6" />
+        </svg>
+    );
+}
+
+export function FeaturedAlbums({ limit = 24 }) {
     const [albums, setAlbums] = useState([]);
-    const [activeIndex, setActiveIndex] = useState(0);
+    const [activeAlbumId, setActiveAlbumId] = useState("");
+    const [status, setStatus] = useState("loading");
 
     useEffect(() => {
-        let isMounted = true;
+        const controller = new AbortController();
 
-        async function fetchFeaturedAlbums() {
+        async function fetchCatalogAlbums() {
             try {
-                const params = new URLSearchParams({ limit: String(limit) });
-                const res = await fetch(`${API_BASE_URL}/reviews/featured?${params.toString()}`);
+                setStatus("loading");
+                const params = new URLSearchParams({
+                    page: "1",
+                    limit: String(limit),
+                });
+                const response = await fetch(`${API_BASE_URL}/albums/catalog?${params.toString()}`, {
+                    signal: controller.signal,
+                });
 
-                if (!res.ok) {
-                    setAlbums([]);
-                    return;
+                if (!response.ok) {
+                    throw new Error("Catalog request failed");
                 }
 
-                const data = await res.json();
+                const data = await response.json();
+                const results = Array.isArray(data) ? data : data.results;
+                const nextAlbums = Array.isArray(results) ? results : [];
 
-                if (isMounted) {
-                    setAlbums(Array.isArray(data) ? data : []);
-                    setActiveIndex(0);
-                }
+                setAlbums(nextAlbums);
+                setActiveAlbumId(nextAlbums[2]?.id || nextAlbums[0]?.id || "");
+                setStatus(nextAlbums.length ? "ready" : "empty");
             } catch (error) {
-                console.error("Failed to fetch featured albums", error);
-
-                if (isMounted) {
+                if (error.name !== "AbortError") {
                     setAlbums([]);
-                    setActiveIndex(0);
+                    setStatus("error");
                 }
             }
         }
 
-        fetchFeaturedAlbums();
+        fetchCatalogAlbums();
 
-        return () => {
-            isMounted = false;
-        };
+        return () => controller.abort();
     }, [limit]);
 
-    const normalizedActiveIndex = albums.length ? Math.min(activeIndex, albums.length - 1) : 0;
-    const visibleAlbums = useMemo(() => {
-        if (!albums.length) {
-            return [];
-        }
-
-        return [-1, 0, 1].map((offset) => {
-            const index = (normalizedActiveIndex + offset + albums.length) % albums.length;
-
-            return {
-                album: albums[index],
-                position: offset,
-            };
-        });
-    }, [normalizedActiveIndex, albums]);
-
-    if (!albums.length) {
-        return null;
-    }
-
-    const activeAlbum = albums[normalizedActiveIndex] || albums[0];
-
-    const moveCarousel = (step) => {
-        setActiveIndex((currentIndex) => (currentIndex + step + albums.length) % albums.length);
-    };
-
     return (
-        <div className="featured-carousel" aria-label="Featured albums">
-            <button
-                type="button"
-                className="featured-carousel-control featured-carousel-control-prev"
-                onClick={() => moveCarousel(-1)}
-                aria-label="Previous featured album"
-            >
-                &lt;
-            </button>
-
-            <div className="featured-carousel-stage">
-                {visibleAlbums.map(({ album, position }) => (
-                    <Link
-                        key={`${album.spotifyId}-${position}`}
-                        className={`featured-carousel-panel position-${position}`}
-                        to={`/album/${album.spotifyId}`}
-                        title={`${album.artist} - ${album.title}`}
-                        aria-hidden={position !== 0}
-                        tabIndex={position === 0 ? 0 : -1}
-                    >
-                        <img
-                            src={album.cover}
-                            alt={`${album.artist} - ${album.title}`}
-                            className="featured-carousel-cover"
-                        />
-                    </Link>
-                ))}
+        <aside className="featured-catalog" aria-labelledby="featured-catalog-title">
+            <div className="featured-catalog-heading">
+                <p id="featured-catalog-title">Album catalog</p>
+                <span>{albums.length ? String(albums.length).padStart(2, "0") : "—"}</span>
             </div>
 
-            <aside className="featured-carousel-info">
-                <p className="featured-carousel-kicker">Featured Album</p>
-                <h2>{activeAlbum.title}</h2>
-                <p>{activeAlbum.artist}</p>
-                <div className="featured-carousel-stats">
-                    <span>{Number(activeAlbum.averageRating || 0).toFixed(1)} avg</span>
-                    <span>{activeAlbum.reviewCount || 0} reviews</span>
-                    {activeAlbum.year && <span>{activeAlbum.year}</span>}
-                </div>
-            </aside>
+            <div className="featured-catalog-list">
+                {status === "loading" && (
+                    <div className="featured-catalog-message">Reading the catalog…</div>
+                )}
 
-            <button
-                type="button"
-                className="featured-carousel-control featured-carousel-control-next"
-                onClick={() => moveCarousel(1)}
-                aria-label="Next featured album"
-            >
-                &gt;
-            </button>
-        </div>
+                {status === "error" && (
+                    <div className="featured-catalog-message">The catalog is temporarily unavailable.</div>
+                )}
+
+                {status === "empty" && (
+                    <div className="featured-catalog-message">No albums have been cataloged yet.</div>
+                )}
+
+                {albums.map((album) => {
+                    const isActive = album.id === activeAlbumId;
+
+                    return (
+                        <Link
+                            className={`featured-catalog-row${isActive ? " is-active" : ""}`}
+                            key={album.id}
+                            to={`/album/${album.id}`}
+                            onMouseEnter={() => setActiveAlbumId(album.id)}
+                            onFocus={() => setActiveAlbumId(album.id)}
+                        >
+                            <span className="featured-catalog-copy">
+                                <strong>{album.title}</strong>
+                                <small>{album.artist}</small>
+                            </span>
+                            <span className="featured-catalog-year">{album.year || "—"}</span>
+                            <span className="featured-catalog-arrow">
+                                <ArrowIcon />
+                            </span>
+                        </Link>
+                    );
+                })}
+            </div>
+        </aside>
     );
 }
 
