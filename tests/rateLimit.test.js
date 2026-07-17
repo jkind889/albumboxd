@@ -385,6 +385,7 @@ test("cached album catalog hits do not consume the Spotify fallback bucket", asy
       findOne: async () => ({
         spotifyId: "spotify_album_123",
         title: "Kind of Blue",
+        detailMetadataVersion: 2,
         tracks: [{ spotifyId: "track_1" }],
       }),
     },

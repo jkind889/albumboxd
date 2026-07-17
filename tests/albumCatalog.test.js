@@ -49,7 +49,15 @@ test.beforeEach(() => {
   spotifyAlbum = {
     id: "spotify_album_123",
     name: "Kind of Blue",
-    artists: [{ name: "Miles Davis" }],
+    artists: [
+      {
+        id: "spotify_artist_miles",
+        name: "Miles Davis",
+        external_urls: {
+          spotify: "https://open.spotify.com/artist/spotify_artist_miles",
+        },
+      },
+    ],
     release_date: "1959-08-17",
     genres: ["jazz"],
     images: [{ url: "https://example.com/kind-of-blue.jpg" }],
@@ -67,6 +75,15 @@ test.beforeEach(() => {
           disc_number: 1,
           name: "So What",
           duration_ms: 545000,
+          artists: [
+            {
+              id: "spotify_artist_miles",
+              name: "Miles Davis",
+              external_urls: {
+                spotify: "https://open.spotify.com/artist/spotify_artist_miles",
+              },
+            },
+          ],
           external_urls: {
             spotify: "https://open.spotify.com/track/track_1",
           },
@@ -77,6 +94,22 @@ test.beforeEach(() => {
           disc_number: 1,
           name: "Freddie Freeloader",
           duration_ms: 589000,
+          artists: [
+            {
+              id: "spotify_artist_miles",
+              name: "Miles Davis",
+              external_urls: {
+                spotify: "https://open.spotify.com/artist/spotify_artist_miles",
+              },
+            },
+            {
+              id: "spotify_artist_cannonball",
+              name: "Cannonball Adderley",
+              external_urls: {
+                spotify: "https://open.spotify.com/artist/spotify_artist_cannonball",
+              },
+            },
+          ],
           external_urls: {
             spotify: "https://open.spotify.com/track/track_2",
           },
@@ -93,6 +126,14 @@ test("normalizeSpotifyAlbum stores track metadata from Spotify album payloads", 
 
   const normalized = normalizeSpotifyAlbum(spotifyAlbum);
 
+  assert.deepEqual(normalized.artistRefs, [
+    {
+      spotifyId: "spotify_artist_miles",
+      name: "Miles Davis",
+      spotifyUrl: "https://open.spotify.com/artist/spotify_artist_miles",
+    },
+  ]);
+
   assert.deepEqual(normalized.tracks, [
     {
       spotifyId: "track_1",
@@ -101,6 +142,13 @@ test("normalizeSpotifyAlbum stores track metadata from Spotify album payloads", 
       title: "So What",
       durationMs: 545000,
       spotifyUrl: "https://open.spotify.com/track/track_1",
+      artistRefs: [
+        {
+          spotifyId: "spotify_artist_miles",
+          name: "Miles Davis",
+          spotifyUrl: "https://open.spotify.com/artist/spotify_artist_miles",
+        },
+      ],
     },
     {
       spotifyId: "track_2",
@@ -109,8 +157,50 @@ test("normalizeSpotifyAlbum stores track metadata from Spotify album payloads", 
       title: "Freddie Freeloader",
       durationMs: 589000,
       spotifyUrl: "https://open.spotify.com/track/track_2",
+      artistRefs: [
+        {
+          spotifyId: "spotify_artist_miles",
+          name: "Miles Davis",
+          spotifyUrl: "https://open.spotify.com/artist/spotify_artist_miles",
+        },
+        {
+          spotifyId: "spotify_artist_cannonball",
+          name: "Cannonball Adderley",
+          spotifyUrl: "https://open.spotify.com/artist/spotify_artist_cannonball",
+        },
+      ],
     },
   ]);
+});
+
+test("normalizeSpotifyArtistRefs deduplicates stable ids and skips nameless credits", () => {
+  const { normalizeSpotifyArtistRefs } = loadAlbumCatalogHelper();
+
+  assert.deepEqual(normalizeSpotifyArtistRefs([
+    { id: "artist_1", name: " Artist One " },
+    { id: "artist_1", name: "Artist One Duplicate" },
+    { name: "Artist Two" },
+    { name: "artist two" },
+    { id: "missing_name" },
+  ]), [
+    { spotifyId: "artist_1", name: "Artist One", spotifyUrl: "" },
+    { spotifyId: "", name: "Artist Two", spotifyUrl: "" },
+  ]);
+});
+
+test("search results expose stable primary artist identity without removing legacy names", () => {
+  const {
+    normalizeSpotifyAlbumSummary,
+    toSearchResult,
+  } = loadAlbumCatalogHelper();
+  const summary = normalizeSpotifyAlbumSummary(spotifyAlbum);
+  const result = toSearchResult(summary);
+
+  assert.equal(summary.artist, "Miles Davis");
+  assert.deepEqual(summary.artists, ["Miles Davis"]);
+  assert.equal(summary.artistRefs[0].spotifyId, "spotify_artist_miles");
+  assert.equal(result.artistId, "spotify_artist_miles");
+  assert.deepEqual(result.artistRefs, summary.artistRefs);
 });
 
 test("search summaries do not overwrite detail enrichment fields", async () => {
@@ -123,11 +213,24 @@ test("search summaries do not overwrite detail enrichment fields", async () => {
   assert.equal("tracks" in summary, false);
   assert.equal("genres" in summary, false);
   assert.equal("label" in summary, false);
+  assert.equal("detailMetadataVersion" in summary, false);
 
   await upsertAlbumCatalog(summary);
 
   assert.deepEqual(findOneAndUpdateCalls[0].update.$set, summary);
   assert.equal("tracks" in findOneAndUpdateCalls[0].update.$set, false);
+});
+
+test("album detail versioning lazily refreshes legacy cached tracks", () => {
+  const { hasCurrentAlbumDetails } = loadAlbumCatalogHelper();
+
+  assert.equal(hasCurrentAlbumDetails({
+    tracks: [{ spotifyId: "legacy_track" }],
+  }), false);
+  assert.equal(hasCurrentAlbumDetails({
+    detailMetadataVersion: 2,
+    tracks: [{ spotifyId: "current_track" }],
+  }), true);
 });
 
 test("normalizeCatalogAlbum returns catalog tracks to the frontend", () => {
@@ -204,6 +307,7 @@ test("getOrCreateAlbumCatalog returns cached albums that already have tracks", a
     spotifyId: "spotify_album_123",
     title: "Kind of Blue",
     artist: "Miles Davis",
+    detailMetadataVersion: 2,
     tracks: [{ spotifyId: "track_1", title: "So What" }],
   };
 
@@ -229,6 +333,7 @@ test("getAlbumCatalogDetails returns a complete cached album without calling Spo
     spotifyId: "spotify_album_123",
     title: "Kind of Blue",
     artist: "Miles Davis",
+    detailMetadataVersion: 2,
     tracks: [{ spotifyId: "track_1", title: "So What" }],
   };
   const originalFetch = global.fetch;

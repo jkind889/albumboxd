@@ -1,5 +1,23 @@
 const mongoose = require("mongoose");
 
+const artistReferenceSchema = new mongoose.Schema(
+  {
+    spotifyId: {
+      type: String,
+      default: "",
+    },
+    name: {
+      type: String,
+      required: true,
+    },
+    spotifyUrl: {
+      type: String,
+      default: "",
+    },
+  },
+  { _id: false },
+);
+
 // Stores Spotify album data once so routes can read from Mongo before calling Spotify again.
 const albumCatalogSchema = new mongoose.Schema(
   {
@@ -18,6 +36,10 @@ const albumCatalogSchema = new mongoose.Schema(
     },
     artists: {
       type: [String],
+      default: [],
+    },
+    artistRefs: {
+      type: [artistReferenceSchema],
       default: [],
     },
     year: {
@@ -41,6 +63,10 @@ const albumCatalogSchema = new mongoose.Schema(
       default: null,
     },
     totalTracks: {
+      type: Number,
+      default: 0,
+    },
+    detailMetadataVersion: {
       type: Number,
       default: 0,
     },
@@ -71,6 +97,10 @@ const albumCatalogSchema = new mongoose.Schema(
             type: String,
             default: "",
           },
+          artistRefs: {
+            type: [artistReferenceSchema],
+            default: [],
+          },
         },
       ],
       default: [],
@@ -93,6 +123,8 @@ const albumCatalogSchema = new mongoose.Schema(
 
 albumCatalogSchema.index({ title: "text", artist: "text", artists: "text" });
 albumCatalogSchema.index({ artist: 1, title: 1 });
+albumCatalogSchema.index({ "artistRefs.spotifyId": 1 });
+albumCatalogSchema.index({ "tracks.artistRefs.spotifyId": 1 });
 
 const AlbumCatalog = mongoose.model("AlbumCatalog", albumCatalogSchema);
 

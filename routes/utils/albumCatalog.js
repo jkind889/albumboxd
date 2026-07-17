@@ -2,6 +2,37 @@ const AlbumCatalog = require("../../models/AlbumCatalog");
 const { getSpotifyAccessToken } = require("./spotify");
 const { consumeSpotifyRateLimit } = require("./rateLimit");
 
+const ALBUM_DETAIL_METADATA_VERSION = 2;
+
+function normalizeSpotifyArtistRefs(artists) {
+  const normalizedArtists = [];
+  const seenArtists = new Set();
+
+  for (const artist of Array.isArray(artists) ? artists : []) {
+    const name = String(artist?.name || "").trim();
+    const spotifyId = String(artist?.id || "").trim();
+
+    if (!name) {
+      continue;
+    }
+
+    const identityKey = spotifyId || name.toLowerCase();
+
+    if (seenArtists.has(identityKey)) {
+      continue;
+    }
+
+    seenArtists.add(identityKey);
+    normalizedArtists.push({
+      spotifyId,
+      name,
+      spotifyUrl: artist?.external_urls?.spotify || "",
+    });
+  }
+
+  return normalizedArtists;
+}
+
 // Search results contain summary metadata but not the tracks/detail enrichment.
 function normalizeSpotifyAlbumSummary(data) {
   return {
@@ -9,6 +40,7 @@ function normalizeSpotifyAlbumSummary(data) {
     title: data.name,
     artist: data.artists?.[0]?.name || "Unknown Artist",
     artists: data.artists?.map((artist) => artist.name) || [],
+    artistRefs: normalizeSpotifyArtistRefs(data.artists),
     year: data.release_date?.slice(0, 4) || "unknown",
     releaseDate: data.release_date || "",
     imgs: data.images || [],
@@ -23,6 +55,7 @@ function normalizeSpotifyAlbumSummary(data) {
 function normalizeSpotifyAlbum(data) {
   return {
     ...normalizeSpotifyAlbumSummary(data),
+    detailMetadataVersion: ALBUM_DETAIL_METADATA_VERSION,
     genres: data.genres || [],
     tracks: data.tracks?.items?.map((track) => ({
       spotifyId: track.id || "",
@@ -31,6 +64,7 @@ function normalizeSpotifyAlbum(data) {
       title: track.name || "",
       durationMs: track.duration_ms || 0,
       spotifyUrl: track.external_urls?.spotify || "",
+      artistRefs: normalizeSpotifyArtistRefs(track.artists),
     })) || [],
     label: data.label || "",
   };
@@ -46,6 +80,7 @@ function normalizeCatalogAlbum(album) {
     title: source.title,
     artist: source.artist,
     artists: source.artists || [],
+    artistRefs: source.artistRefs || [],
     year: source.year || "unknown",
     releaseDate: source.releaseDate || "",
     genres: source.genres || [],
@@ -59,6 +94,13 @@ function normalizeCatalogAlbum(album) {
   };
 }
 
+function hasCurrentAlbumDetails(album) {
+  return Boolean(
+    album?.tracks?.length
+      && Number(album.detailMetadataVersion || 0) >= ALBUM_DETAIL_METADATA_VERSION,
+  );
+}
+
 // Search dropdown/results only need a smaller album summary.
 function toSearchResult(album) {
   const normalized = normalizeCatalogAlbum(album);
@@ -67,6 +109,8 @@ function toSearchResult(album) {
     id: normalized.spotifyId,
     title: normalized.title,
     artist: normalized.artist,
+    artistId: normalized.artistRefs[0]?.spotifyId || "",
+    artistRefs: normalized.artistRefs,
     year: normalized.year,
     cover: normalized.cover,
   };
@@ -105,7 +149,7 @@ async function fetchSpotifyAlbum(spotifyId, options = {}) {
 async function getOrCreateAlbumCatalog(spotifyId, options = {}) {
   const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
 
-  if (cachedAlbum && cachedAlbum.tracks?.length) {
+  if (hasCurrentAlbumDetails(cachedAlbum)) {
     return cachedAlbum;
   }
 
@@ -117,7 +161,7 @@ async function getOrCreateAlbumCatalog(spotifyId, options = {}) {
 async function getAlbumCatalogDetails(spotifyId, options = {}) {
   const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
 
-  if (cachedAlbum?.tracks?.length) {
+  if (hasCurrentAlbumDetails(cachedAlbum)) {
     return {
       album: cachedAlbum,
       isPartial: false,
@@ -146,10 +190,13 @@ async function getAlbumCatalogDetails(spotifyId, options = {}) {
 }
 
 module.exports = {
+  ALBUM_DETAIL_METADATA_VERSION,
   fetchSpotifyAlbum,
   getAlbumCatalogDetails,
   getOrCreateAlbumCatalog,
+  hasCurrentAlbumDetails,
   normalizeCatalogAlbum,
+  normalizeSpotifyArtistRefs,
   normalizeSpotifyAlbum,
   normalizeSpotifyAlbumSummary,
   toSearchResult,

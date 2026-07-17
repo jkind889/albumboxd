@@ -149,6 +149,7 @@ test("GET /collections/collection lists populated catalog albums for the authent
       title: "Kind of Blue",
       artist: "Miles Davis",
       artists: ["Miles Davis"],
+      artistRefs: [],
       year: "1959",
       releaseDate: "",
       genres: [],
