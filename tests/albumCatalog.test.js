@@ -113,6 +113,23 @@ test("normalizeSpotifyAlbum stores track metadata from Spotify album payloads", 
   ]);
 });
 
+test("search summaries do not overwrite detail enrichment fields", async () => {
+  const {
+    normalizeSpotifyAlbumSummary,
+    upsertAlbumCatalog,
+  } = loadAlbumCatalogHelper();
+  const summary = normalizeSpotifyAlbumSummary(spotifyAlbum);
+
+  assert.equal("tracks" in summary, false);
+  assert.equal("genres" in summary, false);
+  assert.equal("label" in summary, false);
+
+  await upsertAlbumCatalog(summary);
+
+  assert.deepEqual(findOneAndUpdateCalls[0].update.$set, summary);
+  assert.equal("tracks" in findOneAndUpdateCalls[0].update.$set, false);
+});
+
 test("normalizeCatalogAlbum returns catalog tracks to the frontend", () => {
   const { normalizeCatalogAlbum } = loadAlbumCatalogHelper();
 

@@ -3,6 +3,9 @@ import {useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getApiErrorMessage } from "../utils/apiErrors";
 
+const MIN_SUGGESTION_QUERY_LENGTH = 2;
+const SUGGESTION_LIMIT = 5;
+
 export function SearchBar()
 {
     const [input, setInput] = useState("")
@@ -14,18 +17,25 @@ export function SearchBar()
 
   
     useEffect(() => {
+       const query = input.trim();
+
+       if (query.length < MIN_SUGGESTION_QUERY_LENGTH) {
+          setSuggestions([]);
+          setSuggestionError("");
+          setShowDropdown(false);
+          return undefined;
+       }
+
        const controller = new AbortController();
        const timeoutId = setTimeout(async () => {
-        if (!input.trim()) {
-            setSuggestions([]);
-            setSuggestionError("");
-            setShowDropdown(false);
-            return;
-        }
 
         try {
+          const searchParams = new URLSearchParams({
+            q: query,
+            limit: String(SUGGESTION_LIMIT),
+          });
           const response = await fetch(
-            `${API_BASE_URL}/search/search?q=${encodeURIComponent(input)}`,
+            `${API_BASE_URL}/search/search?${searchParams.toString()}`,
             { signal: controller.signal },
           );
 
@@ -34,7 +44,8 @@ export function SearchBar()
           }
 
           const data = await response.json();
-          setSuggestions(Array.isArray(data) ? data.slice(0, 5) : []);
+          const results = Array.isArray(data) ? data : data?.results;
+          setSuggestions(Array.isArray(results) ? results : []);
           setSuggestionError("");
         } catch (error) {
           if (error.name === "AbortError") {
@@ -44,12 +55,12 @@ export function SearchBar()
           setSuggestions([]);
           setSuggestionError(error.message || "Could not load search suggestions.");
         }
-          }, 200); // Add a debounce delay of 200ms before making the API call
+          }, 200); // Wait briefly so fast typing does not trigger a request per keystroke.
 
           return () => {
             clearTimeout(timeoutId);
             controller.abort();
-          }; // Clear the pending request if the input changes before it completes
+          }; // Clear the pending request if the input changes before it completes.
         }, [input]);
 
         useEffect(() => {

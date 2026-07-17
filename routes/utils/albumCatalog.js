@@ -2,8 +2,8 @@ const AlbumCatalog = require("../../models/AlbumCatalog");
 const { getSpotifyAccessToken } = require("./spotify");
 const { consumeSpotifyRateLimit } = require("./rateLimit");
 
-// Converts raw Spotify album payloads into the fields AlbumBoxd stores in Mongo.
-function normalizeSpotifyAlbum(data) {
+// Search results contain summary metadata but not the tracks/detail enrichment.
+function normalizeSpotifyAlbumSummary(data) {
   return {
     spotifyId: data.id,
     title: data.name,
@@ -11,10 +11,19 @@ function normalizeSpotifyAlbum(data) {
     artists: data.artists?.map((artist) => artist.name) || [],
     year: data.release_date?.slice(0, 4) || "unknown",
     releaseDate: data.release_date || "",
-    genres: data.genres || [],
     imgs: data.images || [],
     cover: data.images?.[0]?.url || null,
     totalTracks: data.total_tracks || 0,
+    albumType: data.album_type || "album",
+    spotifyUrl: data.external_urls?.spotify || "",
+  };
+}
+
+// Full album payloads enrich the cached summary when album details are requested.
+function normalizeSpotifyAlbum(data) {
+  return {
+    ...normalizeSpotifyAlbumSummary(data),
+    genres: data.genres || [],
     tracks: data.tracks?.items?.map((track) => ({
       spotifyId: track.id || "",
       trackNumber: track.track_number || 0,
@@ -24,8 +33,6 @@ function normalizeSpotifyAlbum(data) {
       spotifyUrl: track.external_urls?.spotify || "",
     })) || [],
     label: data.label || "",
-    albumType: data.album_type || "album",
-    spotifyUrl: data.external_urls?.spotify || "",
   };
 }
 
@@ -144,6 +151,7 @@ module.exports = {
   getOrCreateAlbumCatalog,
   normalizeCatalogAlbum,
   normalizeSpotifyAlbum,
+  normalizeSpotifyAlbumSummary,
   toSearchResult,
   upsertAlbumCatalog,
 };

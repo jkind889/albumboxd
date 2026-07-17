@@ -268,7 +268,7 @@ test("Spotify fallback limiter blocks remote search before Spotify is called", a
     filename: albumCatalogHelperPath,
     loaded: true,
     exports: {
-      normalizeSpotifyAlbum: (album) => album,
+      normalizeSpotifyAlbumSummary: (album) => album,
       toSearchResult: (album) => album,
       upsertAlbumCatalog: async (album) => album,
     },
@@ -341,7 +341,7 @@ test("local-filled search does not consume the Spotify fallback bucket", async (
     filename: albumCatalogHelperPath,
     loaded: true,
     exports: {
-      normalizeSpotifyAlbum: (album) => album,
+      normalizeSpotifyAlbumSummary: (album) => album,
       toSearchResult: (album) => ({ id: album.spotifyId, title: album.title }),
       upsertAlbumCatalog: async (album) => album,
     },
