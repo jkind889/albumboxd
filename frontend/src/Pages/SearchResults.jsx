@@ -1,9 +1,9 @@
 import { API_BASE_URL } from "../config/api";
 import { memo, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { useSearchParams } from "react-router-dom";     
+import { Link, useSearchParams } from "react-router-dom";
 import { ReactFlow, Background, Controls, Handle, Position } from "@xyflow/react";
 import AsyncState from "../Components/Loading/AsyncState";
+import RelatedArtistInspector from "../Components/RelatedArtistInspector";
 import { getApiErrorMessage } from "../utils/apiErrors";
 import "@xyflow/react/dist/style.css";
 
@@ -59,28 +59,78 @@ function getArtistLabel(album) {
   return album.artist || "Unknown artist";
 }
 
-function getArtistNodeId(artistLabel) {
-  return `artist:${artistLabel}`;
+function getPrimaryArtistIdentity(album) {
+  const label = getArtistLabel(album);
+  const primarySpotifyId = String(
+    album.artistId || album.artistRefs?.[0]?.spotifyId || "",
+  ).trim();
+
+  return {
+    key: primarySpotifyId ? `spotify:${primarySpotifyId}` : `name:${label}`,
+    label,
+  };
+}
+
+function getArtistNodeId(artistKey) {
+  return `artist:${artistKey}`;
+}
+
+function getInspectableArtists(results) {
+  const artistsBySpotifyId = new Map();
+
+  for (const album of Array.isArray(results) ? results : []) {
+    const artistRefs = Array.isArray(album.artistRefs) ? album.artistRefs : [];
+
+    for (const artistRef of artistRefs) {
+      const spotifyId = String(artistRef?.spotifyId || "").trim();
+
+      if (!spotifyId || artistsBySpotifyId.has(spotifyId)) {
+        continue;
+      }
+
+      artistsBySpotifyId.set(spotifyId, {
+        spotifyId,
+        name: String(artistRef.name || album.artist || "Unknown artist").trim(),
+      });
+    }
+
+    const primarySpotifyId = String(album.artistId || "").trim();
+
+    if (primarySpotifyId && !artistsBySpotifyId.has(primarySpotifyId)) {
+      artistsBySpotifyId.set(primarySpotifyId, {
+        spotifyId: primarySpotifyId,
+        name: String(album.artist || "Unknown artist").trim(),
+      });
+    }
+  }
+
+  return [...artistsBySpotifyId.values()];
 }
 
 function buildGraphElements(results) {
-  const uniqueArtists = [...new Set(results.map((album) => getArtistLabel(album)))];
-  const albumsByArtist = new Map();
+  const artistsByKey = new Map();
 
   for (const album of results) {
-    const artistLabel = getArtistLabel(album);
-    albumsByArtist.set(artistLabel, (albumsByArtist.get(artistLabel) || 0) + 1);
+    const artist = getPrimaryArtistIdentity(album);
+    const existingArtist = artistsByKey.get(artist.key);
+
+    artistsByKey.set(artist.key, {
+      ...artist,
+      albumCount: (existingArtist?.albumCount || 0) + 1,
+    });
   }
 
   let nextArtistX = GRAPH_START_X;
   const artistLayouts = new Map();
 
-  for (const artistLabel of uniqueArtists) {
-    const albumCount = albumsByArtist.get(artistLabel) || 1;
-    const columnCount = Math.max(1, Math.ceil(albumCount / GRAPH_ALBUMS_PER_COLUMN));
+  for (const artist of artistsByKey.values()) {
+    const columnCount = Math.max(
+      1,
+      Math.ceil(artist.albumCount / GRAPH_ALBUMS_PER_COLUMN),
+    );
     const groupWidth = (columnCount - 1) * GRAPH_ALBUM_COLUMN_GAP;
 
-    artistLayouts.set(artistLabel, {
+    artistLayouts.set(artist.key, {
       startX: nextArtistX,
       centerX: nextArtistX + (groupWidth / 2),
     });
@@ -88,17 +138,17 @@ function buildGraphElements(results) {
     nextArtistX += (columnCount * GRAPH_ALBUM_COLUMN_GAP) + GRAPH_ARTIST_GROUP_GAP;
   }
 
-  const artistNodes = uniqueArtists.map((artistLabel) => {
-    const layout = artistLayouts.get(artistLabel);
+  const artistNodes = [...artistsByKey.values()].map((artist) => {
+    const layout = artistLayouts.get(artist.key);
 
     return {
-      id: getArtistNodeId(artistLabel),
+      id: getArtistNodeId(artist.key),
       position: {
         x: layout.centerX,
         y: GRAPH_ARTIST_Y,
       },
       data: {
-        label: artistLabel,
+        label: artist.label,
       },
       type: "artistNode",
     };
@@ -106,13 +156,13 @@ function buildGraphElements(results) {
 
   const artistAlbumIndexes = new Map();
   const albumNodes = results.map((album) => {
-    const artistLabel = getArtistLabel(album);
-    const albumIndexForArtist = artistAlbumIndexes.get(artistLabel) || 0;
-    const layout = artistLayouts.get(artistLabel);
+    const artist = getPrimaryArtistIdentity(album);
+    const albumIndexForArtist = artistAlbumIndexes.get(artist.key) || 0;
+    const layout = artistLayouts.get(artist.key);
     const column = Math.floor(albumIndexForArtist / GRAPH_ALBUMS_PER_COLUMN);
     const row = albumIndexForArtist % GRAPH_ALBUMS_PER_COLUMN;
 
-    artistAlbumIndexes.set(artistLabel, albumIndexForArtist + 1);
+    artistAlbumIndexes.set(artist.key, albumIndexForArtist + 1);
 
     return {
       id: album.id,
@@ -122,7 +172,7 @@ function buildGraphElements(results) {
       },
       data: {
         title: album.title,
-        artist: artistLabel,
+        artist: artist.label,
         cover: album.cover,
         id: album.id,
       },
@@ -131,11 +181,11 @@ function buildGraphElements(results) {
   });
 
   const edges = results.map((album) => {
-    const artistLabel = getArtistLabel(album);
+    const artist = getPrimaryArtistIdentity(album);
 
     return {
-      id: `${getArtistNodeId(artistLabel)}-${album.id}`,
-      source: getArtistNodeId(artistLabel),
+      id: `${getArtistNodeId(artist.key)}-${album.id}`,
+      source: getArtistNodeId(artist.key),
       target: album.id,
     };
   });
@@ -148,21 +198,29 @@ function buildGraphElements(results) {
 
 function SearchResultsGraph({ results }) {
   const graph = useMemo(() => buildGraphElements(results), [results]);
+  const inspectableArtists = useMemo(() => getInspectableArtists(results), [results]);
+  const artistSignature = inspectableArtists.map((artist) => artist.spotifyId).join(":");
 
   return (
-    <div className="explore-flow-shell">
-      <ReactFlow
-        nodes={graph.nodes}
-        edges={graph.edges}
-        nodeTypes={nodeTypes}
-        colorMode="dark"
-        fitView
-        nodesDraggable={false}
-      >
-        <Background color="#2f3035" gap={28} />
-        <Controls />
-      </ReactFlow>
-    </div>
+    <>
+      <RelatedArtistInspector
+        key={artistSignature}
+        artists={inspectableArtists}
+      />
+      <div className="explore-flow-shell">
+        <ReactFlow
+          nodes={graph.nodes}
+          edges={graph.edges}
+          nodeTypes={nodeTypes}
+          colorMode="dark"
+          fitView
+          nodesDraggable={false}
+        >
+          <Background color="#2f3035" gap={28} />
+          <Controls />
+        </ReactFlow>
+      </div>
+    </>
   );
 }
 

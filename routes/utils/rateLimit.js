@@ -25,6 +25,12 @@ const RATE_LIMITS = {
     duration: 60,
     message: "Too many searches. Please slow down and try again soon.",
   },
+  relatedArtist: {
+    keyPrefix: "albumboxd:related-artist",
+    points: 30,
+    duration: 10 * 60,
+    message: "Too many related-artist lookups. Please try again soon.",
+  },
   albumSave: {
     keyPrefix: "albumboxd:album-save",
     points: 30,
@@ -177,6 +183,7 @@ function createRateLimitMiddleware(limiter, options = {}) {
 const globalApiLimiter = createRateLimiter(RATE_LIMITS.globalApi);
 const spotifyFallbackLimiter = createRateLimiter(RATE_LIMITS.spotifyFallback);
 const searchLimiter = createRateLimiter(RATE_LIMITS.search);
+const relatedArtistLimiter = createRateLimiter(RATE_LIMITS.relatedArtist);
 const albumSaveLimiter = createRateLimiter(RATE_LIMITS.albumSave);
 const reviewCreateLimiter = createRateLimiter(RATE_LIMITS.reviewCreate);
 const reviewMutationLimiter = createRateLimiter(RATE_LIMITS.reviewMutation);
@@ -223,6 +230,10 @@ module.exports = {
   reviewMutationRateLimit: createRateLimitMiddleware(reviewMutationLimiter, {
     keyGenerator: getAuthenticatedUserRateLimitKey,
     message: RATE_LIMITS.reviewMutation.message,
+  }),
+  relatedArtistRateLimit: createRateLimitMiddleware(relatedArtistLimiter, {
+    keyGenerator: getUserOrIpRateLimitKey,
+    message: RATE_LIMITS.relatedArtist.message,
   }),
   searchRateLimit: createRateLimitMiddleware(searchLimiter, {
     keyGenerator: getIpRateLimitKey,

@@ -2553,6 +2553,267 @@ html:has(.search-results-page) .search-submit {
   fill: currentColor;
 }
 
+.related-artist-inspector {
+  --inspector-accent: #b391d1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--explore-line);
+  background: #050505;
+  color: #e5e5e5;
+}
+
+.related-artist-inspector > * {
+  min-width: 0;
+}
+
+.related-artist-inspector-header {
+  display: flex;
+  gap: 1rem;
+  align-items: end;
+  justify-content: space-between;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--search-line);
+}
+
+.related-artist-inspector-header p,
+.related-artist-inspector-header h3,
+.related-artist-inspector-header span {
+  margin: 0;
+}
+
+.related-artist-inspector-header p,
+.related-artist-inspector-controls label,
+.related-artist-inspector-metadata dt {
+  color: var(--inspector-accent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.related-artist-inspector-header h3 {
+  margin-top: 0.2rem;
+  color: #efefef;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.related-artist-inspector-header > span,
+.related-artist-inspector-prompt {
+  color: var(--explore-muted);
+  font-size: 0.72rem;
+}
+
+.related-artist-inspector-controls {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.related-artist-inspector-controls select,
+.related-artist-inspector-controls button {
+  min-height: 38px;
+  border: 1px solid var(--explore-line);
+  border-radius: 0;
+  background: #050505;
+  color: #e5e5e5;
+  font: inherit;
+}
+
+.related-artist-inspector-controls select {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+}
+
+.related-artist-inspector-controls button {
+  padding: 0.5rem 0.9rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.related-artist-inspector-controls select:focus,
+.related-artist-inspector-controls button:focus-visible,
+.related-artist-inspector-controls button:hover:not(:disabled) {
+  border-color: var(--inspector-accent);
+  background: #101010;
+  outline: none;
+}
+
+.related-artist-inspector-controls button:disabled,
+.related-artist-inspector-controls select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.related-artist-inspector-prompt {
+  margin: 0;
+  padding: 1rem;
+  border: 1px dashed var(--search-line);
+  line-height: 1.5;
+}
+
+.related-artist-inspector-results {
+  display: grid;
+  gap: 1rem;
+}
+
+.related-artist-inspector-metadata {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  border-top: 1px solid var(--search-line);
+  border-left: 1px solid var(--search-line);
+}
+
+.related-artist-inspector-metadata > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.22rem;
+  padding: 0.75rem;
+  border-right: 1px solid var(--search-line);
+  border-bottom: 1px solid var(--search-line);
+}
+
+.related-artist-inspector-metadata dd,
+.related-artist-inspector-metadata dd strong,
+.related-artist-inspector-metadata code,
+.related-artist-inspector-metadata span {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.related-artist-inspector-metadata dd {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.related-artist-inspector-metadata dd strong {
+  color: #efefef;
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.related-artist-inspector-metadata code,
+.related-artist-inspector-metadata span {
+  color: var(--explore-muted);
+  font-family: inherit;
+  font-size: 0.72rem;
+}
+
+.related-artist-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.related-artist-card {
+  display: grid;
+  min-width: 0;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid var(--search-line);
+  background: #050505;
+}
+
+.related-artist-card-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.related-artist-card-heading span,
+.related-artist-card-heading em {
+  color: var(--inspector-accent);
+  font-size: 0.7rem;
+  font-style: normal;
+}
+
+.related-artist-card-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #efefef;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.related-artist-card p,
+.related-artist-card code {
+  margin: 0;
+  color: var(--explore-muted);
+  font-family: inherit;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.related-artist-card code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.related-artist-card-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.related-artist-card-facts span {
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--search-line);
+  color: #b8b8b8;
+  font-size: 0.68rem;
+}
+
+.related-artist-json {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--search-line);
+  background: #000000;
+}
+
+.related-artist-json summary {
+  padding: 0.7rem;
+  color: #d8d8d8;
+  cursor: pointer;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.related-artist-json pre {
+  max-height: 360px;
+  margin: 0;
+  padding: 0.8rem;
+  overflow: auto;
+  border-top: 1px solid var(--search-line);
+  color: #b8b8b8;
+  font-family: inherit;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .explore-album-node,
 .explore-artist-node {
   box-sizing: border-box;
@@ -5571,6 +5832,24 @@ html:has(.search-results-page) .search-submit {
 
   .explore-flow-shell {
     min-height: 440px;
+  }
+
+  .related-artist-inspector-header {
+    display: grid;
+    align-items: start;
+  }
+
+  .related-artist-inspector-controls,
+  .related-artist-inspector-metadata {
+    grid-template-columns: 1fr;
+  }
+
+  .related-artist-inspector-controls label {
+    margin-bottom: -0.3rem;
+  }
+
+  .related-artist-card-grid {
+    grid-template-columns: 1fr;
   }
 
   .results-list .result-card {

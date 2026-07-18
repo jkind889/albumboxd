@@ -3,9 +3,7 @@ const packageJson = require("../../package.json");
 
 const MUSICBRAINZ_API_BASE_URL = "https://musicbrainz.org/ws/2";
 const DEFAULT_MUSICBRAINZ_CONTACT = "https://github.com/jkind889/albumboxd";
-const RESOLVED_MAPPING_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const NOT_FOUND_MAPPING_TTL_MS = 24 * 60 * 60 * 1000;
-const STALE_REFRESH_BACKOFF_MS = 60 * 60 * 1000;
 const MUSICBRAINZ_REQUEST_INTERVAL_MS = 1100;
 const MUSICBRAINZ_REQUEST_TIMEOUT_MS = 8000;
 const MUSICBRAINZ_MAX_ATTEMPTS = 2;
@@ -277,31 +275,19 @@ async function fetchArtistBySpotifyUrl(spotifyUrl, options = {}) {
   return null;
 }
 
-function getMappingTtlMs(mappingStatus) {
-  return mappingStatus === "resolved"
-    ? RESOLVED_MAPPING_TTL_MS
-    : NOT_FOUND_MAPPING_TTL_MS;
-}
-
 function isFreshArtistMapping(artist, now = new Date()) {
-  if (!artist || !["resolved", "not_found"].includes(artist.mappingStatus)) {
+  if (artist?.mappingStatus === "resolved") {
+    return Boolean(artist.musicBrainzId);
+  }
+
+  if (artist?.mappingStatus !== "not_found") {
     return false;
   }
 
   const lastAttemptAt = new Date(artist.lastResolutionAttemptAt || 0).getTime();
 
   return Number.isFinite(lastAttemptAt)
-    && now.getTime() - lastAttemptAt < getMappingTtlMs(artist.mappingStatus);
-}
-
-function hasRecentResolutionFailure(artist, now = new Date()) {
-  if (artist?.mappingStatus !== "resolved" || !artist.lastResolutionFailureAt) {
-    return false;
-  }
-
-  const failedAt = new Date(artist.lastResolutionFailureAt).getTime();
-  return Number.isFinite(failedAt)
-    && now.getTime() - failedAt < STALE_REFRESH_BACKOFF_MS;
+    && now.getTime() - lastAttemptAt < NOT_FOUND_MAPPING_TTL_MS;
 }
 
 function normalizeArtistCatalog(artist) {
@@ -339,13 +325,6 @@ async function resolveArtist(input, spotifyId, options) {
     };
   }
 
-  if (!options.force && hasRecentResolutionFailure(cachedArtist, now)) {
-    return {
-      artist: normalizeArtistCatalog(cachedArtist),
-      cacheStatus: "stale",
-    };
-  }
-
   // MusicBrainz URL resources are exact: Spotify share parameters and trailing
   // slashes return 404, so always resolve with the canonical artist URL.
   const spotifyUrl = buildSpotifyArtistUrl(spotifyId);
@@ -364,26 +343,6 @@ async function resolveArtist(input, spotifyId, options) {
         $set: {
           lastResolutionFailureAt: now,
           lastResolutionError: error.name,
-        },
-      },
-      { returnDocument: "after" },
-    );
-
-    return {
-      artist: normalizeArtistCatalog(staleArtist || cachedArtist),
-      cacheStatus: "stale",
-    };
-  }
-
-  // A previously confirmed URL mapping is safer than a single later 404. Keep
-  // serving it and back off refreshes unless a forced refresh confirms removal.
-  if (!resolvedArtist && cachedArtist?.mappingStatus === "resolved" && !options.force) {
-    const staleArtist = await ArtistCatalog.findOneAndUpdate(
-      { spotifyId },
-      {
-        $set: {
-          lastResolutionFailureAt: now,
-          lastResolutionError: "not_found",
         },
       },
       { returnDocument: "after" },
@@ -489,7 +448,6 @@ module.exports = {
   fetchArtistBySpotifyUrl,
   getMusicBrainzUserAgent,
   getOrResolveArtist,
-  hasRecentResolutionFailure,
   isFreshArtistMapping,
   isRetryableMusicBrainzError,
   normalizeArtistCatalog,

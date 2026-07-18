@@ -241,7 +241,7 @@ test("MusicBrainz lookup times out a hung provider request", async () => {
   );
 });
 
-test("getOrResolveArtist returns a fresh cached mapping without a provider request", async () => {
+test("getOrResolveArtist treats a confirmed MBID as durable without provider revalidation", async () => {
   cachedArtist = {
     spotifyId: SPOTIFY_ARTIST_ID,
     spotifyUrl: `https://open.spotify.com/artist/${SPOTIFY_ARTIST_ID}`,
@@ -250,7 +250,7 @@ test("getOrResolveArtist returns a fresh cached mapping without a provider reque
     mappingStatus: "resolved",
     mappingSource: "spotify-url",
     mappingConfidence: 1,
-    lastResolutionAttemptAt: new Date("2026-07-10T12:00:00.000Z"),
+    lastResolutionAttemptAt: new Date("2020-01-01T00:00:00.000Z"),
   };
   const { getOrResolveArtist } = loadMusicBrainzHelper();
 
@@ -324,35 +324,6 @@ test("getOrResolveArtist stores an exact URL mapping on a cache miss", async () 
   assert.equal(findOneAndUpdateCalls[0].options.upsert, true);
 });
 
-test("getOrResolveArtist preserves a stale confirmed MBID after one later 404", async () => {
-  cachedArtist = {
-    spotifyId: SPOTIFY_ARTIST_ID,
-    spotifyUrl: `https://open.spotify.com/artist/${SPOTIFY_ARTIST_ID}`,
-    name: "Radiohead",
-    musicBrainzId: "stale-mbid",
-    musicBrainzName: "Stale Radiohead",
-    mappingStatus: "resolved",
-    mappingConfidence: 1,
-    lastResolutionAttemptAt: new Date("2026-05-01T12:00:00.000Z"),
-  };
-  const { getOrResolveArtist } = loadMusicBrainzHelper();
-
-  const result = await getOrResolveArtist(
-    { spotifyId: SPOTIFY_ARTIST_ID, name: "Radiohead" },
-    {
-      now: NOW,
-      skipScheduling: true,
-      fetchImpl: async () => jsonResponse({}, { ok: false, status: 404 }),
-    },
-  );
-
-  assert.equal(result.cacheStatus, "stale");
-  assert.equal(result.artist.mappingStatus, "resolved");
-  assert.equal(result.artist.musicBrainzId, "stale-mbid");
-  assert.equal(findOneAndUpdateCalls[0].update.$set.lastResolutionError, "not_found");
-  assert.equal(findOneAndUpdateCalls[0].update.$unset, undefined);
-});
-
 test("getOrResolveArtist can force-confirm removal of a stale MBID", async () => {
   cachedArtist = {
     spotifyId: SPOTIFY_ARTIST_ID,
@@ -397,6 +368,7 @@ test("getOrResolveArtist serves stale data after a transient refresh failure", a
   const result = await getOrResolveArtist(
     { spotifyId: SPOTIFY_ARTIST_ID, name: "Radiohead" },
     {
+      force: true,
       now: NOW,
       skipScheduling: true,
       maxAttempts: 1,

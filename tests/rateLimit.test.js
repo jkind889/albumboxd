@@ -87,6 +87,7 @@ function setRateLimitMock(overrides = {}) {
     getUserOrIpRateLimitKey: () => "ip:test",
     isRateLimitError: (error) => error?.code === "RATE_LIMITED",
     likeMutationRateLimit: passRateLimit,
+    relatedArtistRateLimit: passRateLimit,
     reviewCreateRateLimit: passRateLimit,
     reviewMutationRateLimit: passRateLimit,
     searchRateLimit: passRateLimit,
