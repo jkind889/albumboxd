@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import "./App.css";
 import SearchResults from "./Pages/SearchResults";
@@ -13,15 +13,8 @@ import ProfileNetwork from "./Pages/ProfileNetwork";
 import Boards from "./Pages/Boards";
 import BoardDetail from "./Pages/BoardDetail";
 import Notifications from "./Pages/Notifications";
+import Explore from "./Pages/Explore";
 import ProtectedRoute from "./Components/ProtectedRoute";
-
-function ExploreRedirect() {
-  const location = useLocation();
-  const searchParams = new URLSearchParams(location.search);
-  searchParams.set("view", "graph");
-
-  return <Navigate to={`/search?${searchParams.toString()}`} replace />;
-}
 
 export function App() {
    return (
@@ -34,7 +27,7 @@ export function App() {
             <Route path="/albums" element={<Albums />} />
             <Route path="/boards" element={<Boards />} />
             <Route path="/boards/:boardId" element={<BoardDetail />} />
-            <Route path="/explore" element={<ExploreRedirect />} />
+            <Route path="/explore" element={<Explore />} />
             <Route
               path="/collection"
               element={<Navigate to="/account" state={{ activeTab: "saved" }} replace />}

@@ -78,7 +78,7 @@ function Navbar()
                                     <Link to="/boards" className="nav-link active">Boards</Link>
                                 </li>
                                 <li className="nav-item">
-                                    <Link to="/search?view=graph" className="nav-link active">Explore</Link>
+                                    <Link to="/explore" className="nav-link active">Explore</Link>
                                 </li>
                             </ul>
                         </div>
@@ -86,6 +86,7 @@ function Navbar()
                             <SearchBar />
                         </div>
                         <div className="nav navbar-right site-navbar-actions">
+                            <Link to="/explore" className="nav-link site-nav-explore-mobile">Explore</Link>
                             <Show when="signed-out">
                                 <SignInButton mode="modal">
                                     <button type="button" className="nav-auth-button nav-auth-button-secondary">

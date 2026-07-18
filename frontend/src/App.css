@@ -157,6 +157,10 @@ body {
   background: transparent;
 }
 
+.site-nav-explore-mobile {
+  display: none !important;
+}
+
 .nav-auth-button:hover {
   border-color: var(--app-accent);
   background: var(--app-surface-strong);
@@ -6787,6 +6791,10 @@ html:has(.search-results-page) .search-submit {
 @media (max-width: 980px) {
   .site-header .navbar-collapse.site-navbar-left {
     display: none !important;
+  }
+
+  .site-nav-explore-mobile {
+    display: inline-flex !important;
   }
 }
 
