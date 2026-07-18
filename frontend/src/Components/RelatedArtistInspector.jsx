@@ -1,22 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { API_BASE_URL } from "../config/api";
-import { getApiErrorMessage } from "../utils/apiErrors";
+import { fetchSimilarArtists } from "../utils/relatedArtists";
 import AsyncState from "./Loading/AsyncState";
-
-const RELATED_ARTIST_LIMIT = 12;
-
-async function fetchSimilarArtists(spotifyArtistId, { signal } = {}) {
-  const response = await fetch(
-    `${API_BASE_URL}/explore/artists/${encodeURIComponent(spotifyArtistId)}/similar?limit=${RELATED_ARTIST_LIMIT}`,
-    { signal },
-  );
-
-  if (!response.ok) {
-    throw new Error(await getApiErrorMessage(response, "Related artists request failed"));
-  }
-
-  return response.json();
-}
 
 function formatWeight(value) {
   const weight = Number(value);
