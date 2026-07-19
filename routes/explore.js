@@ -1,6 +1,7 @@
 const express = require("express");
 const AlbumCatalog = require("../models/AlbumCatalog");
 const ArtistCatalog = require("../models/ArtistCatalog");
+const { getArtistCollaborations } = require("./utils/artistCollaborations");
 const {
   ListenBrainzBackoffError,
   ListenBrainzBusyError,
@@ -13,6 +14,8 @@ const router = express.Router();
 const SPOTIFY_ARTIST_ID_PATTERN = /^[A-Za-z0-9]{22}$/;
 const DEFAULT_SIMILAR_ARTIST_LIMIT = 12;
 const MAX_SIMILAR_ARTIST_LIMIT = 50;
+const DEFAULT_COLLABORATION_ALBUM_LIMIT = 3;
+const MAX_COLLABORATION_ALBUM_LIMIT = 6;
 
 function getAlbumArtistReference(album, spotifyArtistId) {
   const source = typeof album?.toObject === "function" ? album.toObject() : album;
@@ -35,6 +38,21 @@ function parseSimilarArtistLimit(value) {
 
   const parsedLimit = Number.parseInt(value, 10);
   return parsedLimit >= 1 && parsedLimit <= MAX_SIMILAR_ARTIST_LIMIT
+    ? parsedLimit
+    : null;
+}
+
+function parseCollaborationAlbumLimit(value) {
+  if (value === undefined || value === null || value === "") {
+    return DEFAULT_COLLABORATION_ALBUM_LIMIT;
+  }
+
+  if (!/^\d+$/.test(String(value))) {
+    return null;
+  }
+
+  const parsedLimit = Number.parseInt(value, 10);
+  return parsedLimit >= 1 && parsedLimit <= MAX_COLLABORATION_ALBUM_LIMIT
     ? parsedLimit
     : null;
 }
@@ -94,6 +112,79 @@ async function hydrateSpotifyMappings(neighbors) {
     spotifyArtists: mappingsByMusicBrainzId.get(neighbor.musicBrainzId) || [],
   }));
 }
+
+router.get(
+  "/artists/:seedSpotifyId/collaborations/:collaboratorSpotifyId",
+  async (req, res) => {
+    const seedSpotifyId = String(req.params.seedSpotifyId || "").trim();
+    const collaboratorSpotifyId = String(
+      req.params.collaboratorSpotifyId || "",
+    ).trim();
+    const limit = parseCollaborationAlbumLimit(req.query.limit);
+
+    if (!isValidSpotifyArtistId(seedSpotifyId)) {
+      return res.status(400).json({
+        error: "A valid seed Spotify artist id is required",
+      });
+    }
+
+    if (!isValidSpotifyArtistId(collaboratorSpotifyId)) {
+      return res.status(400).json({
+        error: "A valid collaborator Spotify artist id is required",
+      });
+    }
+
+    if (seedSpotifyId === collaboratorSpotifyId) {
+      return res.status(400).json({
+        error: "Seed and collaborator Spotify artist ids must be different",
+      });
+    }
+
+    if (limit === null) {
+      return res.status(400).json({
+        error: `limit must be an integer between 1 and ${MAX_COLLABORATION_ALBUM_LIMIT}`,
+      });
+    }
+
+    let seedArtistReference;
+
+    try {
+      seedArtistReference = await findIndexedArtistReference(seedSpotifyId);
+    } catch (error) {
+      console.error(
+        `Artist catalog lookup failed for ${seedSpotifyId}:`,
+        error.message,
+      );
+      return res.status(503).json({
+        error: "Artist catalog is temporarily unavailable",
+      });
+    }
+
+    if (!seedArtistReference) {
+      return res.status(404).json({
+        error: "Artist has not been indexed in the album catalog yet",
+      });
+    }
+
+    try {
+      const result = await getArtistCollaborations({
+        seedSpotifyId,
+        collaboratorSpotifyId,
+        limit,
+      });
+
+      return res.json(result);
+    } catch (error) {
+      console.error(
+        `Collaboration catalog lookup failed for ${seedSpotifyId} and ${collaboratorSpotifyId}:`,
+        error.message,
+      );
+      return res.status(503).json({
+        error: "Artist catalog is temporarily unavailable",
+      });
+    }
+  },
+);
 
 router.get("/artists/:spotifyArtistId", async (req, res) => {
   const spotifyArtistId = String(req.params.spotifyArtistId || "").trim();
@@ -262,4 +353,5 @@ router.get("/artists/:spotifyArtistId/similar", relatedArtistRateLimit, async (r
 module.exports = router;
 module.exports.getAlbumArtistReference = getAlbumArtistReference;
 module.exports.hydrateSpotifyMappings = hydrateSpotifyMappings;
+module.exports.parseCollaborationAlbumLimit = parseCollaborationAlbumLimit;
 module.exports.parseSimilarArtistLimit = parseSimilarArtistLimit;

@@ -5,6 +5,9 @@ const albumCatalogModelPath = require.resolve("../models/AlbumCatalog");
 const artistCatalogModelPath = require.resolve("../models/ArtistCatalog");
 const listenBrainzHelperPath = require.resolve("../routes/utils/listenBrainz");
 const musicBrainzHelperPath = require.resolve("../routes/utils/musicBrainz");
+const artistCollaborationsHelperPath = require.resolve(
+  "../routes/utils/artistCollaborations",
+);
 const exploreRoutePath = require.resolve("../routes/explore");
 
 const PRIMARY_SPOTIFY_ID = "1111111111111111111111";
@@ -21,6 +24,8 @@ const EXPIRES_AT = new Date("2026-07-25T12:00:00.000Z");
 
 let catalogAlbum = null;
 let albumFindError = null;
+let catalogAlbums = [];
+let albumFindManyError = null;
 let resolverResult = null;
 let resolverError = null;
 let neighborhoodResult = null;
@@ -28,6 +33,7 @@ let neighborhoodError = null;
 let artistCatalogRows = [];
 let artistCatalogError = null;
 const albumFindCalls = [];
+const albumFindManyCalls = [];
 const artistFindCalls = [];
 const resolverCalls = [];
 const neighborhoodCalls = [];
@@ -37,6 +43,7 @@ class MockListenBrainzBusyError extends Error {}
 
 function loadExploreRouter() {
   delete require.cache[exploreRoutePath];
+  delete require.cache[artistCollaborationsHelperPath];
 
   require.cache[albumCatalogModelPath] = {
     id: albumCatalogModelPath,
@@ -51,6 +58,19 @@ function loadExploreRouter() {
         }
 
         return catalogAlbum;
+      },
+      find: (query) => {
+        albumFindManyCalls.push(query);
+
+        return {
+          async lean() {
+            if (albumFindManyError) {
+              throw albumFindManyError;
+            }
+
+            return catalogAlbums;
+          },
+        };
       },
     },
   };
@@ -108,11 +128,16 @@ function loadExploreRouter() {
   return require("../routes/explore");
 }
 
-async function callExploreRoute(routePath, spotifyArtistId, query = {}) {
+async function callExploreRoute(
+  routePath,
+  spotifyArtistId,
+  query = {},
+  routeParams = {},
+) {
   const router = loadExploreRouter();
   const route = router.stack.find((layer) => layer.route?.path === routePath);
   const req = {
-    params: { spotifyArtistId },
+    params: { spotifyArtistId, ...routeParams },
     query,
   };
   const res = {
@@ -170,6 +195,19 @@ function callSimilarArtistsRoute(spotifyArtistId, query) {
     "/artists/:spotifyArtistId/similar",
     spotifyArtistId,
     query,
+  );
+}
+
+function callCollaborationsRoute(
+  seedSpotifyId,
+  collaboratorSpotifyId,
+  query,
+) {
+  return callExploreRoute(
+    "/artists/:seedSpotifyId/collaborations/:collaboratorSpotifyId",
+    seedSpotifyId,
+    query,
+    { seedSpotifyId, collaboratorSpotifyId },
   );
 }
 
@@ -249,6 +287,8 @@ function relatedNeighborhood() {
 test.beforeEach(() => {
   catalogAlbum = null;
   albumFindError = null;
+  catalogAlbums = [];
+  albumFindManyError = null;
   resolverResult = null;
   resolverError = null;
   neighborhoodResult = null;
@@ -256,6 +296,7 @@ test.beforeEach(() => {
   artistCatalogRows = [];
   artistCatalogError = null;
   albumFindCalls.length = 0;
+  albumFindManyCalls.length = 0;
   artistFindCalls.length = 0;
   resolverCalls.length = 0;
   neighborhoodCalls.length = 0;
@@ -587,6 +628,235 @@ test("GET /explore/artists/:spotifyArtistId/similar degrades neighborhood provid
     assert.deepEqual(response.body, {
       error: "Unable to load related artists right now",
     });
+    assert.equal(artistFindCalls.length, 0);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+test("GET collaboration albums returns normalized local evidence without provider calls", async () => {
+  catalogAlbum = indexedAlbum();
+  catalogAlbums = [{
+    spotifyId: "aaaaaaaaaaaaaaaaaaaaaa",
+    title: "Shared Record",
+    artist: "Primary Artist & Featured Artist",
+    artists: ["Primary Artist", "Featured Artist"],
+    artistRefs: [
+      { spotifyId: PRIMARY_SPOTIFY_ID, name: "Primary Artist" },
+      { spotifyId: FEATURED_SPOTIFY_ID, name: "Featured Artist" },
+    ],
+    year: "2025",
+    releaseDate: "2025-04-02",
+    cover: "https://images.example/shared-record.jpg",
+    albumType: "album",
+    spotifyUrl: "https://open.spotify.com/album/aaaaaaaaaaaaaaaaaaaaaa",
+    detailMetadataVersion: 2,
+    tracks: [{
+      spotifyId: "bbbbbbbbbbbbbbbbbbbbbb",
+      title: "Shared Song",
+      trackNumber: 2,
+      discNumber: 1,
+      spotifyUrl: "https://open.spotify.com/track/bbbbbbbbbbbbbbbbbbbbbb",
+      artistRefs: [
+        { spotifyId: PRIMARY_SPOTIFY_ID, name: "Primary Artist" },
+        { spotifyId: FEATURED_SPOTIFY_ID, name: "Featured Artist" },
+      ],
+    }],
+  }];
+
+  const response = await callCollaborationsRoute(
+    PRIMARY_SPOTIFY_ID,
+    FEATURED_SPOTIFY_ID,
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body, {
+    seed: { spotifyId: PRIMARY_SPOTIFY_ID },
+    collaborator: { spotifyId: FEATURED_SPOTIFY_ID },
+    albums: [{
+      spotifyId: "aaaaaaaaaaaaaaaaaaaaaa",
+      title: "Shared Record",
+      artist: "Primary Artist & Featured Artist",
+      artists: ["Primary Artist", "Featured Artist"],
+      cover: "https://images.example/shared-record.jpg",
+      year: "2025",
+      releaseDate: "2025-04-02",
+      albumType: "album",
+      spotifyUrl: "https://open.spotify.com/album/aaaaaaaaaaaaaaaaaaaaaa",
+      evidenceTypes: ["album_credit", "same_track"],
+      sharedTracks: [{
+        spotifyId: "bbbbbbbbbbbbbbbbbbbbbb",
+        title: "Shared Song",
+        trackNumber: 2,
+        discNumber: 1,
+        spotifyUrl: "https://open.spotify.com/track/bbbbbbbbbbbbbbbbbbbbbb",
+      }],
+    }],
+    total: 1,
+    hasMore: false,
+    coverage: {
+      status: "partial",
+      sources: ["album_catalog"],
+      externalLookupAttempted: false,
+    },
+  });
+  assert.deepEqual(albumFindManyCalls, [{
+    $or: [
+      {
+        "artistRefs.spotifyId": {
+          $all: [PRIMARY_SPOTIFY_ID, FEATURED_SPOTIFY_ID],
+        },
+      },
+      {
+        detailMetadataVersion: { $gte: 2 },
+        tracks: {
+          $elemMatch: {
+            "artistRefs.spotifyId": {
+              $all: [PRIMARY_SPOTIFY_ID, FEATURED_SPOTIFY_ID],
+            },
+          },
+        },
+      },
+    ],
+  }]);
+  assert.equal(resolverCalls.length, 0);
+  assert.equal(neighborhoodCalls.length, 0);
+  assert.equal(artistFindCalls.length, 0);
+});
+
+test("GET collaboration albums validates ids, distinct artists, and limits before catalog work", async (t) => {
+  const cases = [
+    {
+      name: "invalid seed id",
+      seedSpotifyId: "invalid",
+      collaboratorSpotifyId: FEATURED_SPOTIFY_ID,
+      query: undefined,
+      error: "A valid seed Spotify artist id is required",
+    },
+    {
+      name: "invalid collaborator id",
+      seedSpotifyId: PRIMARY_SPOTIFY_ID,
+      collaboratorSpotifyId: "invalid",
+      query: undefined,
+      error: "A valid collaborator Spotify artist id is required",
+    },
+    {
+      name: "identical ids",
+      seedSpotifyId: PRIMARY_SPOTIFY_ID,
+      collaboratorSpotifyId: PRIMARY_SPOTIFY_ID,
+      query: undefined,
+      error: "Seed and collaborator Spotify artist ids must be different",
+    },
+    ...["0", "7", "1.5", "many"].map((limit) => ({
+      name: `invalid limit ${limit}`,
+      seedSpotifyId: PRIMARY_SPOTIFY_ID,
+      collaboratorSpotifyId: FEATURED_SPOTIFY_ID,
+      query: { limit },
+      error: "limit must be an integer between 1 and 6",
+    })),
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase.name, async () => {
+      const response = await callCollaborationsRoute(
+        testCase.seedSpotifyId,
+        testCase.collaboratorSpotifyId,
+        testCase.query,
+      );
+
+      assert.equal(response.statusCode, 400);
+      assert.deepEqual(response.body, { error: testCase.error });
+    });
+  }
+
+  assert.equal(albumFindCalls.length, 0);
+  assert.equal(albumFindManyCalls.length, 0);
+  assert.equal(resolverCalls.length, 0);
+  assert.equal(neighborhoodCalls.length, 0);
+});
+
+test("GET collaboration albums returns 404 when the seed is not locally indexed", async () => {
+  const response = await callCollaborationsRoute(
+    UNKNOWN_SPOTIFY_ID,
+    FEATURED_SPOTIFY_ID,
+  );
+
+  assert.equal(response.statusCode, 404);
+  assert.deepEqual(response.body, {
+    error: "Artist has not been indexed in the album catalog yet",
+  });
+  assert.equal(albumFindCalls.length, 1);
+  assert.equal(albumFindManyCalls.length, 0);
+  assert.equal(resolverCalls.length, 0);
+  assert.equal(neighborhoodCalls.length, 0);
+});
+
+test("GET collaboration albums returns an honest partial empty response", async () => {
+  catalogAlbum = indexedAlbum();
+
+  const response = await callCollaborationsRoute(
+    PRIMARY_SPOTIFY_ID,
+    FEATURED_SPOTIFY_ID,
+    { limit: "6" },
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body, {
+    seed: { spotifyId: PRIMARY_SPOTIFY_ID },
+    collaborator: { spotifyId: FEATURED_SPOTIFY_ID },
+    albums: [],
+    total: 0,
+    hasMore: false,
+    coverage: {
+      status: "partial",
+      sources: ["album_catalog"],
+      externalLookupAttempted: false,
+    },
+  });
+});
+
+test("GET collaboration albums translates candidate catalog failures to 503", async () => {
+  catalogAlbum = indexedAlbum();
+  albumFindManyError = new Error("Mongo unavailable");
+  const originalConsoleError = console.error;
+  console.error = () => {};
+
+  try {
+    const response = await callCollaborationsRoute(
+      PRIMARY_SPOTIFY_ID,
+      FEATURED_SPOTIFY_ID,
+    );
+
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(response.body, {
+      error: "Artist catalog is temporarily unavailable",
+    });
+    assert.equal(resolverCalls.length, 0);
+    assert.equal(neighborhoodCalls.length, 0);
+    assert.equal(artistFindCalls.length, 0);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+test("GET collaboration albums translates seed catalog failures to 503", async () => {
+  albumFindError = new Error("Mongo unavailable");
+  const originalConsoleError = console.error;
+  console.error = () => {};
+
+  try {
+    const response = await callCollaborationsRoute(
+      PRIMARY_SPOTIFY_ID,
+      FEATURED_SPOTIFY_ID,
+    );
+
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(response.body, {
+      error: "Artist catalog is temporarily unavailable",
+    });
+    assert.equal(albumFindManyCalls.length, 0);
+    assert.equal(resolverCalls.length, 0);
+    assert.equal(neighborhoodCalls.length, 0);
     assert.equal(artistFindCalls.length, 0);
   } finally {
     console.error = originalConsoleError;
