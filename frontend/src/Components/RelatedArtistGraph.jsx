@@ -11,6 +11,7 @@ import {
   Position,
   ReactFlow,
 } from "@xyflow/react";
+import { Link } from "react-router-dom";
 import { buildRelatedArtistGraph } from "../utils/relatedArtistGraph";
 import "@xyflow/react/dist/style.css";
 
@@ -24,6 +25,18 @@ function formatSimilarity(value) {
   }
 
   return `${Math.round(Math.min(Math.max(weight, 0), 1) * 100)}%`;
+}
+
+function formatEvidenceType(type) {
+  if (type === "album_credit") {
+    return "Album credit";
+  }
+
+  if (type === "same_track") {
+    return "Shared track";
+  }
+
+  return String(type || "Collaboration").replaceAll("_", " ");
 }
 
 function subscribeToCompactGraph(onStoreChange) {
@@ -77,6 +90,7 @@ const RelatedArtistNode = memo(function RelatedArtistNode({ data }) {
     isSeed ? "explore-related-artist-node-seed" : "",
     !isSeed && hasSpotifyMapping ? "explore-related-artist-node-mapped" : "",
     !isSeed && !hasSpotifyMapping ? "explore-related-artist-node-mbid" : "",
+    data.selected ? "explore-related-artist-node-selected" : "",
   ].filter(Boolean).join(" ");
 
   return (
@@ -85,7 +99,7 @@ const RelatedArtistNode = memo(function RelatedArtistNode({ data }) {
       style={{ "--relationship-strength": data.weight }}
       aria-label={isSeed
         ? `${data.label}, current seed artist`
-        : `${data.label}, ${formatSimilarity(data.weight)} similarity`}
+        : `${data.label}, ${formatSimilarity(data.weight)} similarity${data.selected ? ", selected" : ""}`}
     >
       <ArtistHandles />
       <div className="explore-related-node-heading">
@@ -99,8 +113,37 @@ const RelatedArtistNode = memo(function RelatedArtistNode({ data }) {
       </span>
       <div className="explore-related-node-actions">
         {!isSeed && hasSpotifyMapping ? (
-          <button className="nodrag nopan" type="button">
-            Explore
+          <button
+            className="nodrag nopan"
+            type="button"
+            aria-label={data.selected
+              ? `Collapse collaboration albums for ${data.label}`
+              : `Inspect collaboration albums for ${data.label}`}
+            aria-pressed={Boolean(data.selected)}
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onSelectArtist?.({
+                spotifyId: data.spotifyId,
+                name: data.label,
+              });
+            }}
+          >
+            Albums
+          </button>
+        ) : null}
+        {!isSeed && hasSpotifyMapping ? (
+          <button
+            className="nodrag nopan"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onExploreArtist?.({
+                spotifyId: data.spotifyId,
+                name: data.label,
+              });
+            }}
+          >
+            Explore as seed
           </button>
         ) : null}
         {spotifyUrl ? (
@@ -130,31 +173,169 @@ const RelatedArtistNode = memo(function RelatedArtistNode({ data }) {
   );
 });
 
+const CollaborationAlbumNode = memo(function CollaborationAlbumNode({ data }) {
+  const evidenceTypes = Array.isArray(data.evidenceTypes) ? data.evidenceTypes : [];
+  const sharedTracks = Array.isArray(data.sharedTracks) ? data.sharedTracks : [];
+  const visibleTracks = sharedTracks.slice(0, 3);
+
+  return (
+    <article
+      className="explore-collaboration-album-node"
+      aria-label={`${data.title}, collaboration album`}
+    >
+      <ArtistHandles />
+      <Link
+        className="nodrag nopan"
+        to={`/album/${data.spotifyId}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {data.cover ? (
+          <img
+            className="explore-collaboration-album-cover"
+            src={data.cover}
+            alt=""
+          />
+        ) : (
+          <span className="explore-collaboration-album-cover-fallback" aria-hidden="true">
+            ♪
+          </span>
+        )}
+
+        <span className="explore-collaboration-album-heading">
+          <small>Collaboration album</small>
+          {data.year ? <time>{data.year}</time> : null}
+        </span>
+        <strong title={data.title}>{data.title}</strong>
+
+        {evidenceTypes.length > 0 ? (
+          <span className="explore-collaboration-album-badges" aria-label="Collaboration evidence">
+            {evidenceTypes.map((type) => (
+              <span className="explore-collaboration-album-badge" key={type}>
+                {formatEvidenceType(type)}
+              </span>
+            ))}
+          </span>
+        ) : null}
+
+        {visibleTracks.length > 0 ? (
+          <ul className="explore-collaboration-album-tracks" aria-label="Matching tracks">
+            {visibleTracks.map((track) => (
+              <li key={track.spotifyId || `${track.discNumber || 0}:${track.trackNumber || 0}:${track.title}`}>
+                {track.title}
+              </li>
+            ))}
+            {sharedTracks.length > visibleTracks.length ? (
+              <li>+{sharedTracks.length - visibleTracks.length} more</li>
+            ) : null}
+          </ul>
+        ) : null}
+      </Link>
+    </article>
+  );
+});
+
 const nodeTypes = {
   relatedArtistNode: RelatedArtistNode,
+  collaborationAlbumNode: CollaborationAlbumNode,
 };
 
-export function RelatedArtistGraph({ payload, onExploreArtist }) {
+function getGraphSummary({
+  neighborCount,
+  selectedArtistName,
+  collaborationStatus,
+  albumCount,
+}) {
+  if (!selectedArtistName) {
+    return `${neighborCount} related artist${neighborCount === 1 ? "" : "s"}. Select a Spotify-mapped artist to inspect locally cached collaboration albums, or use Explore as seed to move through the graph.`;
+  }
+
+  if (collaborationStatus === "loading") {
+    return `Checking the local album catalog for credits shared with ${selectedArtistName}…`;
+  }
+
+  if (collaborationStatus === "error") {
+    return `Collaboration evidence for ${selectedArtistName} could not be loaded. The artist graph remains available.`;
+  }
+
+  if (collaborationStatus === "success") {
+    return albumCount > 0
+      ? `${albumCount} locally cached collaboration album${albumCount === 1 ? "" : "s"} shown for ${selectedArtistName}.`
+      : `No local collaboration album is currently shown for ${selectedArtistName}. Local coverage is incomplete.`;
+  }
+
+  return `${selectedArtistName} is selected. Local collaboration evidence will appear when it is ready.`;
+}
+
+export function RelatedArtistGraph({
+  payload,
+  selectedSpotifyArtistId = "",
+  collaborationAlbums = [],
+  collaborationStatus = "idle",
+  onSelectArtist,
+  onExploreArtist,
+}) {
   const compact = useCompactGraph();
   const graph = useMemo(
-    () => buildRelatedArtistGraph(payload, { compact }),
-    [compact, payload],
+    () => buildRelatedArtistGraph(payload, {
+      compact,
+      selectedSpotifyArtistId,
+      collaborationAlbums,
+    }),
+    [collaborationAlbums, compact, payload, selectedSpotifyArtistId],
+  );
+  const nodes = useMemo(
+    () => graph.nodes.map((node) => (
+      node.data.kind === "neighbor"
+        ? {
+            ...node,
+            data: {
+              ...node.data,
+              onSelectArtist,
+              onExploreArtist,
+            },
+          }
+        : node
+    )),
+    [graph.nodes, onExploreArtist, onSelectArtist],
   );
   const seedName = payload?.seed?.name || "Unknown artist";
-  const neighborCount = Math.max(graph.nodes.length - 1, 0);
+  const neighborCount = graph.nodes.filter((node) => node.data.kind === "neighbor").length;
+  const albumCount = compact
+    ? Math.min(new Set(
+        collaborationAlbums
+          .map((album) => String(album?.spotifyId || "").trim())
+          .filter(Boolean),
+      ).size, 3)
+    : graph.nodes.filter((node) => node.data.kind === "collaborationAlbum").length;
+  const selectedArtistName = graph.nodes.find((node) => node.data.selected)?.data.label || "";
   const compactRowCount = Math.max(Math.ceil(neighborCount / 2), 1);
-  const compactHeight = Math.max(430, 334 + ((compactRowCount - 1) * 130));
-  const graphKey = `${payload?.seed?.musicBrainzId || payload?.seed?.spotifyId || "seed"}:${compact ? "compact" : "radial"}`;
+  const compactHeight = Math.max(430, 334 + ((compactRowCount - 1) * 150));
+  const albumNodeKey = graph.nodes
+    .filter((node) => node.data.kind === "collaborationAlbum")
+    .map((node) => node.id)
+    .join(",");
+  const graphKey = [
+    payload?.seed?.musicBrainzId || payload?.seed?.spotifyId || "seed",
+    compact ? "compact" : "radial",
+    selectedSpotifyArtistId || "none",
+    albumNodeKey,
+  ].join(":");
   const handleNodeClick = useCallback((event, node) => {
     if (event.button !== 0 || node.data.kind !== "neighbor" || !node.data.spotifyId) {
       return;
     }
 
-    onExploreArtist?.({
+    onSelectArtist?.({
       spotifyId: node.data.spotifyId,
       name: node.data.label,
     });
-  }, [onExploreArtist]);
+  }, [onSelectArtist]);
+  const graphSummary = getGraphSummary({
+    neighborCount,
+    selectedArtistName,
+    collaborationStatus,
+    albumCount,
+  });
 
   return (
     <section className="explore-relationship-map" aria-labelledby="explore-relationship-map-title">
@@ -166,13 +347,16 @@ export function RelatedArtistGraph({ payload, onExploreArtist }) {
         <div className="explore-graph-legend" aria-label="Graph legend">
           <span><i className="explore-legend-line explore-legend-line-strong" />More similar</span>
           <span><i className="explore-legend-line explore-legend-line-light" />Less similar</span>
+          {!compact ? (
+            <span><i className="explore-legend-line explore-legend-line-collaboration" />Collaboration credit</span>
+          ) : null}
           <span><b />Spotify-mapped</span>
           <span><b className="explore-legend-mbid" />MBID only</span>
         </div>
       </header>
 
       <p className="explore-graph-summary" aria-live="polite">
-        {neighborCount} related artist{neighborCount === 1 ? "" : "s"}. Select Explore on a Spotify-mapped node to make it the new seed.
+        {graphSummary}
       </p>
 
       <div
@@ -181,7 +365,7 @@ export function RelatedArtistGraph({ payload, onExploreArtist }) {
       >
         <ReactFlow
           key={graphKey}
-          nodes={graph.nodes}
+          nodes={nodes}
           edges={graph.edges}
           nodeTypes={nodeTypes}
           colorMode="dark"

@@ -1,13 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import RelatedArtistGraph from "../Components/RelatedArtistGraph";
 import { API_BASE_URL } from "../config/api";
 import { getApiErrorMessage } from "../utils/apiErrors";
 import { getArtistCandidates } from "../utils/artistReferences";
-import { fetchSimilarArtists } from "../utils/relatedArtists";
+import { getRenderedMappedNeighbors } from "../utils/relatedArtistGraph";
+import {
+  fetchArtistCollaborations,
+  fetchSimilarArtists,
+} from "../utils/relatedArtists";
 import "./Explore.css";
 
 const ARTIST_SEARCH_LIMIT = 12;
+const EVIDENCE_LABELS = {
+  album_credit: "Album credit",
+  same_track: "Same track",
+};
 
 function formatDate(value) {
   if (!value) {
@@ -46,11 +54,124 @@ async function searchArtistCandidates(query, { signal } = {}) {
   return getArtistCandidates(results, query).slice(0, ARTIST_SEARCH_LIMIT);
 }
 
+function CollaborationAlbumCard({ album }) {
+  const evidenceTypes = Array.isArray(album?.evidenceTypes)
+    ? album.evidenceTypes
+    : [];
+  const sharedTracks = Array.isArray(album?.sharedTracks)
+    ? album.sharedTracks
+    : [];
+
+  return (
+    <article className="explore-collaboration-card">
+      <Link
+        className="explore-collaboration-card-cover"
+        to={`/album/${album.spotifyId}`}
+        aria-label={`Open ${album.title}`}
+      >
+        {album.cover ? (
+          <img src={album.cover} alt="" />
+        ) : (
+          <span aria-hidden="true">{String(album.title || "A").slice(0, 1)}</span>
+        )}
+      </Link>
+      <div className="explore-collaboration-card-copy">
+        <div className="explore-collaboration-card-heading">
+          <Link to={`/album/${album.spotifyId}`}>{album.title || "Unknown album"}</Link>
+          <span>{album.year && album.year !== "unknown" ? album.year : "Year unknown"}</span>
+        </div>
+        <div className="explore-collaboration-card-badges" aria-label="Collaboration evidence">
+          {evidenceTypes.map((type) => (
+            <span key={type}>{EVIDENCE_LABELS[type] || type}</span>
+          ))}
+        </div>
+        {sharedTracks.length > 0 ? (
+          <p>
+            <strong>Matching track{sharedTracks.length === 1 ? "" : "s"}:</strong>{" "}
+            {sharedTracks.map((track) => track.title || "Unknown track").join(", ")}
+          </p>
+        ) : (
+          <p>Both artists are billed in the album credit.</p>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function CollaborationPanel({
+  collaboratorName,
+  entry,
+  onRetry,
+  seedName,
+}) {
+  if (!collaboratorName) {
+    return null;
+  }
+
+  const status = entry?.status || "loading";
+  const data = entry?.data || null;
+  const albums = Array.isArray(data?.albums) ? data.albums : [];
+  const total = Number.isFinite(Number(data?.total)) ? Number(data.total) : albums.length;
+
+  return (
+    <section
+      className={`explore-collaboration-panel explore-collaboration-panel-${status}${albums.length > 0 ? " explore-collaboration-panel-has-albums" : ""}`}
+      aria-labelledby="explore-collaboration-title"
+      aria-live={status === "error" ? undefined : "polite"}
+      role={status === "error" ? "alert" : undefined}
+    >
+      <header>
+        <div>
+          <p>Local collaboration evidence</p>
+          <h3 id="explore-collaboration-title">{seedName} + {collaboratorName}</h3>
+        </div>
+        <span>Partial coverage · AlbumCatalog only</span>
+      </header>
+
+      {status === "loading" ? (
+        <p className="explore-collaboration-message">
+          Searching the local album catalog for shared credits…
+        </p>
+      ) : null}
+
+      {status === "error" ? (
+        <div className="explore-collaboration-message explore-collaboration-message-error">
+          <div>
+            <strong>Collaboration albums unavailable</strong>
+            <span>{entry?.error || "Unable to inspect the local album catalog."}</span>
+          </div>
+          <button type="button" onClick={onRetry}>Retry</button>
+        </div>
+      ) : null}
+
+      {status === "success" && albums.length === 0 ? (
+        <p className="explore-collaboration-message">
+          No collaboration was found in the local catalog. Coverage is incomplete, so this does not prove the artists have never collaborated.
+        </p>
+      ) : null}
+
+      {status === "success" && albums.length > 0 ? (
+        <>
+          <p className="explore-collaboration-message">
+            Showing {albums.length} of {total} locally cached collaboration album{total === 1 ? "" : "s"}. Coverage is incomplete.
+          </p>
+          <div className="explore-collaboration-card-grid">
+            {albums.map((album) => (
+              <CollaborationAlbumCard album={album} key={album.spotifyId} />
+            ))}
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 export function Explore() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = String(searchParams.get("q") || "").trim();
   const selectedSpotifyId = String(searchParams.get("artist") || "").trim();
   const selectedNameFromUrl = String(searchParams.get("name") || "").trim();
+  const expandedSpotifyId = String(searchParams.get("with") || "").trim();
   const [searchInput, setSearchInput] = useState(query);
   const [candidates, setCandidates] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -60,17 +181,58 @@ export function Explore() {
   const [isGraphLoading, setIsGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState("");
   const [graphAttempt, setGraphAttempt] = useState(0);
+  const [collaborationCache, setCollaborationCache] = useState({
+    seedSpotifyId: "",
+    entries: {},
+  });
+  const [collaborationAttempt, setCollaborationAttempt] = useState(0);
+  const activePayload = String(payload?.seed?.spotifyId || "") === selectedSpotifyId
+    ? payload
+    : null;
+  const renderedMappedNeighbors = useMemo(
+    () => getRenderedMappedNeighbors(activePayload),
+    [activePayload],
+  );
+  const selectedCollaborator = renderedMappedNeighbors.find(
+    (neighbor) => neighbor.spotifyId === expandedSpotifyId,
+  ) || null;
+  const activeCollaborationEntries = collaborationCache.seedSpotifyId === selectedSpotifyId
+    ? collaborationCache.entries
+    : {};
+  const collaborationEntry = selectedCollaborator
+    ? activeCollaborationEntries[selectedCollaborator.spotifyId]
+    : null;
+  const collaborationStatus = selectedCollaborator
+    ? collaborationEntry?.status || "loading"
+    : "idle";
+  const collaborationAlbums = collaborationEntry?.status === "success"
+    && Array.isArray(collaborationEntry.data?.albums)
+    ? collaborationEntry.data.albums
+    : [];
   const selectedCandidate = candidates.find(
     (candidate) => candidate.spotifyId === selectedSpotifyId,
   );
   const selectedName = selectedNameFromUrl
     || selectedCandidate?.name
-    || payload?.seed?.name
+    || activePayload?.seed?.name
     || "Selected artist";
 
   useEffect(() => {
     setSearchInput(query);
   }, [query]);
+
+  useEffect(() => {
+    setCollaborationCache((currentCache) => {
+      if (currentCache.seedSpotifyId === selectedSpotifyId) {
+        return currentCache;
+      }
+
+      return {
+        seedSpotifyId: selectedSpotifyId,
+        entries: {},
+      };
+    });
+  }, [selectedSpotifyId]);
 
   useEffect(() => {
     if (!query) {
@@ -148,6 +310,114 @@ export function Explore() {
     };
   }, [graphAttempt, selectedSpotifyId]);
 
+  useEffect(() => {
+    if (!expandedSpotifyId || !activePayload || selectedCollaborator) {
+      return;
+    }
+
+    setSearchParams((currentParams) => {
+      if (String(currentParams.get("with") || "").trim() !== expandedSpotifyId) {
+        return currentParams;
+      }
+
+      const nextParams = new URLSearchParams(currentParams);
+      nextParams.delete("with");
+      return nextParams;
+    }, { replace: true });
+  }, [activePayload, expandedSpotifyId, selectedCollaborator, setSearchParams]);
+
+  const hasCachedCollaboration = collaborationEntry?.status === "success";
+
+  useEffect(() => {
+    if (!activePayload || !selectedCollaborator || hasCachedCollaboration) {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const seedSpotifyId = selectedSpotifyId;
+    const collaboratorSpotifyId = selectedCollaborator.spotifyId;
+    let isCurrent = true;
+
+    setCollaborationCache((currentCache) => {
+      const entries = currentCache.seedSpotifyId === seedSpotifyId
+        ? currentCache.entries
+        : {};
+
+      return {
+        seedSpotifyId,
+        entries: {
+          ...entries,
+          [collaboratorSpotifyId]: {
+            status: "loading",
+            data: null,
+            error: "",
+          },
+        },
+      };
+    });
+
+    fetchArtistCollaborations(seedSpotifyId, collaboratorSpotifyId, {
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setCollaborationCache((currentCache) => {
+          if (currentCache.seedSpotifyId !== seedSpotifyId) {
+            return currentCache;
+          }
+
+          return {
+            ...currentCache,
+            entries: {
+              ...currentCache.entries,
+              [collaboratorSpotifyId]: {
+                status: "success",
+                data,
+                error: "",
+              },
+            },
+          };
+        });
+      })
+      .catch((error) => {
+        if (!isCurrent || error.name === "AbortError") {
+          return;
+        }
+
+        setCollaborationCache((currentCache) => {
+          if (currentCache.seedSpotifyId !== seedSpotifyId) {
+            return currentCache;
+          }
+
+          return {
+            ...currentCache,
+            entries: {
+              ...currentCache.entries,
+              [collaboratorSpotifyId]: {
+                status: "error",
+                data: null,
+                error: error.message || "Unable to inspect collaboration albums.",
+              },
+            },
+          };
+        });
+      });
+
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
+  }, [
+    activePayload,
+    collaborationAttempt,
+    hasCachedCollaboration,
+    selectedCollaborator,
+    selectedSpotifyId,
+  ]);
+
   function handleSearch(event) {
     event.preventDefault();
     const nextQuery = searchInput.trim();
@@ -173,9 +443,55 @@ export function Explore() {
       const nextParams = new URLSearchParams(currentParams);
       nextParams.set("artist", spotifyId);
       nextParams.set("name", String(artist?.name || "Artist"));
+      nextParams.delete("with");
       return nextParams;
     });
   }, [setSearchParams]);
+
+  const selectCollaborator = useCallback((artist) => {
+    const spotifyId = String(artist?.spotifyId || "").trim();
+
+    if (!spotifyId) {
+      return;
+    }
+
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+
+      if (String(currentParams.get("with") || "").trim() === spotifyId) {
+        nextParams.delete("with");
+      } else {
+        nextParams.set("with", spotifyId);
+      }
+
+      return nextParams;
+    });
+  }, [setSearchParams]);
+
+  const retryCollaboration = useCallback(() => {
+    if (!selectedCollaborator) {
+      return;
+    }
+
+    setCollaborationCache((currentCache) => {
+      if (currentCache.seedSpotifyId !== selectedSpotifyId) {
+        return currentCache;
+      }
+
+      return {
+        ...currentCache,
+        entries: {
+          ...currentCache.entries,
+          [selectedCollaborator.spotifyId]: {
+            status: "loading",
+            data: null,
+            error: "",
+          },
+        },
+      };
+    });
+    setCollaborationAttempt((attempt) => attempt + 1);
+  }, [selectedCollaborator, selectedSpotifyId]);
 
   return (
     <section className="explore-page">
@@ -276,46 +592,60 @@ export function Explore() {
         </section>
       ) : null}
 
-      {payload && !isGraphLoading && !graphError ? (
+      {activePayload && !isGraphLoading && !graphError ? (
         <>
-          <RelatedArtistGraph payload={payload} onExploreArtist={selectArtist} />
+          <RelatedArtistGraph
+            payload={activePayload}
+            selectedSpotifyArtistId={selectedCollaborator?.spotifyId || ""}
+            collaborationAlbums={collaborationAlbums}
+            collaborationStatus={collaborationStatus}
+            onSelectArtist={selectCollaborator}
+            onExploreArtist={selectArtist}
+          />
+
+          <CollaborationPanel
+            collaboratorName={selectedCollaborator?.name || ""}
+            entry={collaborationEntry}
+            onRetry={retryCollaboration}
+            seedName={selectedName}
+          />
 
           <details className="explore-data-inspector">
             <summary>
               <span>Inspect graph data</span>
-              <strong>{payload.cacheStatus || "unknown"}</strong>
+              <strong>{activePayload.cacheStatus || "unknown"}</strong>
             </summary>
             <dl>
               <div>
                 <dt>Seed MBID</dt>
-                <dd>{payload.seed?.musicBrainzId || "Unavailable"}</dd>
+                <dd>{activePayload.seed?.musicBrainzId || "Unavailable"}</dd>
               </div>
               <div>
                 <dt>Source</dt>
-                <dd>{payload.source || "Unknown"}</dd>
+                <dd>{activePayload.source || "Unknown"}</dd>
               </div>
               <div>
                 <dt>Identity cache</dt>
-                <dd>{payload.identityCacheStatus || "Unknown"}</dd>
+                <dd>{activePayload.identityCacheStatus || "Unknown"}</dd>
               </div>
               <div>
                 <dt>Spotify mappings</dt>
-                <dd>{payload.spotifyMappingStatus || "Unknown"}</dd>
+                <dd>{activePayload.spotifyMappingStatus || "Unknown"}</dd>
               </div>
               <div>
                 <dt>Fetched</dt>
-                <dd>{formatDate(payload.fetchedAt)}</dd>
+                <dd>{formatDate(activePayload.fetchedAt)}</dd>
               </div>
               <div>
                 <dt>Refresh due</dt>
-                <dd>{formatDate(payload.expiresAt)}</dd>
+                <dd>{formatDate(activePayload.expiresAt)}</dd>
               </div>
             </dl>
             <p className="explore-data-algorithm">
               <strong>Algorithm</strong>
-              <code>{payload.algorithm || "Unavailable"}</code>
+              <code>{activePayload.algorithm || "Unavailable"}</code>
             </p>
-            <pre><code>{JSON.stringify(payload, null, 2)}</code></pre>
+            <pre><code>{JSON.stringify(activePayload, null, 2)}</code></pre>
           </details>
         </>
       ) : null}

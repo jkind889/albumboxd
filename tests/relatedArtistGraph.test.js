@@ -6,6 +6,18 @@ const artistReferencesModule = import("../frontend/src/utils/artistReferences.js
 
 const SEED_SPOTIFY_ID = "1234567890123456789012";
 const NEIGHBOR_SPOTIFY_ID = "abcdefghijklmnopqrstuv";
+const ALBUM_SPOTIFY_ID = "albumalbumalbumalbumal";
+
+function makeMappedNeighbor(overrides = {}) {
+  return {
+    musicBrainzId: "00000000-0000-0000-0000-000000000002",
+    name: "Mapped Artist",
+    rank: 1,
+    weight: 0.9,
+    spotifyArtists: [{ spotifyId: NEIGHBOR_SPOTIFY_ID, name: "Mapped Artist" }],
+    ...overrides,
+  };
+}
 
 function makePayload(neighbors) {
   return {
@@ -122,8 +134,8 @@ test("duplicate MBIDs keep the best-ranked neighbor", async () => {
 });
 
 test("a repeated Spotify mapping falls back to the neighbor MBID", async () => {
-  const { buildRelatedArtistGraph } = await graphModule;
-  const graph = buildRelatedArtistGraph(makePayload([
+  const { buildRelatedArtistGraph, getRenderedMappedNeighbors } = await graphModule;
+  const payload = makePayload([
     {
       musicBrainzId: "00000000-0000-0000-0000-000000000002",
       name: "First mapping",
@@ -136,11 +148,138 @@ test("a repeated Spotify mapping falls back to the neighbor MBID", async () => {
       rank: 2,
       spotifyArtists: [{ spotifyId: NEIGHBOR_SPOTIFY_ID }],
     },
-  ]));
+  ]);
+  const graph = buildRelatedArtistGraph(payload);
+  const renderedMappedNeighbors = getRenderedMappedNeighbors(payload);
 
   assert.equal(graph.nodes[1].id, `artist:spotify:${NEIGHBOR_SPOTIFY_ID}`);
   assert.equal(graph.nodes[2].id, "artist:mbid:00000000-0000-0000-0000-000000000003");
   assert.equal(graph.nodes[2].data.spotifyId, "");
+  assert.deepEqual(renderedMappedNeighbors, [{
+    nodeId: `artist:spotify:${NEIGHBOR_SPOTIFY_ID}`,
+    spotifyId: NEIGHBOR_SPOTIFY_ID,
+    spotifyUrl: "",
+    musicBrainzId: "00000000-0000-0000-0000-000000000002",
+    name: "First mapping",
+    rank: 1,
+  }]);
+});
+
+test("desktop collaboration albums use stable nodes and exactly two credit edges", async () => {
+  const { buildRelatedArtistGraph } = await graphModule;
+  const graph = buildRelatedArtistGraph(makePayload([makeMappedNeighbor()]), {
+    selectedSpotifyArtistId: NEIGHBOR_SPOTIFY_ID,
+    collaborationAlbums: [{
+      spotifyId: ALBUM_SPOTIFY_ID,
+      title: "Shared Record",
+      year: "2024",
+      evidenceTypes: ["album_credit", "same_track"],
+      sharedTracks: [{
+        spotifyId: "tracktracktracktracktr",
+        title: "Together",
+        discNumber: 1,
+        trackNumber: 2,
+      }],
+    }],
+  });
+  const albumNodeId = `album:spotify:${ALBUM_SPOTIFY_ID}`;
+  const albumNode = graph.nodes.find((node) => node.id === albumNodeId);
+  const creditEdges = graph.edges.filter((edge) => edge.data?.kind === "collaborationCredit");
+
+  assert.equal(albumNode.type, "collaborationAlbumNode");
+  assert.equal(albumNode.data.title, "Shared Record");
+  assert.deepEqual(albumNode.data.evidenceTypes, ["album_credit", "same_track"]);
+  assert.equal(creditEdges.length, 2);
+  assert.deepEqual(creditEdges.map((edge) => edge.id), [
+    `collaboration:seed:artist:spotify:${SEED_SPOTIFY_ID}:${albumNodeId}`,
+    `collaboration:collaborator:artist:spotify:${NEIGHBOR_SPOTIFY_ID}:${albumNodeId}`,
+  ]);
+  assert.deepEqual(new Set(creditEdges.map((edge) => edge.source)), new Set([
+    `artist:spotify:${SEED_SPOTIFY_ID}`,
+    `artist:spotify:${NEIGHBOR_SPOTIFY_ID}`,
+  ]));
+  assert.equal(creditEdges.every((edge) => edge.target === albumNodeId), true);
+  assert.equal(graph.nodes.find((node) => node.data.spotifyId === NEIGHBOR_SPOTIFY_ID).data.selected, true);
+});
+
+test("collaboration albums dedupe evidence and tracks before deterministic layout", async () => {
+  const { buildRelatedArtistGraph } = await graphModule;
+  const payload = makePayload([makeMappedNeighbor()]);
+  const collaborationAlbums = [
+    {
+      spotifyId: ALBUM_SPOTIFY_ID,
+      title: "Shared Record",
+      evidenceTypes: ["album_credit"],
+      sharedTracks: [{ spotifyId: "tracktracktracktracktr", title: "Together", trackNumber: 2 }],
+    },
+    {
+      spotifyId: ALBUM_SPOTIFY_ID,
+      title: "Duplicate Record",
+      evidenceTypes: ["same_track", "album_credit"],
+      sharedTracks: [
+        { spotifyId: "tracktracktracktracktr", title: "Together", trackNumber: 2 },
+        { spotifyId: "othertrackothertrackot", title: "Encore", trackNumber: 4 },
+      ],
+    },
+  ];
+  const options = {
+    selectedSpotifyArtistId: NEIGHBOR_SPOTIFY_ID,
+    collaborationAlbums,
+  };
+  const firstGraph = buildRelatedArtistGraph(payload, options);
+  const secondGraph = buildRelatedArtistGraph(payload, options);
+  const albumNodes = firstGraph.nodes.filter((node) => node.data.kind === "collaborationAlbum");
+
+  assert.deepEqual(firstGraph, secondGraph);
+  assert.equal(albumNodes.length, 1);
+  assert.equal(albumNodes[0].data.title, "Shared Record");
+  assert.deepEqual(albumNodes[0].data.evidenceTypes, ["album_credit", "same_track"]);
+  assert.deepEqual(albumNodes[0].data.sharedTracks.map((track) => track.title), ["Together", "Encore"]);
+  assert.equal(
+    firstGraph.edges.filter((edge) => edge.data?.kind === "collaborationCredit").length,
+    2,
+  );
+});
+
+test("desktop collaboration fan is capped at three albums", async () => {
+  const { buildRelatedArtistGraph } = await graphModule;
+  const collaborationAlbums = Array.from({ length: 4 }, (_, index) => ({
+    spotifyId: `albumalbumalbumalbum${String(index + 1).padStart(2, "0")}`,
+    title: `Album ${index + 1}`,
+    evidenceTypes: ["album_credit"],
+  }));
+  const graph = buildRelatedArtistGraph(makePayload([makeMappedNeighbor()]), {
+    selectedSpotifyArtistId: NEIGHBOR_SPOTIFY_ID,
+    collaborationAlbums,
+  });
+
+  assert.deepEqual(
+    graph.nodes
+      .filter((node) => node.data.kind === "collaborationAlbum")
+      .map((node) => node.id),
+    collaborationAlbums.slice(0, 3).map((album) => `album:spotify:${album.spotifyId}`),
+  );
+  assert.equal(
+    graph.edges.filter((edge) => edge.data?.kind === "collaborationCredit").length,
+    6,
+  );
+});
+
+test("compact graph highlights selection without rendering album nodes or credit edges", async () => {
+  const { buildRelatedArtistGraph } = await graphModule;
+  const graph = buildRelatedArtistGraph(makePayload([makeMappedNeighbor()]), {
+    compact: true,
+    selectedSpotifyArtistId: NEIGHBOR_SPOTIFY_ID,
+    collaborationAlbums: [{
+      spotifyId: ALBUM_SPOTIFY_ID,
+      title: "Shared Record",
+      evidenceTypes: ["album_credit"],
+    }],
+  });
+
+  assert.equal(graph.nodes.some((node) => node.data.kind === "collaborationAlbum"), false);
+  assert.equal(graph.edges.some((edge) => edge.data?.kind === "collaborationCredit"), false);
+  assert.equal(graph.nodes.find((node) => node.data.spotifyId === NEIGHBOR_SPOTIFY_ID).data.selected, true);
 });
 
 test("artist candidates dedupe album results and rank exact name matches first", async () => {
