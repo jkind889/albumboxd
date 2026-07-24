@@ -598,7 +598,7 @@ test("GET /reviews/review/album/:albumId returns an empty array when no reviews 
   assert.deepEqual(response.body, []);
 });
 
-test("GET /reviews/review/album/:albumId falls back to albumboxd user without email or full name", async () => {
+test("GET /reviews/review/album/:albumId falls back to rescened user without email or full name", async () => {
   foundReviews = [
     {
       _id: "review_without_username",
@@ -623,7 +623,7 @@ test("GET /reviews/review/album/:albumId falls back to albumboxd user without em
   const response = await getAlbumReviews("spotify_album_123");
 
   assert.equal(response.status, 200);
-  assert.equal(response.body[0].author.username, "albumboxd user");
+  assert.equal(response.body[0].author.username, "rescened user");
   assert.equal(response.body[0].author.imageUrl, "");
 });
 
@@ -645,7 +645,7 @@ test("GET /reviews/review/album/:albumId falls back when Clerk lookup fails", as
   assert.equal(response.status, 200);
   assert.deepEqual(response.body[0].author, {
     userId: "user_lookup_failure",
-    username: "albumboxd user",
+    username: "rescened user",
     imageUrl: "",
   });
 });
@@ -743,7 +743,7 @@ test("GET /reviews/review/user/:userId allows the owner to fetch their private p
   assert.deepEqual(findCalls, [{ userId: "profile_user_123" }]);
   assert.deepEqual(response.body[0].author, {
     userId: "profile_user_123",
-    username: "albumboxd user",
+    username: "rescened user",
     imageUrl: "",
   });
 });

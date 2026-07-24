@@ -24,7 +24,7 @@ router.get("/", (req, res) => {
 
   res.status(200).json({
     status: database.status === "connected" ? "ok" : "degraded",
-    service: "albumboxd-api",
+    service: "rescened-api",
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     database,

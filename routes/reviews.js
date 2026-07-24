@@ -11,7 +11,7 @@ const {
 } = require("./utils/rateLimit");
 
 const router = express.Router();
-const DEFAULT_AUTHOR_USERNAME = "albumboxd user";
+const DEFAULT_AUTHOR_USERNAME = "rescened user";
 const MIN_POPULAR_LIMIT = 5;
 const MAX_POPULAR_LIMIT = 10;
 const DEFAULT_POPULAR_LIMIT = 5;

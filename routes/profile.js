@@ -16,7 +16,7 @@ const {
 const router = express.Router();
 const MAX_BIO_LENGTH = 280;
 const MAX_FAVORITE_ALBUMS = 5;
-const DEFAULT_AUTHOR_USERNAME = "albumboxd user";
+const DEFAULT_AUTHOR_USERNAME = "rescened user";
 const DEFAULT_ACTIVITY_LIMIT = 20;
 const BOARD_PREVIEW_LIMIT = 4;
 const SPOTIFY_PROFILE_HOST = "open.spotify.com";

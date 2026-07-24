@@ -2,7 +2,7 @@ const ArtistCatalog = require("../../models/ArtistCatalog");
 const packageJson = require("../../package.json");
 
 const MUSICBRAINZ_API_BASE_URL = "https://musicbrainz.org/ws/2";
-const DEFAULT_MUSICBRAINZ_CONTACT = "https://github.com/jkind889/albumboxd";
+const DEFAULT_MUSICBRAINZ_CONTACT = "https://github.com/jkind889/rescened";
 const NOT_FOUND_MAPPING_TTL_MS = 24 * 60 * 60 * 1000;
 const MUSICBRAINZ_REQUEST_INTERVAL_MS = 1100;
 const MUSICBRAINZ_REQUEST_TIMEOUT_MS = 8000;
@@ -59,7 +59,7 @@ function getMusicBrainzUserAgent(env = process.env) {
       || DEFAULT_MUSICBRAINZ_CONTACT,
   ).trim();
 
-  return `Albumboxd/${packageJson.version} (${contact})`;
+  return `Rescened/${packageJson.version} (${contact})`;
 }
 
 function buildSpotifyArtistUrl(spotifyId) {

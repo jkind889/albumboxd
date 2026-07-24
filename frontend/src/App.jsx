@@ -13,7 +13,6 @@ import ProfileNetwork from "./Pages/ProfileNetwork";
 import Boards from "./Pages/Boards";
 import BoardDetail from "./Pages/BoardDetail";
 import Notifications from "./Pages/Notifications";
-import Explore from "./Pages/Explore";
 import ProtectedRoute from "./Components/ProtectedRoute";
 
 export function App() {
@@ -27,7 +26,6 @@ export function App() {
             <Route path="/albums" element={<Albums />} />
             <Route path="/boards" element={<Boards />} />
             <Route path="/boards/:boardId" element={<BoardDetail />} />
-            <Route path="/explore" element={<Explore />} />
             <Route
               path="/collection"
               element={<Navigate to="/account" state={{ activeTab: "saved" }} replace />}

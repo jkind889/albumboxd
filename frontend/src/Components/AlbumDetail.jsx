@@ -715,7 +715,7 @@ export function AlbumDetail()
             <span className="album-social-avatar" aria-hidden="true">
                 {user.imageUrl ? <img src={user.imageUrl} alt="" /> : getSocialInitial(user)}
             </span>
-            <span>{user.username || "albumboxd user"}</span>
+            <span>{user.username || "rescened user"}</span>
         </Link>
     );
 

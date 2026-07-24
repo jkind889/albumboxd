@@ -101,7 +101,7 @@ test("MusicBrainz artist URL lookup uses the canonical Spotify resource and iden
   assert.equal(lookupUrl.searchParams.get("fmt"), "json");
   assert.equal(
     getMusicBrainzUserAgent({ MUSICBRAINZ_CONTACT: "dev@example.com" }),
-    "Albumboxd/1.0.0 (dev@example.com)",
+    "Rescened/1.0.0 (dev@example.com)",
   );
 
   const artist = await fetchArtistBySpotifyUrl(spotifyUrl, {
@@ -116,7 +116,7 @@ test("MusicBrainz artist URL lookup uses the canonical Spotify resource and iden
   assert.equal(new URL(request.url).searchParams.get("resource"), spotifyUrl);
   assert.deepEqual(request.options.headers, {
     Accept: "application/json",
-    "User-Agent": "Albumboxd/1.0.0 (dev@example.com)",
+    "User-Agent": "Rescened/1.0.0 (dev@example.com)",
   });
   assert.deepEqual(artist, {
     musicBrainzId: MUSICBRAINZ_ARTIST_ID,

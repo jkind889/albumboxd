@@ -13,7 +13,7 @@ function validEnv(overrides = {}) {
   return {
     CLERK_PUBLISHABLE_KEY: "pk_test_123",
     CLERK_SECRET_KEY: "sk_test_123",
-    MONGO_URI: "mongodb://localhost:27017/albumboxd",
+    MONGO_URI: "mongodb://localhost:27017/rescened",
     NODE_ENV: "development",
     SPOTIFY_CLIENT_ID: "spotify_client",
     SPOTIFY_CLIENT_SECRET: "spotify_secret",
@@ -42,14 +42,14 @@ test("parsePort reads deployment PORT and falls back for invalid values", () => 
 
 test("getAllowedOrigins reads comma-separated and single frontend origins", () => {
   const origins = getAllowedOrigins(validEnv({
-    CORS_ALLOWED_ORIGINS: "https://www.albumboxd.com, http://localhost:5173/",
-    FRONTEND_URL: "albumboxd.vercel.app",
+    CORS_ALLOWED_ORIGINS: "https://www.rescened.com, http://localhost:5173/",
+    FRONTEND_URL: "rescened.vercel.app",
   }));
 
   assert.deepEqual(origins, [
-    "https://www.albumboxd.com",
+    "https://www.rescened.com",
     "http://localhost:5173",
-    "https://albumboxd.vercel.app",
+    "https://rescened.vercel.app",
   ]);
 });
 
@@ -65,7 +65,7 @@ test("validateServerEnv fails fast for missing required deploy config", () => {
     () => validateServerEnv({
       NODE_ENV: "production",
       CLERK_SECRET_KEY: "sk_test_123",
-      MONGO_URI: "mongodb://localhost:27017/albumboxd",
+      MONGO_URI: "mongodb://localhost:27017/rescened",
     }),
     /CLERK_PUBLISHABLE_KEY or VITE_CLERK_PUBLISHABLE_KEY/,
   );
@@ -91,10 +91,10 @@ test("validateServerEnv accepts Vite Clerk publishable key fallback", () => {
 
 test("buildCorsOptions allows configured origins and rejects unknown origins", async () => {
   const corsOptions = buildCorsOptions(validEnv({
-    CORS_ALLOWED_ORIGINS: "https://albumboxd.vercel.app",
+    CORS_ALLOWED_ORIGINS: "https://rescened.vercel.app",
   }));
 
-  assert.equal(await checkCors(corsOptions, "https://albumboxd.vercel.app"), true);
+  assert.equal(await checkCors(corsOptions, "https://rescened.vercel.app"), true);
   assert.equal(await checkCors(corsOptions), true);
   await assert.rejects(
     () => checkCors(corsOptions, "https://example.com"),

@@ -172,7 +172,7 @@ function LiveAlbumRow({ album, index, context }) {
 }
 
 function ReviewDispatch({ review }) {
-    const username = review.author?.username || "albumboxd user";
+    const username = review.author?.username || "rescened user";
     const albumId = getAlbumId(review);
 
     return (
@@ -225,7 +225,7 @@ export function FrontPage() {
             <div className="front-editorial">
                 <div className="front-identification">
                     <div>
-                        <h1>albumboxd</h1>
+                        <h1>rescened</h1>
                         <p>a social music journal</p>
                     </div>
                     <span className="front-identification-rule" aria-hidden="true" />

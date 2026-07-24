@@ -10,7 +10,7 @@ const tabs = [
 ];
 
 function ProfileAvatar({ user }) {
-  const displayName = user.username || user.userId || "albumboxd user";
+  const displayName = user.username || user.userId || "rescened user";
 
   if (user.imageUrl) {
     return <img className="profile-network-avatar" src={user.imageUrl} alt={`${displayName} avatar`} />;
@@ -166,7 +166,7 @@ export function ProfileNetwork() {
               >
                 <ProfileAvatar user={networkUser} />
                 <div>
-                  <h2>{networkUser.username || "albumboxd user"}</h2>
+                  <h2>{networkUser.username || "rescened user"}</h2>
                 </div>
               </Link>
             ))}

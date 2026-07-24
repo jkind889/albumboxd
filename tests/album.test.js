@@ -659,14 +659,14 @@ test("GET /albums/album/:id/social falls back when Clerk lookup fails", async ()
   assert.deepEqual(response.body.followedReviewers, [
     {
       userId: "review_author_1",
-      username: "albumboxd user",
+      username: "rescened user",
       imageUrl: "",
     },
   ]);
   assert.deepEqual(response.body.followedAlbumLikers, [
     {
       userId: "review_author_1",
-      username: "albumboxd user",
+      username: "rescened user",
       imageUrl: "",
     },
   ]);

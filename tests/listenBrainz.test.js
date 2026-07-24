@@ -125,7 +125,7 @@ test("ListenBrainz builds the official similar-artists request and normalizes re
   assert.equal(new URL(providerRequest.url).searchParams.get("artist_mbids"), SEED_MBID);
   assert.deepEqual(providerRequest.options.headers, {
     Accept: "application/json",
-    "User-Agent": "Albumboxd/1.0.0 (dev@example.com)",
+    "User-Agent": "Rescened/1.0.0 (dev@example.com)",
   });
   assert.deepEqual(neighbors, [
     {

@@ -68,7 +68,7 @@ function Navbar()
             <header className="site-header">
                 <nav className="navbar navbar-expand site-navbar">
                     <div className="container-fluid site-navbar-inner">
-                        <Link to="/" className="navbar-brand">albumboxd</Link>
+                        <Link to="/" className="navbar-brand">rescened</Link>
                         <div className="navbar-collapse site-navbar-left">
                             <ul className="navbar nav site-nav-links">
                                 <li className="nav-item">
@@ -77,16 +77,12 @@ function Navbar()
                                 <li className="nav-item">
                                     <Link to="/boards" className="nav-link active">Boards</Link>
                                 </li>
-                                <li className="nav-item">
-                                    <Link to="/explore" className="nav-link active">Explore</Link>
-                                </li>
                             </ul>
                         </div>
                         <div className="site-navbar-search">
                             <SearchBar />
                         </div>
                         <div className="nav navbar-right site-navbar-actions">
-                            <Link to="/explore" className="nav-link site-nav-explore-mobile">Explore</Link>
                             <Show when="signed-out">
                                 <SignInButton mode="modal">
                                     <button type="button" className="nav-auth-button nav-auth-button-secondary">

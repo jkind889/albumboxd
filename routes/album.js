@@ -20,7 +20,7 @@ const {
 const router = express.Router();
 const CATALOG_PAGE_LIMIT = 24;
 const MAX_CATALOG_PAGE_LIMIT = 24;
-const DEFAULT_SOCIAL_USERNAME = "albumboxd user";
+const DEFAULT_SOCIAL_USERNAME = "rescened user";
 const RATING_DISTRIBUTION_BUCKETS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
 
 function ensureAuthenticated(req, res, next) {

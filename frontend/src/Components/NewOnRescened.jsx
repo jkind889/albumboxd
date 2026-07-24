@@ -2,7 +2,7 @@ import { API_BASE_URL } from "../config/api";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-export function NewOnAlbumboxd({ limit = 6 }) {
+export function NewOnRescened({ limit = 6 }) {
     const [albums, setAlbums] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -71,4 +71,4 @@ export function NewOnAlbumboxd({ limit = 6 }) {
     );
 }
 
-export default NewOnAlbumboxd;
+export default NewOnRescened;

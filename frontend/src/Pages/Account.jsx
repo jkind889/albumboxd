@@ -587,7 +587,7 @@ export function Account() {
   }
 
   const displayName = isPublicProfile
-    ? profile.username || publicProfileUsername || profile.userId || "albumboxd user"
+    ? profile.username || publicProfileUsername || profile.userId || "rescened user"
     : user?.username || user?.fullName || user?.primaryEmailAddress?.emailAddress || "Your profile";
   const profileImageUrl = isPublicProfile ? profile.imageUrl || publicProfileImageUrl : user?.imageUrl;
   const showFollowButton = isPublicProfile && !profile.isCurrentUser && (!isSignedIn || !isLoading);
@@ -901,7 +901,7 @@ export function Account() {
           const album = activity.album || {};
           const targetUser = activity.targetUser || {};
           const reviewAuthor = activity.reviewAuthor || {};
-          const actorName = actor.username || "albumboxd user";
+          const actorName = actor.username || "rescened user";
           const actionLabelByType = {
             saved_album: "Saved",
             review: "Reviewed",
@@ -924,14 +924,14 @@ export function Account() {
               imageUrl: actor.imageUrl || "",
             },
           };
-          const targetUserName = targetUser.username || targetUser.userId || "albumboxd user";
+          const targetUserName = targetUser.username || targetUser.userId || "rescened user";
           const targetUserState = {
             profileUser: {
               username: targetUserName,
               imageUrl: targetUser.imageUrl || "",
             },
           };
-          const reviewAuthorName = reviewAuthor.username || reviewAuthor.userId || "albumboxd user";
+          const reviewAuthorName = reviewAuthor.username || reviewAuthor.userId || "rescened user";
 
           return (
             <article className="profile-activity-item" key={activity.id}>
@@ -1423,7 +1423,7 @@ export function Account() {
                               <span>{actionLabel}</span>
                               <strong>
                                 {activity.type === "follow"
-                                  ? targetUser.username || targetUser.userId || "albumboxd user"
+                                  ? targetUser.username || targetUser.userId || "rescened user"
                                   : album.title || "Untitled album"}
                               </strong>
                               <time>{formatDate(activity.createdAt)}</time>

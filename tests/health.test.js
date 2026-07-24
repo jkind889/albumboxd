@@ -63,7 +63,7 @@ test("GET /health returns ok when Mongo is connected", async () => {
 
   assert.equal(response.status, 200);
   assert.equal(response.body.status, "ok");
-  assert.equal(response.body.service, "albumboxd-api");
+  assert.equal(response.body.service, "rescened-api");
   assert.equal(response.body.database.status, "connected");
   assert.equal(response.body.database.readyState, 1);
   assert.equal(typeof response.body.uptime, "number");
