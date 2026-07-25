@@ -6718,3 +6718,145 @@ html:has(.search-results-page) .search-submit {
 :root[data-theme="light"] .profile-stat-grid strong {
   color: var(--app-text);
 }
+
+:root[data-theme="light"]:has(.search-results-page) .search-input,
+:root[data-theme="light"]:has(.search-results-page) .search-submit {
+  border-color: var(--app-line);
+  background: #ffffff;
+  color: var(--app-text);
+}
+
+:root[data-theme="light"] .search-results-page {
+  --search-line: var(--app-line);
+  --search-muted: var(--app-muted);
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+:root[data-theme="light"] .search-view-toggle.profile-view-toggle,
+:root[data-theme="light"] .results-grid .result-card,
+:root[data-theme="light"] .results-list .result-card,
+:root[data-theme="light"] .search-results-page .search-pagination button {
+  border-color: var(--app-line);
+  background: var(--app-surface);
+  color: var(--app-text);
+}
+
+:root[data-theme="light"] .search-view-toggle.profile-view-toggle button {
+  color: var(--app-muted);
+}
+
+:root[data-theme="light"] .search-view-toggle.profile-view-toggle button:hover,
+:root[data-theme="light"] .search-view-toggle .profile-view-toggle-active,
+:root[data-theme="light"] .results-grid .result-card:hover,
+:root[data-theme="light"] .results-list .result-card:hover,
+:root[data-theme="light"] .search-results-page .search-pagination button:hover:not(:disabled),
+:root[data-theme="light"] .search-results-page .search-pagination button:focus-visible:not(:disabled) {
+  background: var(--app-surface-strong);
+  color: var(--app-text);
+}
+
+:root[data-theme="light"] .result-cover {
+  background: var(--app-surface-strong);
+}
+
+:root[data-theme="light"] .profile-spotify-inline {
+  color: var(--app-text);
+}
+
+:root[data-theme="light"] .profile-spotify-inline:hover {
+  color: var(--app-accent);
+}
+
+:root[data-theme="light"] .profile-activity-item {
+  border-color: var(--app-line);
+  background: var(--app-surface);
+  color: var(--app-text);
+}
+
+:root[data-theme="light"] .profile-activity-item:hover {
+  border-color: var(--app-accent);
+  background: var(--app-surface-strong);
+}
+
+:root[data-theme="light"] .profile-activity-item h3 a,
+:root[data-theme="light"] .profile-activity-item h3 a:hover,
+:root[data-theme="light"] .profile-activity-meta strong {
+  color: var(--app-text);
+}
+
+:root[data-theme="light"] .profile-activity-item time,
+:root[data-theme="light"] .profile-activity-item p,
+:root[data-theme="light"] .profile-activity-meta {
+  color: var(--app-muted);
+}
+
+:root[data-theme="light"] .profile-tabs,
+:root[data-theme="light"] .profile-network-tabs {
+  border-color: var(--app-line);
+  background: var(--app-bg);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .profile-tabs .profile-tab,
+:root[data-theme="light"] .profile-network-tabs .profile-tab {
+  background: transparent;
+  color: var(--app-muted);
+}
+
+:root[data-theme="light"] .profile-tabs .profile-tab:hover,
+:root[data-theme="light"] .profile-tabs .profile-tab-active,
+:root[data-theme="light"] .profile-network-tabs .profile-tab:hover,
+:root[data-theme="light"] .profile-network-tabs .profile-tab-active {
+  background: var(--app-bg);
+  border-bottom-color: var(--app-accent);
+  color: var(--app-text);
+}
+
+:root[data-theme="light"] .popular-albums-page .popular-album-card {
+  border-color: var(--app-line);
+  background: var(--app-surface);
+  color: var(--app-text);
+  box-shadow: none;
+}
+
+.popular-albums-page .popular-album-card {
+  border-color: var(--app-line);
+  background: var(--app-surface);
+  color: var(--app-text);
+  box-shadow: none;
+}
+
+.popular-albums-page .popular-album-card:hover {
+  border-color: var(--app-accent);
+  background: var(--app-surface-strong);
+  color: var(--app-text);
+  box-shadow: none;
+}
+
+.popular-albums-page .popular-album-info h4 {
+  color: var(--app-text);
+}
+
+.popular-albums-page .popular-album-info p,
+.popular-albums-page .popular-albums-count {
+  color: var(--app-muted);
+}
+
+:root[data-theme="light"] .popular-albums-page .popular-album-card:hover {
+  border-color: var(--app-accent);
+  background: var(--app-surface-strong);
+  color: var(--app-text);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .popular-albums-page .popular-album-info h4,
+:root[data-theme="light"] .popular-albums-page .popular-album-info p,
+:root[data-theme="light"] .popular-albums-page .popular-albums-count {
+  color: var(--app-text);
+}
+
+:root[data-theme="light"] .popular-albums-page .popular-album-info p,
+:root[data-theme="light"] .popular-albums-page .popular-albums-count {
+  color: var(--app-muted);
+}

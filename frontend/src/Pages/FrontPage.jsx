@@ -270,7 +270,7 @@ export function FrontPage() {
                 <section className="front-signal-section" aria-labelledby="front-popular-title">
                     <div className="front-section-title">
                         <h2 id="front-popular-title">Popular this month</h2>
-                        <Link to="/search">Search <ArrowIcon /></Link>
+                        <Link to="/popular-albums">More <ArrowIcon /></Link>
                     </div>
                     {signals.popular.length ? (
                         <div className="front-live-list">

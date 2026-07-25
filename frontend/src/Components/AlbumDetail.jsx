@@ -821,14 +821,6 @@ export function AlbumDetail()
                                 Rate
                             </button>
                         ) : renderSignInAction("Rate", "★")}
-                        {canUseAuthenticatedActions ? (
-                            <button className="album-side-action" type="button" onClick={() => {
-                                setReviewActionMessage("");
-                                setIsReviewModalOpen(true);
-                            }}>
-                                Review or log...
-                            </button>
-                        ) : renderSignInAction("Review or log...")}
                         {album.spotifyUrl && (
                             <a
                                 className="album-side-action"

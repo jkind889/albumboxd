@@ -2,7 +2,7 @@ import { API_BASE_URL } from "../config/api";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-export function PopularAlbums({ limit = 5, window = "30d" }) {
+export function PopularAlbums({ limit = 10, window = "30d" }) {
     const [albums, setAlbums] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
