@@ -5,6 +5,7 @@ import SearchResults from "./Pages/SearchResults";
 import AlbumDetail from "./Components/AlbumDetail";
 import ViewReviews from "./Pages/ViewReviews";
 import ReviewDispatches from "./Pages/ReviewDispatches";
+import PopularAlbums from "./Pages/PopularAlbums";
 import FrontPage from "./Pages/FrontPage";
 import Layout from "./Layout";
 import Account from "./Pages/Account";
@@ -36,6 +37,7 @@ export function App() {
               <ViewReviews />
             </ProtectedRoute>} />
             <Route path="/review-dispatches" element={<ReviewDispatches />} />
+            <Route path="/popular-albums" element={<PopularAlbums />} />
             <Route path="/account" element={<Account />} />
             <Route path="/account/network" element={<ProfileNetwork />} />
             <Route path="/notifications" element={
