@@ -1,4 +1,7 @@
 const AlbumCatalog = require("../../models/AlbumCatalog");
+const {
+  scheduleAlbumGenreEnrichment,
+} = require("./albumGenreEnrichment");
 const { getSpotifyAccessToken } = require("./spotify");
 const { consumeSpotifyRateLimit } = require("./rateLimit");
 
@@ -56,7 +59,6 @@ function normalizeSpotifyAlbum(data) {
   return {
     ...normalizeSpotifyAlbumSummary(data),
     detailMetadataVersion: ALBUM_DETAIL_METADATA_VERSION,
-    genres: data.genres || [],
     tracks: data.tracks?.items?.map((track) => ({
       spotifyId: track.id || "",
       trackNumber: track.track_number || 0,
@@ -73,6 +75,12 @@ function normalizeSpotifyAlbum(data) {
 // Converts catalog documents into the album shape the frontend already expects.
 function normalizeCatalogAlbum(album) {
   const source = typeof album.toObject === "function" ? album.toObject() : album;
+  const genreRankings = (Array.isArray(source.genreRankings) ? source.genreRankings : [])
+    .map((genre) => ({
+      name: String(genre?.name || "").trim(),
+      score: Number(genre?.score) || 0,
+    }))
+    .filter((genre) => genre.name && genre.score > 0);
 
   return {
     id: source.spotifyId,
@@ -84,6 +92,11 @@ function normalizeCatalogAlbum(album) {
     year: source.year || "unknown",
     releaseDate: source.releaseDate || "",
     genres: source.genres || [],
+    genreRankings,
+    primaryGenre: genreRankings[0]?.name || null,
+    secondaryGenres: genreRankings.slice(1).map((genre) => genre.name),
+    genreSource: source.genreSource || "",
+    musicBrainzReleaseGroupId: source.musicBrainzReleaseGroupId || null,
     imgs: source.imgs || [],
     cover: source.cover || source.imgs?.[0]?.url || null,
     totalTracks: source.totalTracks || 0,
@@ -150,11 +163,14 @@ async function getOrCreateAlbumCatalog(spotifyId, options = {}) {
   const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
 
   if (hasCurrentAlbumDetails(cachedAlbum)) {
+    scheduleAlbumGenreEnrichment(cachedAlbum);
     return cachedAlbum;
   }
 
   const spotifyAlbum = await fetchSpotifyAlbum(spotifyId, options);
-  return upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
+  const album = await upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
+  scheduleAlbumGenreEnrichment(album);
+  return album;
 }
 
 // Album detail reads can degrade to cached metadata when Spotify enrichment fails.
@@ -162,6 +178,7 @@ async function getAlbumCatalogDetails(spotifyId, options = {}) {
   const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
 
   if (hasCurrentAlbumDetails(cachedAlbum)) {
+    scheduleAlbumGenreEnrichment(cachedAlbum);
     return {
       album: cachedAlbum,
       isPartial: false,
@@ -171,6 +188,7 @@ async function getAlbumCatalogDetails(spotifyId, options = {}) {
   try {
     const spotifyAlbum = await fetchSpotifyAlbum(spotifyId, options);
     const album = await upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
+    scheduleAlbumGenreEnrichment(album);
 
     return {
       album,
@@ -181,6 +199,7 @@ async function getAlbumCatalogDetails(spotifyId, options = {}) {
       throw error;
     }
 
+    scheduleAlbumGenreEnrichment(cachedAlbum);
     return {
       album: cachedAlbum,
       isPartial: true,

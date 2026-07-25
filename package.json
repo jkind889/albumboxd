@@ -7,6 +7,7 @@
     "test": "node --test",
     "start": "node server.js",
     "devStart": "nodemon server.js",
+    "enrich:album-genres": "node scripts/enrichAlbumGenres.js",
     "seed:social": "node scripts/seedSocialDemo.js"
   },
   "repository": {

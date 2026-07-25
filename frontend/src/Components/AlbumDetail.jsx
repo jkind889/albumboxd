@@ -489,6 +489,11 @@ export function AlbumDetail()
         : distributionAverageRating || localAverageRating;
     const maxRatingBucketCount = Math.max(...ratingDistribution.map((bucket) => bucket.count), 0);
     const albumArt = album.imgs?.[0]?.url;
+    const genreRankings = Array.isArray(album.genreRankings) ? album.genreRankings : [];
+    const primaryGenre = genreRankings.length > 0 ? album.primaryGenre || "" : "";
+    const secondaryGenres = genreRankings.length > 0 && Array.isArray(album.secondaryGenres)
+        ? album.secondaryGenres
+        : [];
     const isReviewsRoute = location.pathname.endsWith("/reviews");
     const reviewSort = new URLSearchParams(location.search).get("sort") === "popular" ? "popular" : "recent";
     const releaseDateLabel = album.releaseDate
@@ -895,6 +900,18 @@ export function AlbumDetail()
                             <span>{artistNames.join(", ")}</span>
                             {album.label && <span>{album.label}</span>}
                         </div>
+                        {primaryGenre && (
+                            <ul className="album-genre-list" aria-label="Album genres">
+                                <li className="album-genre-badge album-genre-badge-primary">
+                                    {primaryGenre}
+                                </li>
+                                {secondaryGenres.map((genre) => (
+                                    <li className="album-genre-badge album-genre-badge-secondary" key={genre}>
+                                        {genre}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
 
                     <nav className="album-tabs" aria-label="Album sections">

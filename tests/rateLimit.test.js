@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const albumCatalogModelPath = require.resolve("../models/AlbumCatalog");
+const albumGenreEnrichmentPath = require.resolve("../routes/utils/albumGenreEnrichment");
 const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const boardModelPath = require.resolve("../models/Board");
 const boardItemModelPath = require.resolve("../models/BoardItem");
@@ -128,6 +129,7 @@ function mockClerk(userId = "user_clerk_123") {
 test.afterEach(() => {
   [
     albumCatalogModelPath,
+    albumGenreEnrichmentPath,
     albumCatalogHelperPath,
     albumModelPath,
     boardModelPath,
@@ -398,6 +400,14 @@ test("cached album catalog hits do not consume the Spotify fallback bucket", asy
       getSpotifyAccessToken: async () => {
         throw new Error("Spotify token should not be fetched for cached album details");
       },
+    },
+  };
+  require.cache[albumGenreEnrichmentPath] = {
+    id: albumGenreEnrichmentPath,
+    filename: albumGenreEnrichmentPath,
+    loaded: true,
+    exports: {
+      scheduleAlbumGenreEnrichment: () => true,
     },
   };
 

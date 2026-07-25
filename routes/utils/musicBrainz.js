@@ -203,7 +203,7 @@ async function executeWithTimeout(operation, timeoutMs) {
   }
 }
 
-async function fetchArtistBySpotifyUrl(spotifyUrl, options = {}) {
+async function fetchMusicBrainzJson(requestUrl, options = {}) {
   const fetchImpl = options.fetchImpl || global.fetch;
   const maxAttempts = Math.max(1, options.maxAttempts || MUSICBRAINZ_MAX_ATTEMPTS);
   const requestTimeoutMs = Math.max(
@@ -221,7 +221,7 @@ async function fetchArtistBySpotifyUrl(spotifyUrl, options = {}) {
     let response;
 
     try {
-      response = await fetchImpl(buildArtistUrlLookupUrl(spotifyUrl), {
+      response = await fetchImpl(requestUrl, {
         headers: {
           Accept: "application/json",
           "User-Agent": getMusicBrainzUserAgent(options.env),
@@ -247,7 +247,7 @@ async function fetchArtistBySpotifyUrl(spotifyUrl, options = {}) {
       );
     }
 
-    return extractArtistFromUrlLookup(await response.json());
+    return response.json();
   }, requestTimeoutMs);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -273,6 +273,15 @@ async function fetchArtistBySpotifyUrl(spotifyUrl, options = {}) {
   }
 
   return null;
+}
+
+async function fetchArtistBySpotifyUrl(spotifyUrl, options = {}) {
+  const payload = await fetchMusicBrainzJson(
+    buildArtistUrlLookupUrl(spotifyUrl),
+    options,
+  );
+
+  return payload ? extractArtistFromUrlLookup(payload) : null;
 }
 
 function isFreshArtistMapping(artist, now = new Date()) {
@@ -446,6 +455,7 @@ module.exports = {
   extractArtistCandidatesFromUrlLookup,
   extractArtistFromUrlLookup,
   fetchArtistBySpotifyUrl,
+  fetchMusicBrainzJson,
   getMusicBrainzUserAgent,
   getOrResolveArtist,
   isFreshArtistMapping,

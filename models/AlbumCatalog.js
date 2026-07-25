@@ -18,6 +18,21 @@ const artistReferenceSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const genreRankingSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+    },
+    score: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+  },
+  { _id: false },
+);
+
 // Stores Spotify album data once so routes can read from Mongo before calling Spotify again.
 const albumCatalogSchema = new mongoose.Schema(
   {
@@ -53,6 +68,72 @@ const albumCatalogSchema = new mongoose.Schema(
     genres: {
       type: [String],
       default: [],
+    },
+    genreRankings: {
+      type: [genreRankingSchema],
+      default: [],
+    },
+    genreSource: {
+      type: String,
+      default: "",
+    },
+    genreEnrichmentStatus: {
+      type: String,
+      enum: ["pending", "resolved", "empty", "failed"],
+      default: "pending",
+    },
+    genresSyncedAt: {
+      type: Date,
+      default: null,
+    },
+    lastGenreEnrichmentAttemptAt: {
+      type: Date,
+      default: null,
+    },
+    lastGenreEnrichmentFailureAt: {
+      type: Date,
+      default: null,
+    },
+    lastGenreEnrichmentError: {
+      type: String,
+      default: "",
+    },
+    musicBrainzReleaseIds: {
+      type: [String],
+      default: [],
+    },
+    musicBrainzReleaseGroupId: {
+      type: String,
+      default: undefined,
+    },
+    musicBrainzReleaseGroupCandidates: {
+      type: [String],
+      default: [],
+    },
+    musicBrainzMappingStatus: {
+      type: String,
+      enum: ["pending", "resolved", "not_found", "ambiguous", "failed"],
+      default: "pending",
+    },
+    musicBrainzMappingSource: {
+      type: String,
+      default: "",
+    },
+    musicBrainzMappedAt: {
+      type: Date,
+      default: null,
+    },
+    lastMusicBrainzMappingAttemptAt: {
+      type: Date,
+      default: null,
+    },
+    lastMusicBrainzMappingFailureAt: {
+      type: Date,
+      default: null,
+    },
+    lastMusicBrainzMappingError: {
+      type: String,
+      default: "",
     },
     imgs: {
       type: [mongoose.Schema.Types.Mixed],
@@ -125,6 +206,12 @@ albumCatalogSchema.index({ title: "text", artist: "text", artists: "text" });
 albumCatalogSchema.index({ artist: 1, title: 1 });
 albumCatalogSchema.index({ "artistRefs.spotifyId": 1 });
 albumCatalogSchema.index({ "tracks.artistRefs.spotifyId": 1 });
+albumCatalogSchema.index({ musicBrainzReleaseGroupId: 1 }, { sparse: true });
+albumCatalogSchema.index({
+  musicBrainzMappingStatus: 1,
+  genreEnrichmentStatus: 1,
+  genresSyncedAt: 1,
+});
 
 const AlbumCatalog = mongoose.model("AlbumCatalog", albumCatalogSchema);
 

@@ -11,6 +11,20 @@ When neither is configured, the repository URL is used as the contact. Provider 
 
 Confirmed Spotify-to-MusicBrainz mappings are treated as durable identities and do not expire automatically. A failed lookup is cached for 24 hours before it can be retried. Pass `force: true` to the server-side resolver only when an explicit repair or revalidation workflow needs to replace an existing mapping.
 
+### Album genre enrichment
+
+Album detail and save flows enqueue non-blocking MusicBrainz enrichment for catalog albums. This is eventually consistent: the first album response can have no rankings, while a subsequent read shows genres after the background job completes. Spotify album URLs resolve only through direct MusicBrainz URL relationships: specific releases are collapsed to one release group, and the release group's five highest positive genre scores become the ordered `genres` and `genreRankings` values. Missing mappings are retried after 24 hours, ambiguous mappings after 30 days, and resolved genre rankings refresh after 30 days.
+
+Lazy enrichment is enabled by default. Set `ALBUM_GENRE_LAZY_ENRICHMENT=false` to disable it while running an operator backfill:
+
+```sh
+npm run enrich:album-genres -- --dry-run
+npm run enrich:album-genres -- --limit=25
+npm run enrich:album-genres -- --force --limit=25
+```
+
+Backfills are resumable because each result is persisted on `AlbumCatalog`; rerunning the command skips fresh results unless `--force` is supplied. Do not run the backfill concurrently with a lazy-enrichment server process. MusicBrainz throttling is process-local, so two Node processes would maintain independent request schedules.
+
 ## ListenBrainz artist neighborhoods
 
 The ListenBrainz helper uses the experimental ListenBrainz Labs similar-artists dataset after resolving the seed Spotify artist to a MusicBrainz ID. Complete neighborhoods are cached in MongoDB for seven days and response limits are applied after reading the snapshot. Refresh is lazy: the first lookup after expiry requests a new snapshot. Expired snapshots are retained as stale fallbacks during provider outages or Labs contract changes; the `expiresAt` index is intentionally not a MongoDB TTL index.

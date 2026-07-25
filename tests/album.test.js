@@ -140,6 +140,15 @@ function loadAlbumRouter() {
         return catalogAlbum;
       },
       normalizeCatalogAlbum: (album) => ({
+        ...(album.genreRankings?.length
+          ? {
+            primaryGenre: album.genreRankings[0].name,
+            secondaryGenres: album.genreRankings.slice(1).map((genre) => genre.name),
+          }
+          : {
+            primaryGenre: null,
+            secondaryGenres: [],
+          }),
         id: album.spotifyId,
         spotifyId: album.spotifyId,
         title: album.title,
@@ -148,6 +157,9 @@ function loadAlbumRouter() {
         year: album.year || "unknown",
         releaseDate: album.releaseDate || "",
         genres: album.genres || [],
+        genreRankings: album.genreRankings || [],
+        genreSource: album.genreSource || "",
+        musicBrainzReleaseGroupId: album.musicBrainzReleaseGroupId || null,
         imgs: album.imgs || [],
         cover: album.cover || null,
         totalTracks: album.totalTracks || 0,
@@ -313,6 +325,13 @@ test.beforeEach(() => {
     artist: "Miles Davis",
     artists: ["Miles Davis"],
     year: "1959",
+    genres: ["modal jazz", "jazz"],
+    genreRankings: [
+      { name: "modal jazz", score: 12 },
+      { name: "jazz", score: 8 },
+    ],
+    genreSource: "musicbrainz_release_group",
+    musicBrainzReleaseGroupId: "1ee8e0e9-f4d1-3048-9e99-2fbef6a21e27",
     cover: "https://example.com/kind-of-blue.jpg",
     totalTracks: 2,
     tracks: [
@@ -505,6 +524,18 @@ test("GET /albums/album/:id returns a cached or newly cached catalog album", asy
   assert.equal(response.body.id, "spotify_album_123");
   assert.equal(response.body.title, "Kind of Blue");
   assert.deepEqual(response.body.tracks, catalogAlbum.tracks);
+  assert.deepEqual(response.body.genres, ["modal jazz", "jazz"]);
+  assert.deepEqual(response.body.genreRankings, [
+    { name: "modal jazz", score: 12 },
+    { name: "jazz", score: 8 },
+  ]);
+  assert.equal(response.body.primaryGenre, "modal jazz");
+  assert.deepEqual(response.body.secondaryGenres, ["jazz"]);
+  assert.equal(response.body.genreSource, "musicbrainz_release_group");
+  assert.equal(
+    response.body.musicBrainzReleaseGroupId,
+    "1ee8e0e9-f4d1-3048-9e99-2fbef6a21e27",
+  );
   assert.equal(response.body.isPartial, false);
 });
 

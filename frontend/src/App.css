@@ -2752,6 +2752,35 @@ html:has(.search-results-page) .search-submit {
   background: rgba(148, 163, 184, 0.7);
 }
 
+.album-genre-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.album-genre-badge {
+  border: 1px solid var(--app-line-strong);
+  padding: 0.32rem 0.6rem;
+  font-size: 0.7rem;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: capitalize;
+}
+
+.album-genre-badge-primary {
+  border-color: var(--app-accent);
+  background: var(--app-accent);
+  color: var(--app-text);
+}
+
+.album-genre-badge-secondary {
+  background: var(--app-bg);
+  color: var(--app-muted);
+}
+
 .album-action-button,
 .album-primary-link,
 .review-submit-button,
