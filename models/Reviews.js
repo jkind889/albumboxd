@@ -29,6 +29,10 @@ const reviewSchema = new mongoose.Schema({
         required: true,
         min: 1,
         max: 5,
+        validate: {
+            validator: (value) => Number.isInteger(value * 2),
+            message: "Rating must be a whole or half number",
+        },
     },
     date: {
         type: Date,
@@ -38,6 +42,7 @@ const reviewSchema = new mongoose.Schema({
 
 reviewSchema.index({ spotifyId: 1, date: -1 });
 reviewSchema.index({ userId: 1, date: -1 });
+reviewSchema.index({ date: -1, _id: -1 });
 
 const Review = mongoose.model("Review", reviewSchema);
 

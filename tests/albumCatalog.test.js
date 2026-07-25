@@ -3,6 +3,7 @@ const test = require("node:test");
 
 const albumCatalogModelPath = require.resolve("../models/AlbumCatalog");
 const spotifyUtilPath = require.resolve("../routes/utils/spotify");
+const albumGenreEnrichmentPath = require.resolve("../routes/utils/albumGenreEnrichment");
 const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 
 let cachedAlbum = null;
@@ -10,6 +11,7 @@ let updatedAlbum = null;
 let spotifyAlbum = null;
 const findOneCalls = [];
 const findOneAndUpdateCalls = [];
+const scheduledAlbumGenreEnrichments = [];
 
 function loadAlbumCatalogHelper() {
   delete require.cache[albumCatalogHelperPath];
@@ -25,7 +27,10 @@ function loadAlbumCatalogHelper() {
       },
       findOneAndUpdate: async (query, update, options) => {
         findOneAndUpdateCalls.push({ query, update, options });
-        updatedAlbum = update.$set;
+        updatedAlbum = {
+          ...(cachedAlbum || {}),
+          ...update.$set,
+        };
         return updatedAlbum;
       },
     },
@@ -40,6 +45,18 @@ function loadAlbumCatalogHelper() {
     },
   };
 
+  require.cache[albumGenreEnrichmentPath] = {
+    id: albumGenreEnrichmentPath,
+    filename: albumGenreEnrichmentPath,
+    loaded: true,
+    exports: {
+      scheduleAlbumGenreEnrichment: (album) => {
+        scheduledAlbumGenreEnrichments.push(album);
+        return true;
+      },
+    },
+  };
+
   return require("../routes/utils/albumCatalog");
 }
 
@@ -49,7 +66,15 @@ test.beforeEach(() => {
   spotifyAlbum = {
     id: "spotify_album_123",
     name: "Kind of Blue",
-    artists: [{ name: "Miles Davis" }],
+    artists: [
+      {
+        id: "spotify_artist_miles",
+        name: "Miles Davis",
+        external_urls: {
+          spotify: "https://open.spotify.com/artist/spotify_artist_miles",
+        },
+      },
+    ],
     release_date: "1959-08-17",
     genres: ["jazz"],
     images: [{ url: "https://example.com/kind-of-blue.jpg" }],
@@ -67,6 +92,15 @@ test.beforeEach(() => {
           disc_number: 1,
           name: "So What",
           duration_ms: 545000,
+          artists: [
+            {
+              id: "spotify_artist_miles",
+              name: "Miles Davis",
+              external_urls: {
+                spotify: "https://open.spotify.com/artist/spotify_artist_miles",
+              },
+            },
+          ],
           external_urls: {
             spotify: "https://open.spotify.com/track/track_1",
           },
@@ -77,6 +111,22 @@ test.beforeEach(() => {
           disc_number: 1,
           name: "Freddie Freeloader",
           duration_ms: 589000,
+          artists: [
+            {
+              id: "spotify_artist_miles",
+              name: "Miles Davis",
+              external_urls: {
+                spotify: "https://open.spotify.com/artist/spotify_artist_miles",
+              },
+            },
+            {
+              id: "spotify_artist_cannonball",
+              name: "Cannonball Adderley",
+              external_urls: {
+                spotify: "https://open.spotify.com/artist/spotify_artist_cannonball",
+              },
+            },
+          ],
           external_urls: {
             spotify: "https://open.spotify.com/track/track_2",
           },
@@ -86,12 +136,22 @@ test.beforeEach(() => {
   };
   findOneCalls.length = 0;
   findOneAndUpdateCalls.length = 0;
+  scheduledAlbumGenreEnrichments.length = 0;
 });
 
 test("normalizeSpotifyAlbum stores track metadata from Spotify album payloads", () => {
   const { normalizeSpotifyAlbum } = loadAlbumCatalogHelper();
 
   const normalized = normalizeSpotifyAlbum(spotifyAlbum);
+
+  assert.equal("genres" in normalized, false);
+  assert.deepEqual(normalized.artistRefs, [
+    {
+      spotifyId: "spotify_artist_miles",
+      name: "Miles Davis",
+      spotifyUrl: "https://open.spotify.com/artist/spotify_artist_miles",
+    },
+  ]);
 
   assert.deepEqual(normalized.tracks, [
     {
@@ -101,6 +161,13 @@ test("normalizeSpotifyAlbum stores track metadata from Spotify album payloads", 
       title: "So What",
       durationMs: 545000,
       spotifyUrl: "https://open.spotify.com/track/track_1",
+      artistRefs: [
+        {
+          spotifyId: "spotify_artist_miles",
+          name: "Miles Davis",
+          spotifyUrl: "https://open.spotify.com/artist/spotify_artist_miles",
+        },
+      ],
     },
     {
       spotifyId: "track_2",
@@ -109,17 +176,96 @@ test("normalizeSpotifyAlbum stores track metadata from Spotify album payloads", 
       title: "Freddie Freeloader",
       durationMs: 589000,
       spotifyUrl: "https://open.spotify.com/track/track_2",
+      artistRefs: [
+        {
+          spotifyId: "spotify_artist_miles",
+          name: "Miles Davis",
+          spotifyUrl: "https://open.spotify.com/artist/spotify_artist_miles",
+        },
+        {
+          spotifyId: "spotify_artist_cannonball",
+          name: "Cannonball Adderley",
+          spotifyUrl: "https://open.spotify.com/artist/spotify_artist_cannonball",
+        },
+      ],
     },
   ]);
 });
 
-test("normalizeCatalogAlbum returns catalog tracks to the frontend", () => {
+test("normalizeSpotifyArtistRefs deduplicates stable ids and skips nameless credits", () => {
+  const { normalizeSpotifyArtistRefs } = loadAlbumCatalogHelper();
+
+  assert.deepEqual(normalizeSpotifyArtistRefs([
+    { id: "artist_1", name: " Artist One " },
+    { id: "artist_1", name: "Artist One Duplicate" },
+    { name: "Artist Two" },
+    { name: "artist two" },
+    { id: "missing_name" },
+  ]), [
+    { spotifyId: "artist_1", name: "Artist One", spotifyUrl: "" },
+    { spotifyId: "", name: "Artist Two", spotifyUrl: "" },
+  ]);
+});
+
+test("search results expose stable primary artist identity without removing legacy names", () => {
+  const {
+    normalizeSpotifyAlbumSummary,
+    toSearchResult,
+  } = loadAlbumCatalogHelper();
+  const summary = normalizeSpotifyAlbumSummary(spotifyAlbum);
+  const result = toSearchResult(summary);
+
+  assert.equal(summary.artist, "Miles Davis");
+  assert.deepEqual(summary.artists, ["Miles Davis"]);
+  assert.equal(summary.artistRefs[0].spotifyId, "spotify_artist_miles");
+  assert.equal(result.artistId, "spotify_artist_miles");
+  assert.deepEqual(result.artistRefs, summary.artistRefs);
+});
+
+test("search summaries do not overwrite detail enrichment fields", async () => {
+  const {
+    normalizeSpotifyAlbumSummary,
+    upsertAlbumCatalog,
+  } = loadAlbumCatalogHelper();
+  const summary = normalizeSpotifyAlbumSummary(spotifyAlbum);
+
+  assert.equal("tracks" in summary, false);
+  assert.equal("genres" in summary, false);
+  assert.equal("label" in summary, false);
+  assert.equal("detailMetadataVersion" in summary, false);
+
+  await upsertAlbumCatalog(summary);
+
+  assert.deepEqual(findOneAndUpdateCalls[0].update.$set, summary);
+  assert.equal("tracks" in findOneAndUpdateCalls[0].update.$set, false);
+});
+
+test("album detail versioning lazily refreshes legacy cached tracks", () => {
+  const { hasCurrentAlbumDetails } = loadAlbumCatalogHelper();
+
+  assert.equal(hasCurrentAlbumDetails({
+    tracks: [{ spotifyId: "legacy_track" }],
+  }), false);
+  assert.equal(hasCurrentAlbumDetails({
+    detailMetadataVersion: 2,
+    tracks: [{ spotifyId: "current_track" }],
+  }), true);
+});
+
+test("normalizeCatalogAlbum returns tracks and ranked genre fields to the frontend", () => {
   const { normalizeCatalogAlbum } = loadAlbumCatalogHelper();
 
   const normalized = normalizeCatalogAlbum({
     spotifyId: "spotify_album_123",
     title: "Kind of Blue",
     artist: "Miles Davis",
+    genres: ["modal jazz", "jazz"],
+    genreRankings: [
+      { name: "modal jazz", score: 12 },
+      { name: "jazz", score: 8 },
+    ],
+    genreSource: "musicbrainz_release_group",
+    musicBrainzReleaseGroupId: "1ee8e0e9-f4d1-3048-9e99-2fbef6a21e27",
     tracks: [
       {
         spotifyId: "track_1",
@@ -142,6 +288,18 @@ test("normalizeCatalogAlbum returns catalog tracks to the frontend", () => {
       spotifyUrl: "https://open.spotify.com/track/track_1",
     },
   ]);
+  assert.deepEqual(normalized.genres, ["modal jazz", "jazz"]);
+  assert.deepEqual(normalized.genreRankings, [
+    { name: "modal jazz", score: 12 },
+    { name: "jazz", score: 8 },
+  ]);
+  assert.equal(normalized.primaryGenre, "modal jazz");
+  assert.deepEqual(normalized.secondaryGenres, ["jazz"]);
+  assert.equal(normalized.genreSource, "musicbrainz_release_group");
+  assert.equal(
+    normalized.musicBrainzReleaseGroupId,
+    "1ee8e0e9-f4d1-3048-9e99-2fbef6a21e27",
+  );
 });
 
 test("getOrCreateAlbumCatalog refreshes cached albums that do not have tracks", async () => {
@@ -171,6 +329,8 @@ test("getOrCreateAlbumCatalog refreshes cached albums that do not have tracks", 
 
     assert.equal(album.spotifyId, "spotify_album_123");
     assert.equal(album.tracks.length, 2);
+    assert.equal(scheduledAlbumGenreEnrichments.length, 1);
+    assert.equal(scheduledAlbumGenreEnrichments[0], album);
     assert.deepEqual(findOneCalls, [{ spotifyId: "spotify_album_123" }]);
     assert.equal(findOneAndUpdateCalls.length, 1);
     assert.deepEqual(findOneAndUpdateCalls[0].query, {
@@ -187,6 +347,7 @@ test("getOrCreateAlbumCatalog returns cached albums that already have tracks", a
     spotifyId: "spotify_album_123",
     title: "Kind of Blue",
     artist: "Miles Davis",
+    detailMetadataVersion: 2,
     tracks: [{ spotifyId: "track_1", title: "So What" }],
   };
 
@@ -200,7 +361,138 @@ test("getOrCreateAlbumCatalog returns cached albums that already have tracks", a
     const album = await getOrCreateAlbumCatalog("spotify_album_123");
 
     assert.equal(album, cachedAlbum);
+    assert.deepEqual(scheduledAlbumGenreEnrichments, [cachedAlbum]);
     assert.deepEqual(findOneCalls, [{ spotifyId: "spotify_album_123" }]);
+    assert.equal(findOneAndUpdateCalls.length, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("getAlbumCatalogDetails returns a complete cached album without calling Spotify", async () => {
+  cachedAlbum = {
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    detailMetadataVersion: 2,
+    tracks: [{ spotifyId: "track_1", title: "So What" }],
+  };
+  const originalFetch = global.fetch;
+  global.fetch = async () => {
+    throw new Error("Spotify should not be called for complete cached albums");
+  };
+
+  try {
+    const { getAlbumCatalogDetails } = loadAlbumCatalogHelper();
+    const result = await getAlbumCatalogDetails("spotify_album_123");
+
+    assert.equal(result.album, cachedAlbum);
+    assert.equal(result.isPartial, false);
+    assert.deepEqual(scheduledAlbumGenreEnrichments, [cachedAlbum]);
+    assert.equal(findOneAndUpdateCalls.length, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("getAlbumCatalogDetails enriches an incomplete cached album", async () => {
+  cachedAlbum = {
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    tracks: [],
+  };
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => spotifyAlbum,
+  });
+
+  try {
+    const { getAlbumCatalogDetails } = loadAlbumCatalogHelper();
+    const result = await getAlbumCatalogDetails("spotify_album_123");
+
+    assert.equal(result.isPartial, false);
+    assert.equal(result.album.tracks.length, 2);
+    assert.deepEqual(scheduledAlbumGenreEnrichments, [result.album]);
+    assert.equal(findOneAndUpdateCalls.length, 1);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("a later Spotify detail refresh preserves MusicBrainz genre enrichment", async () => {
+  cachedAlbum = {
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    tracks: [],
+    genres: ["modal jazz", "jazz"],
+    genreRankings: [
+      { name: "modal jazz", score: 12 },
+      { name: "jazz", score: 8 },
+    ],
+    genreSource: "musicbrainz_release_group",
+    musicBrainzReleaseGroupId: "1ee8e0e9-f4d1-3048-9e99-2fbef6a21e27",
+  };
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => spotifyAlbum,
+  });
+
+  try {
+    const { getAlbumCatalogDetails } = loadAlbumCatalogHelper();
+    const result = await getAlbumCatalogDetails("spotify_album_123");
+
+    assert.deepEqual(result.album.genres, ["modal jazz", "jazz"]);
+    assert.deepEqual(result.album.genreRankings, [
+      { name: "modal jazz", score: 12 },
+      { name: "jazz", score: 8 },
+    ]);
+    assert.equal(result.album.genreSource, "musicbrainz_release_group");
+    assert.equal("genres" in findOneAndUpdateCalls[0].update.$set, false);
+    assert.equal("genreRankings" in findOneAndUpdateCalls[0].update.$set, false);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("getAlbumCatalogDetails returns cached metadata when enrichment fails", async () => {
+  cachedAlbum = {
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    tracks: [],
+  };
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: false, status: 502 });
+
+  try {
+    const { getAlbumCatalogDetails } = loadAlbumCatalogHelper();
+    const result = await getAlbumCatalogDetails("spotify_album_123");
+
+    assert.equal(result.album, cachedAlbum);
+    assert.equal(result.isPartial, true);
+    assert.deepEqual(scheduledAlbumGenreEnrichments, [cachedAlbum]);
+    assert.match(result.enrichmentError.message, /status 502/);
+    assert.equal(findOneAndUpdateCalls.length, 0);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("getAlbumCatalogDetails throws when no cache exists and Spotify fails", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: false, status: 502 });
+
+  try {
+    const { getAlbumCatalogDetails } = loadAlbumCatalogHelper();
+
+    await assert.rejects(
+      getAlbumCatalogDetails("spotify_album_123"),
+      /status 502/,
+    );
     assert.equal(findOneAndUpdateCalls.length, 0);
   } finally {
     global.fetch = originalFetch;

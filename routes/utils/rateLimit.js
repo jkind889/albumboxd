@@ -8,43 +8,43 @@ const RATE_LIMIT_ERROR_CODE = "RATE_LIMITED";
 
 const RATE_LIMITS = {
   globalApi: {
-    keyPrefix: "albumboxd:global-api",
+    keyPrefix: "rescened:global-api",
     points: 300,
     duration: 5 * 60,
     message: "Too many requests. Please slow down and try again soon.",
   },
   spotifyFallback: {
-    keyPrefix: "albumboxd:spotify-fallback",
+    keyPrefix: "rescened:spotify-fallback",
     points: 60,
     duration: 10 * 60,
     message: "Too many Spotify-backed requests. Please try again soon.",
   },
   search: {
-    keyPrefix: "albumboxd:search",
+    keyPrefix: "rescened:search",
     points: 90,
     duration: 60,
     message: "Too many searches. Please slow down and try again soon.",
   },
   albumSave: {
-    keyPrefix: "albumboxd:album-save",
+    keyPrefix: "rescened:album-save",
     points: 30,
     duration: 10 * 60,
     message: "Too many save attempts. Please try again soon.",
   },
   reviewCreate: {
-    keyPrefix: "albumboxd:review-create",
+    keyPrefix: "rescened:review-create",
     points: 6,
     duration: 10 * 60,
     message: "Too many review submissions. Please try again soon.",
   },
   reviewMutation: {
-    keyPrefix: "albumboxd:review-mutation",
+    keyPrefix: "rescened:review-mutation",
     points: 30,
     duration: 10 * 60,
     message: "Too many review updates. Please try again soon.",
   },
   likeMutation: {
-    keyPrefix: "albumboxd:like-mutation",
+    keyPrefix: "rescened:like-mutation",
     points: 120,
     duration: 10 * 60,
     message: "Too many like updates. Please try again soon.",

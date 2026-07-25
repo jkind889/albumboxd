@@ -51,6 +51,7 @@ export function ReviewForm({album, onAddReview, onSubmitted})
                     type="number"
                     min="1"
                     max="5"
+                    step="0.5"
                     required
                     value={rating}
                     onChange={(e) => setRating(e.target.value)}

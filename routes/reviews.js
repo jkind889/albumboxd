@@ -11,7 +11,7 @@ const {
 } = require("./utils/rateLimit");
 
 const router = express.Router();
-const DEFAULT_AUTHOR_USERNAME = "albumboxd user";
+const DEFAULT_AUTHOR_USERNAME = "rescened user";
 const MIN_POPULAR_LIMIT = 5;
 const MAX_POPULAR_LIMIT = 10;
 const DEFAULT_POPULAR_LIMIT = 5;
@@ -114,48 +114,75 @@ async function getPopularAlbums({ limit, timeWindow }) {
     return Review.aggregate(buildPopularAlbumsPipeline({ limit, timeWindow }));
 }
 
-function toAlbumPreviewFromReview(review) {
-    return {
-        spotifyId: review.spotifyId,
-        title: review.title,
-        artist: review.artist,
-        cover: review.cover,
-        latestReviewDate: review.date,
-    };
+function buildRecentlyReviewedAlbumsPipeline(limit) {
+    return [
+        { $match: { spotifyId: { $type: "string", $nin: [""] } } },
+        { $sort: { date: -1, _id: -1 } },
+        {
+            $group: {
+                _id: "$spotifyId",
+                spotifyId: { $first: "$spotifyId" },
+                title: { $first: "$title" },
+                artist: { $first: "$artist" },
+                cover: { $first: "$cover" },
+                latestReviewDate: { $first: "$date" },
+                latestReviewId: { $first: "$_id" },
+            },
+        },
+        { $sort: { latestReviewDate: -1, latestReviewId: -1 } },
+        { $limit: limit },
+        {
+            $project: {
+                _id: 0,
+                spotifyId: 1,
+                title: 1,
+                artist: 1,
+                cover: 1,
+                latestReviewDate: 1,
+            },
+        },
+    ];
 }
 
 async function getRecentlyReviewedAlbums(limit) {
-    const reviews = await Review.find({}).sort({ date: -1 });
-    const seenSpotifyIds = new Set();
-    const albums = [];
+    return Review.aggregate(buildRecentlyReviewedAlbumsPipeline(limit));
+}
 
-    for (const review of reviews) {
-        if (!review.spotifyId || seenSpotifyIds.has(review.spotifyId)) {
-            continue;
-        }
-
-        seenSpotifyIds.add(review.spotifyId);
-        albums.push(toAlbumPreviewFromReview(toPlainReview(review)));
-
-        if (albums.length >= limit) {
-            break;
-        }
-    }
-
-    return albums;
+function buildPopularReviewsPipeline(limit) {
+    return [
+        {
+            $lookup: {
+                from: "likes",
+                let: { currentReviewId: "$_id" },
+                pipeline: [
+                    {
+                        $match: {
+                            targetType: "review",
+                            $expr: { $eq: ["$reviewId", "$$currentReviewId"] },
+                        },
+                    },
+                    { $count: "count" },
+                ],
+                as: "likeStats",
+            },
+        },
+        {
+            $set: {
+                likeCount: {
+                    $ifNull: [{ $arrayElemAt: ["$likeStats.count", 0] }, 0],
+                },
+                likedByViewer: false,
+            },
+        },
+        { $sort: { likeCount: -1, rating: -1, date: -1, _id: -1 } },
+        { $limit: limit },
+        { $project: { likeStats: 0 } },
+    ];
 }
 
 async function getPopularReviews(limit) {
-    const reviews = await addLikesToReviews(await Review.find({}).sort({ date: -1 }));
-    const popularReviews = reviews
-        .sort((first, second) => (
-            (Number(second.likeCount) || 0) - (Number(first.likeCount) || 0)
-            || (Number(second.rating) || 0) - (Number(first.rating) || 0)
-            || new Date(second.date || 0).getTime() - new Date(first.date || 0).getTime()
-        ))
-        .slice(0, limit);
-
-    return addAuthorsToReviews(popularReviews);
+    const popularReviews = await Review.aggregate(buildPopularReviewsPipeline(limit));
+    return attachAuthorsToReviews(popularReviews);
 }
 
 function toPlainReview(review) {
@@ -266,9 +293,14 @@ async function getAuthorsByUserId(userIds) {
 
 async function addAuthorsToReviews(reviews, viewerId = "") {
     const reviewsWithLikes = await addLikesToReviews(reviews, viewerId);
-    const authorsByUserId = await getAuthorsByUserId(reviewsWithLikes.map((review) => review.userId));
+    return attachAuthorsToReviews(reviewsWithLikes);
+}
 
-    return reviewsWithLikes.map((review) => ({
+async function attachAuthorsToReviews(reviews) {
+    const plainReviews = reviews.map(toPlainReview);
+    const authorsByUserId = await getAuthorsByUserId(plainReviews.map((review) => review.userId));
+
+    return plainReviews.map((review) => ({
         ...review,
         author: authorsByUserId.get(review.userId) || getAuthorFromUser(review.userId),
     }));
@@ -326,22 +358,36 @@ function ensureAuthenticated(req, res, next) {
     next();
 }
 
-function getReviewUpdatePayload(body) {
-    const reviewText = String(body?.reviewText || "").trim();
+function parseReviewRating(body) {
     const rating = Number(body?.rating);
-
-    if (!reviewText) {
-        return { error: "Review text is required" };
-    }
 
     if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
         return { error: "Rating must be between 1 and 5" };
     }
 
+    if (!Number.isInteger(rating * 2)) {
+        return { error: "Rating must be a whole or half number" };
+    }
+
+    return { rating };
+}
+
+function getReviewUpdatePayload(body) {
+    const reviewText = String(body?.reviewText || "").trim();
+    const parsedRating = parseReviewRating(body);
+
+    if (!reviewText) {
+        return { error: "Review text is required" };
+    }
+
+    if (parsedRating.error) {
+        return { error: parsedRating.error };
+    }
+
     return {
         update: {
             reviewText,
-            rating,
+            rating: parsedRating.rating,
         },
     };
 }
@@ -349,11 +395,16 @@ function getReviewUpdatePayload(body) {
 router.post("/review", ensureAuthenticated, reviewCreateRateLimit, async(req, res) =>
     {
         const userId = req.userId;
+        const parsedRating = parseReviewRating(req.body);
+
+        if (parsedRating.error) {
+            return res.status(400).json({ error: parsedRating.error });
+        }
 
 
         try {
             const review = await Review.create(
-                { ...req.body, userId }
+                { ...req.body, rating: parsedRating.rating, userId }
             );
             const [reviewWithAuthor] = await addAuthorsToReviews([review], userId);
             res.status(201).json(reviewWithAuthor);

@@ -76,7 +76,7 @@ function loadSearchRouter() {
     filename: albumCatalogHelperPath,
     loaded: true,
     exports: {
-      normalizeSpotifyAlbum: (album) => ({
+      normalizeSpotifyAlbumSummary: (album) => ({
         spotifyId: album.id,
         title: album.name,
         artist: album.artists?.[0]?.name || "Unknown Artist",
@@ -273,6 +273,41 @@ test("GET /search returns local catalog results without calling Spotify when cac
   assert.equal(response.body.length, 24);
   assert.equal(fetchCalls.length, 0);
   assert.equal(upsertCalls.length, 0);
+});
+
+test("GET /search honors a smaller limit for autocomplete", async () => {
+  textLocalAlbums = [
+    {
+      spotifyId: "local_album_1",
+      title: "Local Album One",
+      artist: "Catalog Artist",
+      year: "2026",
+      cover: "https://example.com/local.jpg",
+    },
+    {
+      spotifyId: "local_album_2",
+      title: "Local Album Two",
+      artist: "Catalog Artist",
+      year: "2025",
+      cover: "https://example.com/local-2.jpg",
+    },
+  ];
+  spotifyAlbums = Array.from({ length: 3 }, (_, index) => ({
+    id: `spotify_album_${index + 1}`,
+    name: `Spotify Album ${index + 1}`,
+    artists: [{ name: "Remote Artist" }],
+    release_date: "2020-01-01",
+    images: [{ url: `https://example.com/spotify-${index + 1}.jpg` }],
+  }));
+
+  const response = await searchAlbums("album", { limit: "5" });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.length, 5);
+  assert.deepEqual(findCalls[2], { limit: 5 });
+  assert.ok(fetchCalls[0].includes("limit=3"));
+  assert.equal(upsertCalls.length, 3);
+  assert.equal(countCalls.length, 0);
 });
 
 test("GET /search page mode returns catalog pages before calling Spotify", async () => {

@@ -1,5 +1,5 @@
 {
-  "name": "albumboxd",
+  "name": "rescened",
   "version": "1.0.0",
   "description": "",
   "main": "server.js",
@@ -7,19 +7,20 @@
     "test": "node --test",
     "start": "node server.js",
     "devStart": "nodemon server.js",
+    "enrich:album-genres": "node scripts/enrichAlbumGenres.js",
     "seed:social": "node scripts/seedSocialDemo.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jkind889/albumboxd.git"
+    "url": "git+https://github.com/jkind889/rescened.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/jkind889/albumboxd/issues"
+    "url": "https://github.com/jkind889/rescened/issues"
   },
-  "homepage": "https://github.com/jkind889/albumboxd#readme",
+  "homepage": "https://github.com/jkind889/rescened#readme",
   "dependencies": {
     "@clerk/express": "^2.1.21",
     "cors": "^2.8.6",

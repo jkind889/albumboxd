@@ -5,7 +5,7 @@ const Review = require("../models/Reviews");
 
 const router = express.Router();
 const DEFAULT_NOTIFICATION_LIMIT = 30;
-const DEFAULT_AUTHOR_USERNAME = "albumboxd user";
+const DEFAULT_AUTHOR_USERNAME = "rescened user";
 
 function ensureAuthenticated(req, res, next) {
   const { userId } = getAuth(req);

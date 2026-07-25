@@ -54,7 +54,7 @@ const demoAlbums = [
 const demoProfiles = [
   {
     userId: viewerUserId,
-    bio: "Demo viewer following a few albumboxd listeners.",
+    bio: "Demo viewer following a few rescened listeners.",
     favoriteAlbums: [],
   },
   {

@@ -9,6 +9,7 @@ import {
   useUser,
 } from "@clerk/react";
 import LikeButton from "../Components/LikeButton";
+import ProfileReviewCard from "../Components/ProfileReviewCard";
 import AsyncState from "../Components/Loading/AsyncState";
 import { getApiErrorMessage } from "../utils/apiErrors";
 
@@ -203,10 +204,10 @@ export function Account() {
 
           if (!(profileData.isPrivate && !profileData.isCurrentUser)) {
             const [savedResponse, reviewsResponse, activityResponse, boardsResponse] = await Promise.all([
-              fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/saved`),
+              fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/saved`, { headers }),
               fetch(`${API_BASE_URL}/reviews/review/user/${encodedPublicUserId}`, { headers }),
               fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/activity`, { headers }),
-              fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/boards`),
+              fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/boards`, { headers }),
             ]);
 
             if (
@@ -587,7 +588,7 @@ export function Account() {
   }
 
   const displayName = isPublicProfile
-    ? profile.username || publicProfileUsername || profile.userId || "albumboxd user"
+    ? profile.username || publicProfileUsername || profile.userId || "rescened user"
     : user?.username || user?.fullName || user?.primaryEmailAddress?.emailAddress || "Your profile";
   const profileImageUrl = isPublicProfile ? profile.imageUrl || publicProfileImageUrl : user?.imageUrl;
   const showFollowButton = isPublicProfile && !profile.isCurrentUser && (!isSignedIn || !isLoading);
@@ -721,29 +722,12 @@ export function Account() {
           ) : (
             <div className="profile-review-list">
               {latestReviews.map((review) => (
-                <article className="profile-review-card" key={review._id}>
-                  <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
-                    <AlbumCover src={review.cover} title={review.title} />
-                    <div>
-                      <h3>{review.title || "Untitled album"}</h3>
-                      <p>{review.artist || "Artist unknown"}</p>
-                    </div>
-                  </Link>
-                  <div className="profile-review-meta">
-                    <span>{review.rating}/5</span>
-                    <time>{formatDate(review.date)}</time>
-                  </div>
-                  <p className="profile-review-copy">{review.reviewText}</p>
-                  <div className="review-card-actions">
-                    <LikeButton
-                      liked={Boolean(review.likedByViewer)}
-                      count={review.likeCount}
-                      label="review"
-                      message={likeMessage}
-                      onToggle={() => toggleReviewLike(review)}
-                    />
-                  </div>
-                </article>
+                <ProfileReviewCard
+                  key={review._id}
+                  review={review}
+                  likeMessage={likeMessage}
+                  onToggleLike={toggleReviewLike}
+                />
               ))}
             </div>
           )}
@@ -762,29 +746,12 @@ export function Account() {
           ) : (
             <div className="profile-review-list">
               {previewPopularReviews.map((review) => (
-                <article className="profile-review-card" key={review._id}>
-                  <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
-                    <AlbumCover src={review.cover} title={review.title} />
-                    <div>
-                      <h3>{review.title || "Untitled album"}</h3>
-                      <p>{review.artist || "Artist unknown"}</p>
-                    </div>
-                  </Link>
-                  <div className="profile-review-meta">
-                    <span>{review.rating}/5</span>
-                    <time>{formatDate(review.date)}</time>
-                  </div>
-                  <p className="profile-review-copy">{review.reviewText}</p>
-                  <div className="review-card-actions">
-                    <LikeButton
-                      liked={Boolean(review.likedByViewer)}
-                      count={review.likeCount}
-                      label="review"
-                      message={likeMessage}
-                      onToggle={() => toggleReviewLike(review)}
-                    />
-                  </div>
-                </article>
+                <ProfileReviewCard
+                  key={review._id}
+                  review={review}
+                  likeMessage={likeMessage}
+                  onToggleLike={toggleReviewLike}
+                />
               ))}
             </div>
           )}
@@ -901,7 +868,7 @@ export function Account() {
           const album = activity.album || {};
           const targetUser = activity.targetUser || {};
           const reviewAuthor = activity.reviewAuthor || {};
-          const actorName = actor.username || "albumboxd user";
+          const actorName = actor.username || "rescened user";
           const actionLabelByType = {
             saved_album: "Saved",
             review: "Reviewed",
@@ -924,14 +891,14 @@ export function Account() {
               imageUrl: actor.imageUrl || "",
             },
           };
-          const targetUserName = targetUser.username || targetUser.userId || "albumboxd user";
+          const targetUserName = targetUser.username || targetUser.userId || "rescened user";
           const targetUserState = {
             profileUser: {
               username: targetUserName,
               imageUrl: targetUser.imageUrl || "",
             },
           };
-          const reviewAuthorName = reviewAuthor.username || reviewAuthor.userId || "albumboxd user";
+          const reviewAuthorName = reviewAuthor.username || reviewAuthor.userId || "rescened user";
 
           return (
             <article className="profile-activity-item" key={activity.id}>
@@ -1423,7 +1390,7 @@ export function Account() {
                               <span>{actionLabel}</span>
                               <strong>
                                 {activity.type === "follow"
-                                  ? targetUser.username || targetUser.userId || "albumboxd user"
+                                  ? targetUser.username || targetUser.userId || "rescened user"
                                   : album.title || "Untitled album"}
                               </strong>
                               <time>{formatDate(activity.createdAt)}</time>

@@ -36,9 +36,7 @@ function roundTo(value, decimals) {
   return Math.round(value * multiplier) / multiplier;
 }
 
-async function aggregatePopularReviews(pipeline) {
-  aggregateCalls.push(pipeline);
-
+function aggregatePopularAlbums(pipeline) {
   const matchStage = pipeline.find((stage) => stage.$match);
   const limitStage = pipeline.find((stage) => stage.$limit);
   const startDate = matchStage?.$match?.date?.$gte;
@@ -94,6 +92,76 @@ async function aggregatePopularReviews(pipeline) {
     .slice(0, limitStage.$limit);
 }
 
+function compareReviewRecency(first, second) {
+  return (
+    new Date(second.date || 0).getTime() - new Date(first.date || 0).getTime()
+    || String(second._id || "").localeCompare(String(first._id || ""))
+  );
+}
+
+function aggregateRecentlyReviewedAlbums(pipeline) {
+  const limitStage = pipeline.find((stage) => stage.$limit);
+  const newestReviewBySpotifyId = new Map();
+  const sortedReviews = reviewDocuments
+    .filter((review) => typeof review.spotifyId === "string" && review.spotifyId !== "")
+    .toSorted(compareReviewRecency);
+
+  for (const review of sortedReviews) {
+    if (!newestReviewBySpotifyId.has(review.spotifyId)) {
+      newestReviewBySpotifyId.set(review.spotifyId, review);
+    }
+  }
+
+  return [...newestReviewBySpotifyId.values()]
+    .toSorted(compareReviewRecency)
+    .slice(0, limitStage.$limit)
+    .map((review) => ({
+      spotifyId: review.spotifyId,
+      title: review.title,
+      artist: review.artist,
+      cover: review.cover,
+      latestReviewDate: review.date,
+    }));
+}
+
+function aggregateRankedReviews(pipeline) {
+  const limitStage = pipeline.find((stage) => stage.$limit);
+
+  return reviewDocuments
+    .map((review) => ({
+      ...review,
+      likeCount: likeDocuments.filter((like) => (
+        like.targetType === "review"
+        && String(like.reviewId) === String(review._id)
+      )).length,
+      likedByViewer: false,
+    }))
+    .toSorted((first, second) => (
+      second.likeCount - first.likeCount
+      || (Number(second.rating) || 0) - (Number(first.rating) || 0)
+      || new Date(second.date || 0).getTime() - new Date(first.date || 0).getTime()
+      || String(second._id || "").localeCompare(String(first._id || ""))
+    ))
+    .slice(0, limitStage.$limit);
+}
+
+async function aggregateReviewDocuments(pipeline) {
+  aggregateCalls.push(pipeline);
+
+  if (pipeline.some((stage) => stage.$lookup)) {
+    return aggregateRankedReviews(pipeline);
+  }
+
+  const groupIndex = pipeline.findIndex((stage) => stage.$group);
+  const firstSortIndex = pipeline.findIndex((stage) => stage.$sort);
+
+  if (firstSortIndex !== -1 && firstSortIndex < groupIndex) {
+    return aggregateRecentlyReviewedAlbums(pipeline);
+  }
+
+  return aggregatePopularAlbums(pipeline);
+}
+
 function loadReviewRouter() {
   delete require.cache[reviewRoutePath];
   delete require.cache[albumCatalogHelperPath];
@@ -122,7 +190,7 @@ function loadReviewRouter() {
         findOneAndUpdateCalls.push({ query, update, options });
         return updatedReview;
       },
-      aggregate: aggregatePopularReviews,
+      aggregate: aggregateReviewDocuments,
     },
   };
 
@@ -530,7 +598,7 @@ test("GET /reviews/review/album/:albumId returns an empty array when no reviews 
   assert.deepEqual(response.body, []);
 });
 
-test("GET /reviews/review/album/:albumId falls back to albumboxd user without email or full name", async () => {
+test("GET /reviews/review/album/:albumId falls back to rescened user without email or full name", async () => {
   foundReviews = [
     {
       _id: "review_without_username",
@@ -555,7 +623,7 @@ test("GET /reviews/review/album/:albumId falls back to albumboxd user without em
   const response = await getAlbumReviews("spotify_album_123");
 
   assert.equal(response.status, 200);
-  assert.equal(response.body[0].author.username, "albumboxd user");
+  assert.equal(response.body[0].author.username, "rescened user");
   assert.equal(response.body[0].author.imageUrl, "");
 });
 
@@ -577,7 +645,7 @@ test("GET /reviews/review/album/:albumId falls back when Clerk lookup fails", as
   assert.equal(response.status, 200);
   assert.deepEqual(response.body[0].author, {
     userId: "user_lookup_failure",
-    username: "albumboxd user",
+    username: "rescened user",
     imageUrl: "",
   });
 });
@@ -675,7 +743,7 @@ test("GET /reviews/review/user/:userId allows the owner to fetch their private p
   assert.deepEqual(findCalls, [{ userId: "profile_user_123" }]);
   assert.deepEqual(response.body[0].author, {
     userId: "profile_user_123",
-    username: "albumboxd user",
+    username: "rescened user",
     imageUrl: "",
   });
 });
@@ -705,6 +773,33 @@ test("POST /reviews/review creates a review and returns the Clerk author", async
     username: "loggedinlistener",
     imageUrl: "https://example.com/current-user.jpg",
   });
+});
+
+test("POST /reviews/review accepts a half-star rating", async () => {
+  const response = await postReview({
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    rating: 4.5,
+    reviewText: "A forever record.",
+  });
+
+  assert.equal(response.status, 201);
+  assert.equal(createCalls[0].rating, 4.5);
+});
+
+test("POST /reviews/review rejects a non-half decimal rating", async () => {
+  const response = await postReview({
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    rating: 4.2,
+    reviewText: "A forever record.",
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "Rating must be a whole or half number" });
+  assert.equal(createCalls.length, 0);
 });
 
 test("PATCH /reviews/review/user/:id updates an owned review and returns the Clerk author", async () => {
@@ -763,6 +858,39 @@ test("PATCH /reviews/review/user/:id rejects an invalid rating", async () => {
 
   assert.equal(response.status, 400);
   assert.deepEqual(response.body, { error: "Rating must be between 1 and 5" });
+  assert.equal(findOneAndUpdateCalls.length, 0);
+});
+
+test("PATCH /reviews/review/user/:id accepts a half-star rating", async () => {
+  updatedReview = {
+    _id: "review_123",
+    userId: "user_clerk_123",
+    spotifyId: "spotify_album_123",
+    title: "Kind of Blue",
+    artist: "Miles Davis",
+    cover: "https://example.com/kind-of-blue.jpg",
+    rating: 4.5,
+    reviewText: "Still brilliant after another listen.",
+    date: new Date("2026-06-01T12:00:00.000Z"),
+  };
+
+  const response = await patchReview("review_123", {
+    rating: 4.5,
+    reviewText: "Still brilliant after another listen.",
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(findOneAndUpdateCalls[0].update.$set.rating, 4.5);
+});
+
+test("PATCH /reviews/review/user/:id rejects a non-half decimal rating", async () => {
+  const response = await patchReview("review_123", {
+    rating: 4.2,
+    reviewText: "Close but not on the scale.",
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(response.body, { error: "Rating must be a whole or half number" });
   assert.equal(findOneAndUpdateCalls.length, 0);
 });
 
@@ -937,44 +1065,98 @@ test("GET /reviews/popular returns an empty array when no reviews are eligible",
 });
 
 test("GET /reviews/recent-albums returns unique albums from latest reviews", async () => {
-  foundReviews = [
+  const sharedLatestDate = new Date("2026-06-10T12:00:00.000Z");
+  reviewDocuments = [
     {
-      _id: "review_newest",
-      spotifyId: "album_recent",
-      title: "Fresh Listen",
-      artist: "Today Band",
-      cover: "https://example.com/recent.jpg",
-      date: new Date("2026-06-10T12:00:00.000Z"),
+      _id: "review_invalid",
+      title: "Missing Spotify Id",
+      artist: "Invalid Artist",
+      date: new Date("2026-06-12T12:00:00.000Z"),
     },
     {
-      _id: "review_duplicate",
-      spotifyId: "album_recent",
-      title: "Fresh Listen",
-      artist: "Today Band",
-      cover: "https://example.com/recent.jpg",
-      date: new Date("2026-06-09T12:00:00.000Z"),
+      _id: "review_empty",
+      spotifyId: "",
+      title: "Empty Spotify Id",
+      artist: "Invalid Artist",
+      date: new Date("2026-06-11T12:00:00.000Z"),
     },
     {
-      _id: "review_next",
-      spotifyId: "album_next",
-      title: "Next Listen",
-      artist: "Tomorrow Band",
-      cover: "https://example.com/next.jpg",
+      _id: "review_z",
+      spotifyId: "album_recent",
+      title: "Newest Metadata",
+      artist: "Today Band",
+      cover: "https://example.com/recent.jpg",
+      date: sharedLatestDate,
+    },
+    {
+      _id: "review_a",
+      spotifyId: "album_recent",
+      title: "Older Tie Metadata",
+      artist: "Today Band",
+      cover: "https://example.com/recent.jpg",
+      date: sharedLatestDate,
+    },
+    {
+      _id: "review_y",
+      spotifyId: "album_same_time",
+      title: "Same Time, Next Id",
+      artist: "Tie Break Band",
+      cover: "https://example.com/same-time.jpg",
+      date: sharedLatestDate,
+    },
+    {
+      _id: "review_older",
+      spotifyId: "album_older",
+      title: "Older Listen",
+      artist: "Yesterday Band",
+      cover: "https://example.com/older.jpg",
       date: new Date("2026-06-08T12:00:00.000Z"),
     },
   ];
 
-  const response = await getRecentlyReviewedAlbums({ limit: "5" });
+  const response = await getRecentlyReviewedAlbums({ limit: "2" });
+  const pipeline = aggregateCalls[0];
 
   assert.equal(response.status, 200);
-  assert.deepEqual(findCalls, [{}]);
-  assert.deepEqual(sortCalls, [{ date: -1 }]);
-  assert.deepEqual(response.body.map((album) => album.spotifyId), ["album_recent", "album_next"]);
-  assert.equal(response.body[0].latestReviewDate, foundReviews[0].date);
+  assert.deepEqual(findCalls, []);
+  assert.deepEqual(sortCalls, []);
+  assert.deepEqual(pipeline, [
+    { $match: { spotifyId: { $type: "string", $nin: [""] } } },
+    { $sort: { date: -1, _id: -1 } },
+    {
+      $group: {
+        _id: "$spotifyId",
+        spotifyId: { $first: "$spotifyId" },
+        title: { $first: "$title" },
+        artist: { $first: "$artist" },
+        cover: { $first: "$cover" },
+        latestReviewDate: { $first: "$date" },
+        latestReviewId: { $first: "$_id" },
+      },
+    },
+    { $sort: { latestReviewDate: -1, latestReviewId: -1 } },
+    { $limit: 2 },
+    {
+      $project: {
+        _id: 0,
+        spotifyId: 1,
+        title: 1,
+        artist: 1,
+        cover: 1,
+        latestReviewDate: 1,
+      },
+    },
+  ]);
+  assert.deepEqual(response.body.map((album) => album.spotifyId), [
+    "album_recent",
+    "album_same_time",
+  ]);
+  assert.equal(response.body[0].title, "Newest Metadata");
+  assert.equal(response.body[0].latestReviewDate, sharedLatestDate);
 });
 
 test("GET /reviews/popular-reviews returns highest all-time reviews with authors", async () => {
-  foundReviews = [
+  reviewDocuments = [
     {
       _id: "review_top",
       userId: "reviewer_one",
@@ -997,6 +1179,17 @@ test("GET /reviews/popular-reviews returns highest all-time reviews with authors
       reviewText: "People love this.",
       date: new Date("2026-06-09T12:00:00.000Z"),
     },
+    {
+      _id: "review_loser",
+      userId: "reviewer_three",
+      spotifyId: "album_loser",
+      title: "No Likes Yet",
+      artist: "New Artist",
+      cover: "https://example.com/loser.jpg",
+      rating: 5,
+      reviewText: "A new contender.",
+      date: new Date("2026-06-11T12:00:00.000Z"),
+    },
   ];
   likeDocuments = [
     {
@@ -1014,6 +1207,11 @@ test("GET /reviews/popular-reviews returns highest all-time reviews with authors
       targetType: "review",
       reviewId: "review_top",
     },
+    {
+      userId: "album_listener",
+      targetType: "album",
+      reviewId: "review_top",
+    },
   ];
   clerkUsers = [
     {
@@ -1026,17 +1224,58 @@ test("GET /reviews/popular-reviews returns highest all-time reviews with authors
       username: "likedlistener",
       imageUrl: "https://example.com/liked-listener.jpg",
     },
+    {
+      id: "reviewer_three",
+      username: "excludedlistener",
+      imageUrl: "https://example.com/excluded-listener.jpg",
+    },
   ];
 
-  const response = await getPopularReviews({ limit: "5" });
+  const response = await getPopularReviews({ limit: "2" });
+  const pipeline = aggregateCalls[0];
 
   assert.equal(response.status, 200);
-  assert.deepEqual(findCalls, [{}]);
-  assert.deepEqual(sortCalls, [{ date: -1 }]);
+  assert.deepEqual(findCalls, []);
+  assert.deepEqual(sortCalls, []);
+  assert.deepEqual(likeFindCalls, []);
+  assert.deepEqual(pipeline, [
+    {
+      $lookup: {
+        from: "likes",
+        let: { currentReviewId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              targetType: "review",
+              $expr: { $eq: ["$reviewId", "$$currentReviewId"] },
+            },
+          },
+          { $count: "count" },
+        ],
+        as: "likeStats",
+      },
+    },
+    {
+      $set: {
+        likeCount: {
+          $ifNull: [{ $arrayElemAt: ["$likeStats.count", 0] }, 0],
+        },
+        likedByViewer: false,
+      },
+    },
+    { $sort: { likeCount: -1, rating: -1, date: -1, _id: -1 } },
+    { $limit: 2 },
+    { $project: { likeStats: 0 } },
+  ]);
   assert.deepEqual(getUserListCalls, [{ userId: ["reviewer_two", "reviewer_one"] }]);
+  assert.deepEqual(response.body.map((review) => review._id), [
+    "review_more_liked",
+    "review_top",
+  ]);
   assert.equal(response.body[0]._id, "review_more_liked");
   assert.equal(response.body[0].author.username, "likedlistener");
   assert.equal(response.body[0].likeCount, 2);
+  assert.equal(response.body[0].likedByViewer, false);
 });
 
 test("GET /reviews/featured fills the homepage strip from review activity and catalog albums", async () => {

@@ -15,6 +15,12 @@ function Navbar()
     const { getToken, isLoaded, isSignedIn } = useAuth()
     const location = useLocation()
     const [unreadCount, setUnreadCount] = useState(0)
+    const [theme, setTheme] = useState(() => localStorage.getItem("rescened-theme") || "dark")
+
+    useEffect(() => {
+        document.documentElement.dataset.theme = theme
+        localStorage.setItem("rescened-theme", theme)
+    }, [theme])
 
     useEffect(() => {
         let isCurrent = true
@@ -68,21 +74,34 @@ function Navbar()
             <header className="site-header">
                 <nav className="navbar navbar-expand site-navbar">
                     <div className="container-fluid site-navbar-inner">
-                        <Link to="/" className="navbar-brand">albumboxd</Link>
-                        <div className="navbar-collapse site-navbar-left">
+                        <Link to="/" className="navbar-brand">rescened</Link>
+                        <div className="site-navbar-center">
                             <ul className="navbar nav site-nav-links">
-                                <li className="nav-item">
-                                    <Link to="/albums" className="nav-link active">Albums</Link>
-                                </li>
                                 <li className="nav-item">
                                     <Link to="/boards" className="nav-link active">Boards</Link>
                                 </li>
                             </ul>
-                        </div>
-                        <div className="site-navbar-search">
-                            <SearchBar />
+                            <div className="site-navbar-search">
+                                <SearchBar />
+                            </div>
+                            <Show when="signed-in">
+                                <Link to="/notifications" className="nav-link nav-notification-link active" aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}>
+                                    Notifications
+                                    {unreadCount > 0 && (
+                                        <span className="nav-notification-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+                                    )}
+                                </Link>
+                            </Show>
                         </div>
                         <div className="nav navbar-right site-navbar-actions">
+                            <button
+                                type="button"
+                                className="theme-toggle"
+                                onClick={() => setTheme((currentTheme) => currentTheme === "dark" ? "light" : "dark")}
+                                aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+                            >
+                                {theme === "dark" ? "Light" : "Dark"}
+                            </button>
                             <Show when="signed-out">
                                 <SignInButton mode="modal">
                                     <button type="button" className="nav-auth-button nav-auth-button-secondary">
@@ -97,12 +116,6 @@ function Navbar()
                             </Show>
 
                             <Show when="signed-in">
-                                <Link to="/notifications" className="nav-link nav-notification-link active px-0" aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}>
-                                    Notifications
-                                    {unreadCount > 0 && (
-                                        <span className="nav-notification-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
-                                    )}
-                                </Link>
                                 <Link to="/account" className="nav-link active px-0">
                                     Account
                                 </Link>

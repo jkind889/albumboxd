@@ -15,6 +15,8 @@ let createdAlbum = null;
 let catalogAlbum = null;
 let catalogAlbums = [];
 let getOrCreateError = null;
+let detailIsPartial = false;
+let detailEnrichmentError = null;
 let catalogFindError = null;
 let shouldRejectClerkLookup = false;
 const createCalls = [];
@@ -119,6 +121,17 @@ function loadAlbumRouter() {
     filename: albumCatalogHelperPath,
     loaded: true,
     exports: {
+      getAlbumCatalogDetails: async (spotifyId) => {
+        getOrCreateCalls.push(spotifyId);
+        if (getOrCreateError) {
+          throw getOrCreateError;
+        }
+        return {
+          album: catalogAlbum,
+          isPartial: detailIsPartial,
+          enrichmentError: detailEnrichmentError,
+        };
+      },
       getOrCreateAlbumCatalog: async (spotifyId) => {
         getOrCreateCalls.push(spotifyId);
         if (getOrCreateError) {
@@ -127,6 +140,15 @@ function loadAlbumRouter() {
         return catalogAlbum;
       },
       normalizeCatalogAlbum: (album) => ({
+        ...(album.genreRankings?.length
+          ? {
+            primaryGenre: album.genreRankings[0].name,
+            secondaryGenres: album.genreRankings.slice(1).map((genre) => genre.name),
+          }
+          : {
+            primaryGenre: null,
+            secondaryGenres: [],
+          }),
         id: album.spotifyId,
         spotifyId: album.spotifyId,
         title: album.title,
@@ -135,6 +157,9 @@ function loadAlbumRouter() {
         year: album.year || "unknown",
         releaseDate: album.releaseDate || "",
         genres: album.genres || [],
+        genreRankings: album.genreRankings || [],
+        genreSource: album.genreSource || "",
+        musicBrainzReleaseGroupId: album.musicBrainzReleaseGroupId || null,
         imgs: album.imgs || [],
         cover: album.cover || null,
         totalTracks: album.totalTracks || 0,
@@ -184,6 +209,21 @@ function loadAlbumRouter() {
       countDocuments: async (query) => {
         reviewCountCalls.push(query);
         return reviewDocuments.filter((review) => review.spotifyId === query.spotifyId).length;
+      },
+      aggregate: async (pipeline) => {
+        reviewCountCalls.push({ aggregate: pipeline });
+        const matchStage = pipeline.find((stage) => stage.$match);
+        const spotifyId = matchStage?.$match?.spotifyId;
+        const countsByRating = new Map();
+
+        for (const review of reviewDocuments.filter((item) => item.spotifyId === spotifyId)) {
+          const rating = Number(review.rating);
+          countsByRating.set(rating, (countsByRating.get(rating) || 0) + 1);
+        }
+
+        return [...countsByRating.entries()]
+          .sort(([firstRating], [secondRating]) => firstRating - secondRating)
+          .map(([rating, count]) => ({ rating, count }));
       },
       find: async (query) => {
         reviewFindCalls.push(query);
@@ -263,10 +303,19 @@ async function callRoute(method, path, { body = {}, params = {}, query = {} } = 
   };
 }
 
+function buildExpectedRatingDistribution(countsByRating = {}) {
+  return [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5].map((rating) => ({
+    rating,
+    count: countsByRating[rating] || 0,
+  }));
+}
+
 test.beforeEach(() => {
   authUserId = "user_clerk_123";
   createdAlbum = null;
   getOrCreateError = null;
+  detailIsPartial = false;
+  detailEnrichmentError = null;
   catalogFindError = null;
   shouldRejectClerkLookup = false;
   catalogAlbum = {
@@ -276,6 +325,13 @@ test.beforeEach(() => {
     artist: "Miles Davis",
     artists: ["Miles Davis"],
     year: "1959",
+    genres: ["modal jazz", "jazz"],
+    genreRankings: [
+      { name: "modal jazz", score: 12 },
+      { name: "jazz", score: 8 },
+    ],
+    genreSource: "musicbrainz_release_group",
+    musicBrainzReleaseGroupId: "1ee8e0e9-f4d1-3048-9e99-2fbef6a21e27",
     cover: "https://example.com/kind-of-blue.jpg",
     totalTracks: 2,
     tracks: [
@@ -322,16 +378,19 @@ test.beforeEach(() => {
       _id: "review_1",
       spotifyId: "spotify_album_123",
       userId: "review_author_1",
+      rating: 4.5,
     },
     {
       _id: "review_2",
       spotifyId: "spotify_album_123",
       userId: "review_author_2",
+      rating: 5,
     },
     {
       _id: "review_3",
       spotifyId: "spotify_album_456",
       userId: "review_author_3",
+      rating: 3,
     },
   ];
   clerkUsers = [];
@@ -465,6 +524,40 @@ test("GET /albums/album/:id returns a cached or newly cached catalog album", asy
   assert.equal(response.body.id, "spotify_album_123");
   assert.equal(response.body.title, "Kind of Blue");
   assert.deepEqual(response.body.tracks, catalogAlbum.tracks);
+  assert.deepEqual(response.body.genres, ["modal jazz", "jazz"]);
+  assert.deepEqual(response.body.genreRankings, [
+    { name: "modal jazz", score: 12 },
+    { name: "jazz", score: 8 },
+  ]);
+  assert.equal(response.body.primaryGenre, "modal jazz");
+  assert.deepEqual(response.body.secondaryGenres, ["jazz"]);
+  assert.equal(response.body.genreSource, "musicbrainz_release_group");
+  assert.equal(
+    response.body.musicBrainzReleaseGroupId,
+    "1ee8e0e9-f4d1-3048-9e99-2fbef6a21e27",
+  );
+  assert.equal(response.body.isPartial, false);
+});
+
+test("GET /albums/album/:id marks cached fallback details as partial", async () => {
+  catalogAlbum = { ...catalogAlbum, tracks: [] };
+  detailIsPartial = true;
+  detailEnrichmentError = new Error("Spotify album fetch failed with status 502");
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  let response;
+
+  try {
+    response = await callRoute("get", "/album/:id", {
+      params: { id: "spotify_album_123" },
+    });
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.isPartial, true);
+  assert.deepEqual(response.body.tracks, []);
 });
 
 test("GET /albums/album/:id returns 500 when catalog lookup fails", async () => {
@@ -490,11 +583,17 @@ test("GET /albums/album/:id/social returns totals for signed-out viewers", async
     spotifyId: "spotify_album_123",
     savedCount: 2,
     reviewCount: 2,
+    averageRating: 4.8,
+    ratingDistribution: buildExpectedRatingDistribution({
+      4.5: 1,
+      5: 1,
+    }),
     followedReviewers: [],
     followedAlbumLikers: [],
   });
   assert.deepEqual(albumCountCalls, [{ spotifyId: "spotify_album_123" }]);
-  assert.deepEqual(reviewCountCalls, [{ spotifyId: "spotify_album_123" }]);
+  assert.equal(reviewCountCalls.length, 1);
+  assert.deepEqual(reviewCountCalls[0].aggregate[0], { $match: { spotifyId: "spotify_album_123" } });
   assert.equal(followFindCalls.length, 0);
   assert.equal(reviewFindCalls.length, 0);
   assert.equal(likeFindCalls.length, 0);
@@ -508,10 +607,10 @@ test("GET /albums/album/:id/social returns followed reviewers and album likers",
     { followerId: "other_user", followingId: "unrelated_user" },
   ];
   reviewDocuments = [
-    { _id: "review_1", spotifyId: "spotify_album_123", userId: "review_author_1" },
-    { _id: "review_2", spotifyId: "spotify_album_123", userId: "review_author_1" },
-    { _id: "review_3", spotifyId: "spotify_album_123", userId: "unfollowed_reviewer" },
-    { _id: "review_4", spotifyId: "spotify_album_456", userId: "review_author_2" },
+    { _id: "review_1", spotifyId: "spotify_album_123", userId: "review_author_1", rating: 4.5 },
+    { _id: "review_2", spotifyId: "spotify_album_123", userId: "review_author_1", rating: 5 },
+    { _id: "review_3", spotifyId: "spotify_album_123", userId: "unfollowed_reviewer", rating: 2 },
+    { _id: "review_4", spotifyId: "spotify_album_456", userId: "review_author_2", rating: 3 },
   ];
   likeDocuments = [
     { targetType: "album", spotifyId: "spotify_album_123", userId: "review_author_2" },
@@ -533,6 +632,12 @@ test("GET /albums/album/:id/social returns followed reviewers and album likers",
     spotifyId: "spotify_album_123",
     savedCount: 2,
     reviewCount: 3,
+    averageRating: 3.8,
+    ratingDistribution: buildExpectedRatingDistribution({
+      2: 1,
+      4.5: 1,
+      5: 1,
+    }),
     followedReviewers: [
       {
         userId: "review_author_1",
@@ -585,14 +690,14 @@ test("GET /albums/album/:id/social falls back when Clerk lookup fails", async ()
   assert.deepEqual(response.body.followedReviewers, [
     {
       userId: "review_author_1",
-      username: "albumboxd user",
+      username: "rescened user",
       imageUrl: "",
     },
   ]);
   assert.deepEqual(response.body.followedAlbumLikers, [
     {
       userId: "review_author_1",
-      username: "albumboxd user",
+      username: "rescened user",
       imageUrl: "",
     },
   ]);

@@ -533,7 +533,7 @@ test("GET /profile/me creates and returns an empty current user profile", async 
   ]);
   assert.deepEqual(response.body, {
     userId: "user_clerk_123",
-    username: "albumboxd user",
+    username: "rescened user",
     imageUrl: "",
     bio: "",
     spotifyProfileUrl: "",
@@ -1201,7 +1201,7 @@ test("GET /profile/me/network falls back when Clerk actor lookup fails", async (
   assert.equal(response.status, 200);
   assert.deepEqual(response.body[0].actor, {
     userId: "review_author_1",
-    username: "albumboxd user",
+    username: "rescened user",
     imageUrl: "",
   });
 });
@@ -1914,7 +1914,7 @@ test("GET /profile/:userId creates and returns a public profile for a reviewed u
   ]);
   assert.deepEqual(response.body, {
     userId: "review_author_1",
-    username: "albumboxd user",
+    username: "rescened user",
     imageUrl: "",
     bio: "",
     spotifyProfileUrl: "",
@@ -2131,7 +2131,7 @@ test("GET /profile/:userId returns an existing profile without reviews", async (
   assert.equal(createCalls.length, 0);
   assert.deepEqual(response.body, {
     userId: "empty_profile_user",
-    username: "albumboxd user",
+    username: "rescened user",
     imageUrl: "",
     bio: "Still setting up.",
     spotifyProfileUrl: "",

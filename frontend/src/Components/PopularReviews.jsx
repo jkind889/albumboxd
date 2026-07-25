@@ -2,7 +2,7 @@ import { API_BASE_URL } from "../config/api";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-const DEFAULT_USERNAME = "albumboxd user";
+const DEFAULT_USERNAME = "rescened user";
 
 function formatReviewDate(date) {
     if (!date) {

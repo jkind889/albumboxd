@@ -2,7 +2,7 @@ const express = require("express")
 const { getSpotifyAccessToken } = require("./utils/spotify");
 const AlbumCatalog = require("../models/AlbumCatalog");
 const {
-    normalizeSpotifyAlbum,
+    normalizeSpotifyAlbumSummary,
     toSearchResult,
     upsertAlbumCatalog,
 } = require("./utils/albumCatalog");
@@ -34,19 +34,19 @@ function buildRegexSearchQuery(query) {
     };
 }
 
-async function getLocalAlbums(query) {
+async function getLocalAlbums(query, limit = SEARCH_RESULT_LIMIT) {
     const textAlbums = await AlbumCatalog.find(
         { $text: { $search: query } },
         { score: { $meta: "textScore" } },
     )
         .sort({ score: { $meta: "textScore" } })
-        .limit(SEARCH_RESULT_LIMIT);
+        .limit(limit);
 
     if (textAlbums.length > 0) {
         return textAlbums;
     }
 
-    return AlbumCatalog.find(buildRegexSearchQuery(query)).limit(SEARCH_RESULT_LIMIT);
+    return AlbumCatalog.find(buildRegexSearchQuery(query)).limit(limit);
 }
 
 function getPositiveInteger(value, fallback) {
@@ -123,7 +123,7 @@ async function searchSpotifyAlbums(query, { limit, offset = 0, excludedIds = [],
     const spotifyTotal = Number(data.albums.total) || spotifyItems.length;
     const seenAlbums = new Set(excludedIds);
     const spotifyAlbums = await Promise.all(
-        spotifyItems.map((item) => upsertAlbumCatalog(normalizeSpotifyAlbum(item))),
+        spotifyItems.map((item) => upsertAlbumCatalog(normalizeSpotifyAlbumSummary(item))),
     );
     const results = [];
 
@@ -199,14 +199,15 @@ router.get("/search", searchRateLimit, async(req, res) =>
         }
 
         // Return local catalog hits first; only ask Spotify when the cache cannot fill the page.
-        const localAlbums = await getLocalAlbums(query);
+        const limit = getSearchLimit(req.query.limit);
+        const localAlbums = await getLocalAlbums(query, limit);
         const localResults = localAlbums.map(toSearchResult);
 
-        if (localResults.length >= SEARCH_RESULT_LIMIT) {
+        if (localResults.length >= limit) {
             return res.json(localResults);
         }
 
-        const spotifyLimit = SEARCH_RESULT_LIMIT - localResults.length;
+        const spotifyLimit = limit - localResults.length;
         const spotifySearch = await searchSpotifyAlbums(query, {
             limit: spotifyLimit,
             excludedIds: localResults.map((result) => result.id),

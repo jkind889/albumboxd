@@ -1,0 +1,58 @@
+import { Link } from "react-router-dom";
+import LikeButton from "./LikeButton";
+
+function formatDate(value) {
+  if (!value) {
+    return "Date unavailable";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Date unavailable";
+  }
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function AlbumCover({ src, title }) {
+  if (!src) {
+    return <div className="profile-cover-fallback">No cover</div>;
+  }
+
+  return <img className="profile-cover" src={src} alt={`${title} cover`} />;
+}
+
+export function ProfileReviewCard({ review, likeMessage = "", onToggleLike }) {
+  return (
+    <article className="profile-review-card">
+      <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
+        <AlbumCover src={review.cover} title={review.title} />
+        <div>
+          <h3>{review.title || "Untitled album"}</h3>
+          <p>{review.artist || "Artist unknown"}</p>
+        </div>
+      </Link>
+      <div className="profile-review-meta">
+        <span>{review.rating}/5</span>
+        <time>{formatDate(review.date)}</time>
+      </div>
+      <p className="profile-review-copy">{review.reviewText}</p>
+      <div className="review-card-actions">
+        <LikeButton
+          liked={Boolean(review.likedByViewer)}
+          count={review.likeCount}
+          label="review"
+          message={likeMessage}
+          onToggle={onToggleLike ? () => onToggleLike(review) : undefined}
+        />
+      </div>
+    </article>
+  );
+}
+
+export default ProfileReviewCard;

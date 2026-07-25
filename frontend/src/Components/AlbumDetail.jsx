@@ -8,9 +8,56 @@ import AsyncState from "./Loading/AsyncState";
 import { SignInButton, useAuth } from "@clerk/react";
 import { getApiErrorMessage } from "../utils/apiErrors";
 
+const RATING_BUCKETS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+
+const getEmptyRatingDistribution = () => (
+    RATING_BUCKETS.map((rating) => ({ rating, count: 0 }))
+);
+
+const normalizeRatingDistribution = (distribution) => {
+    const countsByRating = new Map(
+        (Array.isArray(distribution) ? distribution : []).map((bucket) => [
+            Number(bucket.rating),
+            Number(bucket.count) || 0,
+        ])
+    );
+
+    return getEmptyRatingDistribution().map((bucket) => ({
+        ...bucket,
+        count: countsByRating.get(bucket.rating) || 0,
+    }));
+};
+
+const getAverageRatingFromDistribution = (distribution) => {
+    const reviewCount = distribution.reduce((total, bucket) => total + bucket.count, 0);
+
+    if (!reviewCount) {
+        return null;
+    }
+
+    const ratingTotal = distribution.reduce((total, bucket) => total + (bucket.rating * bucket.count), 0);
+    return (ratingTotal / reviewCount).toFixed(1);
+};
+
+const adjustRatingDistribution = (distribution, rating, delta) => {
+    const normalizedRating = Number(rating);
+
+    if (!RATING_BUCKETS.includes(normalizedRating)) {
+        return normalizeRatingDistribution(distribution);
+    }
+
+    return normalizeRatingDistribution(distribution).map((bucket) => (
+        bucket.rating === normalizedRating
+            ? { ...bucket, count: Math.max(0, bucket.count + delta) }
+            : bucket
+    ));
+};
+
 const getDefaultAlbumSocial = () => ({
     savedCount: 0,
     reviewCount: 0,
+    averageRating: null,
+    ratingDistribution: getEmptyRatingDistribution(),
     followedReviewers: [],
     followedAlbumLikers: [],
 });
@@ -114,6 +161,8 @@ export function AlbumDetail()
                     setAlbumSocial({
                         savedCount: Number(data.savedCount) || 0,
                         reviewCount: Number(data.reviewCount) || 0,
+                        averageRating: Number.isFinite(Number(data.averageRating)) ? Number(data.averageRating) : null,
+                        ratingDistribution: normalizeRatingDistribution(data.ratingDistribution),
                         followedReviewers: Array.isArray(data.followedReviewers) ? data.followedReviewers : [],
                         followedAlbumLikers: Array.isArray(data.followedAlbumLikers) ? data.followedAlbumLikers : [],
                     });
@@ -210,7 +259,7 @@ export function AlbumDetail()
                 const res = await fetch(`${API_BASE_URL}/albums/album/${id}`);
 
                 if (!res.ok) {
-                    throw new Error("Failed to fetch album");
+                    throw new Error(await getApiErrorMessage(res, "Failed to fetch album"));
                 }
 
                 const data = await res.json();
@@ -223,7 +272,7 @@ export function AlbumDetail()
 
                 if (!shouldIgnore) {
                     setAlbum(null);
-                    setAlbumError("Could not load this album.");
+                    setAlbumError(error.message || "Could not load this album.");
                 }
             } finally {
                 if (!shouldIgnore) {
@@ -266,10 +315,16 @@ export function AlbumDetail()
         const newReview = await res.json();
         console.log("Review saved to server:", newReview);
         setReviews((prev) => [newReview, ...prev]);
-        setAlbumSocial((currentSocial) => ({
-            ...currentSocial,
-            reviewCount: (Number(currentSocial.reviewCount) || 0) + 1,
-        }));
+        setAlbumSocial((currentSocial) => {
+            const ratingDistribution = adjustRatingDistribution(currentSocial.ratingDistribution, newReview.rating, 1);
+
+            return {
+                ...currentSocial,
+                reviewCount: (Number(currentSocial.reviewCount) || 0) + 1,
+                averageRating: getAverageRatingFromDistribution(ratingDistribution),
+                ratingDistribution,
+            };
+        });
         return true;
 
     };
@@ -293,11 +348,18 @@ export function AlbumDetail()
             setReviewActionMessage(message);
             return;
         }
+        const removedReview = reviews.find((review) => review._id === id);
         setReviews((prev) => prev.filter((review) => review._id !== id));
-        setAlbumSocial((currentSocial) => ({
-            ...currentSocial,
-            reviewCount: Math.max(0, (Number(currentSocial.reviewCount) || 0) - 1),
-        }));
+        setAlbumSocial((currentSocial) => {
+            const ratingDistribution = adjustRatingDistribution(currentSocial.ratingDistribution, removedReview?.rating, -1);
+
+            return {
+                ...currentSocial,
+                reviewCount: Math.max(0, (Number(currentSocial.reviewCount) || 0) - 1),
+                averageRating: getAverageRatingFromDistribution(ratingDistribution),
+                ratingDistribution,
+            };
+        });
     };
 
     function updateReviewLikeState(reviewId, nextState) {
@@ -417,10 +479,21 @@ export function AlbumDetail()
     const userReviews = reviews.filter((review) => review.userId);
     const socialReviewCount = Number(albumSocial.reviewCount) || userReviews.length;
     const socialSavedCount = Number(albumSocial.savedCount) || 0;
-    const averageRating = userReviews.length
+    const localAverageRating = userReviews.length
         ? (userReviews.reduce((total, item) => total + (Number(item.rating) || 0), 0) / userReviews.length).toFixed(1)
         : null;
+    const ratingDistribution = normalizeRatingDistribution(albumSocial.ratingDistribution);
+    const distributionAverageRating = getAverageRatingFromDistribution(ratingDistribution);
+    const averageRating = Number.isFinite(Number(albumSocial.averageRating))
+        ? Number(albumSocial.averageRating).toFixed(1)
+        : distributionAverageRating || localAverageRating;
+    const maxRatingBucketCount = Math.max(...ratingDistribution.map((bucket) => bucket.count), 0);
     const albumArt = album.imgs?.[0]?.url;
+    const genreRankings = Array.isArray(album.genreRankings) ? album.genreRankings : [];
+    const primaryGenre = genreRankings.length > 0 ? album.primaryGenre || "" : "";
+    const secondaryGenres = genreRankings.length > 0 && Array.isArray(album.secondaryGenres)
+        ? album.secondaryGenres
+        : [];
     const isReviewsRoute = location.pathname.endsWith("/reviews");
     const reviewSort = new URLSearchParams(location.search).get("sort") === "popular" ? "popular" : "recent";
     const releaseDateLabel = album.releaseDate
@@ -485,14 +558,13 @@ export function AlbumDetail()
                 spotifyId: album.id,
              }),
         });
-        const data = await res.json();
-
         if (!res.ok) {
-            const message = data.error || "Failed to save album to collection. Please try again.";
+            const message = await getApiErrorMessage(res, "Failed to save album to collection. Please try again.");
             console.error("Failed to save album to collection");
             setBoardSaveMessage(message);
             return;
         }
+        const data = await res.json();
         if (res.ok) {
             setIsSaved(true);
             if (!wasSaved) {
@@ -648,7 +720,7 @@ export function AlbumDetail()
             <span className="album-social-avatar" aria-hidden="true">
                 {user.imageUrl ? <img src={user.imageUrl} alt="" /> : getSocialInitial(user)}
             </span>
-            <span>{user.username || "albumboxd user"}</span>
+            <span>{user.username || "rescened user"}</span>
         </Link>
     );
 
@@ -786,9 +858,26 @@ export function AlbumDetail()
                             </div>
                         </div>
                         <div className="album-rating-summary">
-                            <div className="album-rating-bars" aria-hidden="true">
-                                {[2, 4, 6, 8, 10, 7, 3, 3].map((height, index) => (
-                                    <span key={index} style={{"--bar-height": `${height * 4}px`}} />
+                            <div className="album-rating-bars" role="list" aria-label="Community rating distribution">
+                                {ratingDistribution.map((bucket) => (
+                                    <div
+                                        className="album-rating-bucket"
+                                        key={bucket.rating}
+                                        role="listitem"
+                                        aria-label={`${bucket.count} review${bucket.count === 1 ? "" : "s"} rated ${bucket.rating} stars`}
+                                        title={`${bucket.rating} stars: ${bucket.count}`}
+                                    >
+                                        <span className="album-rating-count">{bucket.count}</span>
+                                        <span
+                                            className="album-rating-bar"
+                                            style={{
+                                                "--bar-height": maxRatingBucketCount
+                                                    ? `${Math.max((bucket.count / maxRatingBucketCount) * 48, bucket.count > 0 ? 4 : 0)}px`
+                                                    : "0px",
+                                            }}
+                                        />
+                                        <span className="album-rating-label">{bucket.rating}</span>
+                                    </div>
                                 ))}
                             </div>
                             <strong>{averageRating || "--"}</strong>
@@ -811,6 +900,18 @@ export function AlbumDetail()
                             <span>{artistNames.join(", ")}</span>
                             {album.label && <span>{album.label}</span>}
                         </div>
+                        {primaryGenre && (
+                            <ul className="album-genre-list" aria-label="Album genres">
+                                <li className="album-genre-badge album-genre-badge-primary">
+                                    {primaryGenre}
+                                </li>
+                                {secondaryGenres.map((genre) => (
+                                    <li className="album-genre-badge album-genre-badge-secondary" key={genre}>
+                                        {genre}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
 
                     <nav className="album-tabs" aria-label="Album sections">
@@ -897,7 +998,11 @@ export function AlbumDetail()
                                             )}
                                         </>
                                     ) : (
-                                        <p className="album-empty-copy">No tracks available.</p>
+                                        <p className="album-empty-copy">
+                                            {album.isPartial
+                                                ? "Track details are temporarily unavailable."
+                                                : "No tracks available."}
+                                        </p>
                                     )}
                                 </div>
                             )}

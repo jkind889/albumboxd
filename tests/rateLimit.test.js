@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const albumCatalogModelPath = require.resolve("../models/AlbumCatalog");
+const albumGenreEnrichmentPath = require.resolve("../routes/utils/albumGenreEnrichment");
 const albumCatalogHelperPath = require.resolve("../routes/utils/albumCatalog");
 const boardModelPath = require.resolve("../models/Board");
 const boardItemModelPath = require.resolve("../models/BoardItem");
@@ -128,6 +129,7 @@ function mockClerk(userId = "user_clerk_123") {
 test.afterEach(() => {
   [
     albumCatalogModelPath,
+    albumGenreEnrichmentPath,
     albumCatalogHelperPath,
     albumModelPath,
     boardModelPath,
@@ -268,7 +270,7 @@ test("Spotify fallback limiter blocks remote search before Spotify is called", a
     filename: albumCatalogHelperPath,
     loaded: true,
     exports: {
-      normalizeSpotifyAlbum: (album) => album,
+      normalizeSpotifyAlbumSummary: (album) => album,
       toSearchResult: (album) => album,
       upsertAlbumCatalog: async (album) => album,
     },
@@ -341,7 +343,7 @@ test("local-filled search does not consume the Spotify fallback bucket", async (
     filename: albumCatalogHelperPath,
     loaded: true,
     exports: {
-      normalizeSpotifyAlbum: (album) => album,
+      normalizeSpotifyAlbumSummary: (album) => album,
       toSearchResult: (album) => ({ id: album.spotifyId, title: album.title }),
       upsertAlbumCatalog: async (album) => album,
     },
@@ -385,6 +387,7 @@ test("cached album catalog hits do not consume the Spotify fallback bucket", asy
       findOne: async () => ({
         spotifyId: "spotify_album_123",
         title: "Kind of Blue",
+        detailMetadataVersion: 2,
         tracks: [{ spotifyId: "track_1" }],
       }),
     },
@@ -397,6 +400,14 @@ test("cached album catalog hits do not consume the Spotify fallback bucket", asy
       getSpotifyAccessToken: async () => {
         throw new Error("Spotify token should not be fetched for cached album details");
       },
+    },
+  };
+  require.cache[albumGenreEnrichmentPath] = {
+    id: albumGenreEnrichmentPath,
+    filename: albumGenreEnrichmentPath,
+    loaded: true,
+    exports: {
+      scheduleAlbumGenreEnrichment: () => true,
     },
   };
 

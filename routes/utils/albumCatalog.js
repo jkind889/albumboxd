@@ -1,20 +1,64 @@
 const AlbumCatalog = require("../../models/AlbumCatalog");
+const {
+  scheduleAlbumGenreEnrichment,
+} = require("./albumGenreEnrichment");
 const { getSpotifyAccessToken } = require("./spotify");
 const { consumeSpotifyRateLimit } = require("./rateLimit");
 
-// Converts raw Spotify album payloads into the fields AlbumBoxd stores in Mongo.
-function normalizeSpotifyAlbum(data) {
+const ALBUM_DETAIL_METADATA_VERSION = 2;
+
+function normalizeSpotifyArtistRefs(artists) {
+  const normalizedArtists = [];
+  const seenArtists = new Set();
+
+  for (const artist of Array.isArray(artists) ? artists : []) {
+    const name = String(artist?.name || "").trim();
+    const spotifyId = String(artist?.id || "").trim();
+
+    if (!name) {
+      continue;
+    }
+
+    const identityKey = spotifyId || name.toLowerCase();
+
+    if (seenArtists.has(identityKey)) {
+      continue;
+    }
+
+    seenArtists.add(identityKey);
+    normalizedArtists.push({
+      spotifyId,
+      name,
+      spotifyUrl: artist?.external_urls?.spotify || "",
+    });
+  }
+
+  return normalizedArtists;
+}
+
+// Search results contain summary metadata but not the tracks/detail enrichment.
+function normalizeSpotifyAlbumSummary(data) {
   return {
     spotifyId: data.id,
     title: data.name,
     artist: data.artists?.[0]?.name || "Unknown Artist",
     artists: data.artists?.map((artist) => artist.name) || [],
+    artistRefs: normalizeSpotifyArtistRefs(data.artists),
     year: data.release_date?.slice(0, 4) || "unknown",
     releaseDate: data.release_date || "",
-    genres: data.genres || [],
     imgs: data.images || [],
     cover: data.images?.[0]?.url || null,
     totalTracks: data.total_tracks || 0,
+    albumType: data.album_type || "album",
+    spotifyUrl: data.external_urls?.spotify || "",
+  };
+}
+
+// Full album payloads enrich the cached summary when album details are requested.
+function normalizeSpotifyAlbum(data) {
+  return {
+    ...normalizeSpotifyAlbumSummary(data),
+    detailMetadataVersion: ALBUM_DETAIL_METADATA_VERSION,
     tracks: data.tracks?.items?.map((track) => ({
       spotifyId: track.id || "",
       trackNumber: track.track_number || 0,
@@ -22,16 +66,21 @@ function normalizeSpotifyAlbum(data) {
       title: track.name || "",
       durationMs: track.duration_ms || 0,
       spotifyUrl: track.external_urls?.spotify || "",
+      artistRefs: normalizeSpotifyArtistRefs(track.artists),
     })) || [],
     label: data.label || "",
-    albumType: data.album_type || "album",
-    spotifyUrl: data.external_urls?.spotify || "",
   };
 }
 
 // Converts catalog documents into the album shape the frontend already expects.
 function normalizeCatalogAlbum(album) {
   const source = typeof album.toObject === "function" ? album.toObject() : album;
+  const genreRankings = (Array.isArray(source.genreRankings) ? source.genreRankings : [])
+    .map((genre) => ({
+      name: String(genre?.name || "").trim(),
+      score: Number(genre?.score) || 0,
+    }))
+    .filter((genre) => genre.name && genre.score > 0);
 
   return {
     id: source.spotifyId,
@@ -39,9 +88,15 @@ function normalizeCatalogAlbum(album) {
     title: source.title,
     artist: source.artist,
     artists: source.artists || [],
+    artistRefs: source.artistRefs || [],
     year: source.year || "unknown",
     releaseDate: source.releaseDate || "",
     genres: source.genres || [],
+    genreRankings,
+    primaryGenre: genreRankings[0]?.name || null,
+    secondaryGenres: genreRankings.slice(1).map((genre) => genre.name),
+    genreSource: source.genreSource || "",
+    musicBrainzReleaseGroupId: source.musicBrainzReleaseGroupId || null,
     imgs: source.imgs || [],
     cover: source.cover || source.imgs?.[0]?.url || null,
     totalTracks: source.totalTracks || 0,
@@ -52,6 +107,13 @@ function normalizeCatalogAlbum(album) {
   };
 }
 
+function hasCurrentAlbumDetails(album) {
+  return Boolean(
+    album?.tracks?.length
+      && Number(album.detailMetadataVersion || 0) >= ALBUM_DETAIL_METADATA_VERSION,
+  );
+}
+
 // Search dropdown/results only need a smaller album summary.
 function toSearchResult(album) {
   const normalized = normalizeCatalogAlbum(album);
@@ -60,6 +122,8 @@ function toSearchResult(album) {
     id: normalized.spotifyId,
     title: normalized.title,
     artist: normalized.artist,
+    artistId: normalized.artistRefs[0]?.spotifyId || "",
+    artistRefs: normalized.artistRefs,
     year: normalized.year,
     cover: normalized.cover,
   };
@@ -98,19 +162,62 @@ async function fetchSpotifyAlbum(spotifyId, options = {}) {
 async function getOrCreateAlbumCatalog(spotifyId, options = {}) {
   const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
 
-  if (cachedAlbum && cachedAlbum.tracks?.length) {
+  if (hasCurrentAlbumDetails(cachedAlbum)) {
+    scheduleAlbumGenreEnrichment(cachedAlbum);
     return cachedAlbum;
   }
 
   const spotifyAlbum = await fetchSpotifyAlbum(spotifyId, options);
-  return upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
+  const album = await upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
+  scheduleAlbumGenreEnrichment(album);
+  return album;
+}
+
+// Album detail reads can degrade to cached metadata when Spotify enrichment fails.
+async function getAlbumCatalogDetails(spotifyId, options = {}) {
+  const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
+
+  if (hasCurrentAlbumDetails(cachedAlbum)) {
+    scheduleAlbumGenreEnrichment(cachedAlbum);
+    return {
+      album: cachedAlbum,
+      isPartial: false,
+    };
+  }
+
+  try {
+    const spotifyAlbum = await fetchSpotifyAlbum(spotifyId, options);
+    const album = await upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
+    scheduleAlbumGenreEnrichment(album);
+
+    return {
+      album,
+      isPartial: false,
+    };
+  } catch (error) {
+    if (!cachedAlbum) {
+      throw error;
+    }
+
+    scheduleAlbumGenreEnrichment(cachedAlbum);
+    return {
+      album: cachedAlbum,
+      isPartial: true,
+      enrichmentError: error,
+    };
+  }
 }
 
 module.exports = {
+  ALBUM_DETAIL_METADATA_VERSION,
   fetchSpotifyAlbum,
+  getAlbumCatalogDetails,
   getOrCreateAlbumCatalog,
+  hasCurrentAlbumDetails,
   normalizeCatalogAlbum,
+  normalizeSpotifyArtistRefs,
   normalizeSpotifyAlbum,
+  normalizeSpotifyAlbumSummary,
   toSearchResult,
   upsertAlbumCatalog,
 };

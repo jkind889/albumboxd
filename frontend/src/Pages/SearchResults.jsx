@@ -1,7 +1,6 @@
 import { API_BASE_URL } from "../config/api";
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useSearchParams } from "react-router-dom";     
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import AsyncState from "../Components/Loading/AsyncState";
 import { getApiErrorMessage } from "../utils/apiErrors";
 
@@ -11,12 +10,13 @@ export function SearchResults()
   const [hasNextPage, setHasNextPage] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const navigate = useNavigate();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const page = Math.max(Number.parseInt(searchParams.get("page") || "1", 10) || 1, 1);
-  
+  const viewParam = searchParams.get("view") || "grid";
+  const viewMode = viewParam === "list" ? "list" : "grid";
+
 
     useEffect(() =>{
       let shouldIgnore = false;
@@ -26,6 +26,7 @@ export function SearchResults()
           setResults([])
           setHasNextPage(false)
           setError("")
+          setLoading(false);
           return;
         }
 
@@ -77,18 +78,63 @@ export function SearchResults()
     setSearchParams(nextParams);
   }
 
-  
+  function updateView(nextViewMode) {
+    const nextParams = new URLSearchParams(searchParams);
 
+    if (nextViewMode === "grid") {
+      nextParams.delete("view");
+    } else {
+      nextParams.set("view", nextViewMode);
+    }
+
+    setSearchParams(nextParams);
+  }
+
+  function renderResults() {
+    return (
+      <div className={viewMode === "list" ? "results-list" : "results-grid"}>
+        {Array.isArray(searchresults) && searchresults.map((result) => (
+          <Link className="result-card" key={result.id} to={`/album/${result.id}`}>
+            <img className="result-cover" src={result.cover} alt={`${result.title} cover`} />
+            <span className="result-copy">
+              <h3>{result.title}</h3>
+              <p>{result.artist}</p>
+            </span>
+            <span className="result-year">{result.year || "Year unknown"}</span>
+          </Link>
+        ))}
+      </div>
+    );
+  }
+  
   return (
     <section className="search-results-page">
         <div className="search-results-header">
           <p className="search-results-kicker">Search results</p>
-          <h2>{query ? `Albums matching "${query}"` : "Search for an album"}</h2>
-          <p className="search-results-summary">
-            {loading
-              ? "Loading albums..."
-              : `${searchresults.length} album${searchresults.length === 1 ? "" : "s"} on page ${page}`}
-          </p>
+          <h2>{query || "Search"}</h2>
+          <div className="search-results-toolbar">
+            <p className="search-results-summary">
+              {loading
+                ? "Loading albums..."
+                : `${searchresults.length} album${searchresults.length === 1 ? "" : "s"} on page ${page}`}
+            </p>
+            <div className="profile-view-toggle search-view-toggle" aria-label="Search results view">
+              <button
+                className={viewMode === "grid" ? "profile-view-toggle-active" : ""}
+                type="button"
+                onClick={() => updateView("grid")}
+              >
+                Grid
+              </button>
+              <button
+                className={viewMode === "list" ? "profile-view-toggle-active" : ""}
+                type="button"
+                onClick={() => updateView("list")}
+              >
+                List
+              </button>
+            </div>
+          </div>
         </div>
 
         <AsyncState
@@ -100,17 +146,7 @@ export function SearchResults()
           errorTitle="Search unavailable"
           emptyTitle="No albums matched that search."
         >
-          <div className="results-grid">
-            {Array.isArray(searchresults) && searchresults.map((result) => (
-              // When a result is clicked, navigate to the album detail page using the album's ID
-              <article className="result-card" key={result.id} onClick={() => navigate(`/album/${result.id}`)}>
-                <img className="result-cover" src={result.cover} alt={`${result.title} cover`} />
-                <h3>{result.title}</h3>
-                <p>{result.artist}</p>
-                <span className="result-year">{result.year || "Year unknown"}</span>
-              </article>
-            ))}
-          </div>
+          {renderResults()}
         </AsyncState>
 
         {query && (page > 1 || hasNextPage) && (
@@ -132,6 +168,7 @@ export function SearchResults()
             </button>
           </div>
         )}
+
     </section>
   )
 

@@ -1,31 +1,66 @@
 import { API_BASE_URL } from "../config/api";
 import {useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getApiErrorMessage } from "../utils/apiErrors";
 
-export function SearchBar()
+const MIN_SUGGESTION_QUERY_LENGTH = 2;
+const SUGGESTION_LIMIT = 5;
+
+export function SearchBar({ placeholder = "Search" })
 {
     const [input, setInput] = useState("")
     const [suggestions, setSuggestions] = useState([]);
+    const [suggestionError, setSuggestionError] = useState("");
     const [showDropdown, setShowDropdown] = useState(false);
     const navigate = useNavigate()
 
 
   
     useEffect(() => {
-       const timeoutId = setTimeout(() => {
-        if (!input) {
-            setSuggestions([]);
-            setShowDropdown(false);
+       const query = input.trim();
+
+       if (query.length < MIN_SUGGESTION_QUERY_LENGTH) {
+          setSuggestions([]);
+          setSuggestionError("");
+          setShowDropdown(false);
+          return undefined;
+       }
+
+       const controller = new AbortController();
+       const timeoutId = setTimeout(async () => {
+
+        try {
+          const searchParams = new URLSearchParams({
+            q: query,
+            limit: String(SUGGESTION_LIMIT),
+          });
+          const response = await fetch(
+            `${API_BASE_URL}/search/search?${searchParams.toString()}`,
+            { signal: controller.signal },
+          );
+
+          if (!response.ok) {
+            throw new Error(await getApiErrorMessage(response, "Could not load search suggestions."));
+          }
+
+          const data = await response.json();
+          const results = Array.isArray(data) ? data : data?.results;
+          setSuggestions(Array.isArray(results) ? results : []);
+          setSuggestionError("");
+        } catch (error) {
+          if (error.name === "AbortError") {
             return;
+          }
+
+          setSuggestions([]);
+          setSuggestionError(error.message || "Could not load search suggestions.");
         }
+          }, 200); // Wait briefly so fast typing does not trigger a request per keystroke.
 
-        fetch(`${API_BASE_URL}/search/search?q=${encodeURIComponent(input)}`)
-          .then((res) => (res.ok ? res.json() : []))
-          .then((data) => setSuggestions(Array.isArray(data) ? data.slice(0, 5) : []))
-          .catch(() => setSuggestions([]))
-          }, 200); // Add a debounce delay of 200ms before making the API call
-
-          return () => clearTimeout(timeoutId); // Clear the timeout if the input changes before the fetch completes
+          return () => {
+            clearTimeout(timeoutId);
+            controller.abort();
+          }; // Clear the pending request if the input changes before it completes.
         }, [input]);
 
         useEffect(() => {
@@ -63,13 +98,20 @@ export function SearchBar()
       <input
         className="search-input"
         value={input}
-        onChange={(e) => { setInput(e.target.value); setShowDropdown(true); }}
+        onChange={(e) => {
+          setInput(e.target.value);
+          setSuggestionError("");
+          setShowDropdown(true);
+        }}
         onFocus={() => setShowDropdown(true)}
-        placeholder="Search"
+        placeholder={placeholder}
       />
       <button className="search-submit" type="submit" aria-label="Search albums">Search</button>
     <div className="search-dropdown-wrap" onClick={(e) => e.stopPropagation()}>
-      {showDropdown && suggestions.length > 0 && (
+      {showDropdown && suggestionError && (
+        <p className="search-dropdown-message" role="alert">{suggestionError}</p>
+      )}
+      {showDropdown && !suggestionError && suggestions.length > 0 && (
         <ul className="suggestions-dropdown">
           {suggestions.map((suggestion) => (
             <li key={suggestion.id} onClick={() => { navigate(`/album/${suggestion.id}`); setShowDropdown(false); }}>
