@@ -9,6 +9,7 @@ import {
   useUser,
 } from "@clerk/react";
 import LikeButton from "../Components/LikeButton";
+import ProfileReviewCard from "../Components/ProfileReviewCard";
 import AsyncState from "../Components/Loading/AsyncState";
 import { getApiErrorMessage } from "../utils/apiErrors";
 
@@ -721,29 +722,12 @@ export function Account() {
           ) : (
             <div className="profile-review-list">
               {latestReviews.map((review) => (
-                <article className="profile-review-card" key={review._id}>
-                  <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
-                    <AlbumCover src={review.cover} title={review.title} />
-                    <div>
-                      <h3>{review.title || "Untitled album"}</h3>
-                      <p>{review.artist || "Artist unknown"}</p>
-                    </div>
-                  </Link>
-                  <div className="profile-review-meta">
-                    <span>{review.rating}/5</span>
-                    <time>{formatDate(review.date)}</time>
-                  </div>
-                  <p className="profile-review-copy">{review.reviewText}</p>
-                  <div className="review-card-actions">
-                    <LikeButton
-                      liked={Boolean(review.likedByViewer)}
-                      count={review.likeCount}
-                      label="review"
-                      message={likeMessage}
-                      onToggle={() => toggleReviewLike(review)}
-                    />
-                  </div>
-                </article>
+                <ProfileReviewCard
+                  key={review._id}
+                  review={review}
+                  likeMessage={likeMessage}
+                  onToggleLike={toggleReviewLike}
+                />
               ))}
             </div>
           )}
@@ -762,29 +746,12 @@ export function Account() {
           ) : (
             <div className="profile-review-list">
               {previewPopularReviews.map((review) => (
-                <article className="profile-review-card" key={review._id}>
-                  <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
-                    <AlbumCover src={review.cover} title={review.title} />
-                    <div>
-                      <h3>{review.title || "Untitled album"}</h3>
-                      <p>{review.artist || "Artist unknown"}</p>
-                    </div>
-                  </Link>
-                  <div className="profile-review-meta">
-                    <span>{review.rating}/5</span>
-                    <time>{formatDate(review.date)}</time>
-                  </div>
-                  <p className="profile-review-copy">{review.reviewText}</p>
-                  <div className="review-card-actions">
-                    <LikeButton
-                      liked={Boolean(review.likedByViewer)}
-                      count={review.likeCount}
-                      label="review"
-                      message={likeMessage}
-                      onToggle={() => toggleReviewLike(review)}
-                    />
-                  </div>
-                </article>
+                <ProfileReviewCard
+                  key={review._id}
+                  review={review}
+                  likeMessage={likeMessage}
+                  onToggleLike={toggleReviewLike}
+                />
               ))}
             </div>
           )}

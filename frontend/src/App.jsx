@@ -2,9 +2,9 @@ import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import "./App.css";
 import SearchResults from "./Pages/SearchResults";
-import Albums from "./Pages/Albums";
 import AlbumDetail from "./Components/AlbumDetail";
 import ViewReviews from "./Pages/ViewReviews";
+import ReviewDispatches from "./Pages/ReviewDispatches";
 import FrontPage from "./Pages/FrontPage";
 import Layout from "./Layout";
 import Account from "./Pages/Account";
@@ -23,7 +23,6 @@ export function App() {
           <Route element={<Layout />}>
             <Route index element={<FrontPage />} />
             <Route path="/search" element={<SearchResults />} />
-            <Route path="/albums" element={<Albums />} />
             <Route path="/boards" element={<Boards />} />
             <Route path="/boards/:boardId" element={<BoardDetail />} />
             <Route
@@ -36,6 +35,7 @@ export function App() {
             <ProtectedRoute>
               <ViewReviews />
             </ProtectedRoute>} />
+            <Route path="/review-dispatches" element={<ReviewDispatches />} />
             <Route path="/account" element={<Account />} />
             <Route path="/account/network" element={<ProfileNetwork />} />
             <Route path="/notifications" element={

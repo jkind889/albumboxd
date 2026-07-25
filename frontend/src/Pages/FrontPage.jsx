@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/react";
 import { Link } from "react-router-dom";
 import { API_BASE_URL } from "../config/api";
+import SearchBar from "../Components/Searchbar";
 
 const EMPTY_SIGNALS = {
     featured: [],
@@ -269,7 +270,7 @@ export function FrontPage() {
                 <section className="front-signal-section" aria-labelledby="front-popular-title">
                     <div className="front-section-title">
                         <h2 id="front-popular-title">Popular this month</h2>
-                        <Link to="/albums">Catalog <ArrowIcon /></Link>
+                        <Link to="/search">Search <ArrowIcon /></Link>
                     </div>
                     {signals.popular.length ? (
                         <div className="front-live-list">
@@ -309,7 +310,7 @@ export function FrontPage() {
                 <section className="front-signal-section" aria-labelledby="front-reviews-title">
                     <div className="front-section-title">
                         <h2 id="front-reviews-title">Review dispatches</h2>
-                        <Link to="/viewreviews">More <ArrowIcon /></Link>
+                        <Link to="/review-dispatches">More <ArrowIcon /></Link>
                     </div>
                     {signals.reviews.length ? (
                         <div className="front-review-stack">
@@ -323,8 +324,11 @@ export function FrontPage() {
                 </section>
 
                 <section className="front-signal-section" aria-labelledby="front-catalog-title">
-                    <div className="front-section-title">
+                    <div className="front-section-title front-catalog-title">
                         <h2 id="front-catalog-title">Catalog index</h2>
+                        <div className="front-catalog-search">
+                            <SearchBar placeholder="Search catalog" />
+                        </div>
                     </div>
                     {signals.catalog.length ? (
                         <div className="front-index-list">

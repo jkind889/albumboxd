@@ -6,7 +6,7 @@ import { getApiErrorMessage } from "../utils/apiErrors";
 const MIN_SUGGESTION_QUERY_LENGTH = 2;
 const SUGGESTION_LIMIT = 5;
 
-export function SearchBar()
+export function SearchBar({ placeholder = "Search" })
 {
     const [input, setInput] = useState("")
     const [suggestions, setSuggestions] = useState([]);
@@ -104,7 +104,7 @@ export function SearchBar()
           setShowDropdown(true);
         }}
         onFocus={() => setShowDropdown(true)}
-        placeholder="Search"
+        placeholder={placeholder}
       />
       <button className="search-submit" type="submit" aria-label="Search albums">Search</button>
     <div className="search-dropdown-wrap" onClick={(e) => e.stopPropagation()}>
