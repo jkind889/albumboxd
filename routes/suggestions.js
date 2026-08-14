@@ -61,7 +61,10 @@ function sendRouteError(res, error, fallback) {
 async function findSubmission(query) {
   let result = AlbumSubmission.findOne(query);
   if (result && typeof result.populate === "function") {
-    result = result.populate("candidateAlbumCatalogId").populate("approvedAlbumCatalogId");
+    result = result
+      .populate("candidateAlbumCatalogId")
+      .populate("approvedAlbumCatalogId")
+      .populate({ path: "duplicateOfSubmissionId", populate: { path: "approvedAlbumCatalogId" } });
   }
   return result;
 }

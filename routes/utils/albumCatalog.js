@@ -128,8 +128,13 @@ async function findAlbumByPublicId(albumId) {
   return album;
 }
 
-async function createCatalogAlbum(input) {
-  return AlbumCatalog.create(normalizeAlbumInput(input));
+async function createCatalogAlbum(input, options = {}) {
+  const normalized = normalizeAlbumInput(input);
+  if (options.session) {
+    const created = await AlbumCatalog.create([normalized], { session: options.session });
+    return Array.isArray(created) ? created[0] : created;
+  }
+  return AlbumCatalog.create(normalized);
 }
 
 module.exports = {

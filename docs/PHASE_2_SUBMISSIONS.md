@@ -1,8 +1,8 @@
 # Phase 2 Community Album Submissions
 
-Status: contributor backend implemented; moderator decisions and catalog publication are deferred
+Status: Phase 2 backend implemented; approved feed and UI are deferred
 
-This document describes the Phase 2a album-submission backend as it exists today. It is the source of truth for the contributor API, stored submission data, validation rules, privacy boundary, duplicate signals, configuration, and the work that remains before Phase 2 is complete.
+This document is the source of truth for the Phase 2 contributor and moderator APIs, stored submission data, validation rules, privacy boundary, duplicate signals, approval publication, and deferred follow-up work.
 
 ## Current scope
 
@@ -14,7 +14,7 @@ Phase 2a lets an authenticated Clerk user:
 - Revise a submission after a moderator requests changes.
 - Withdraw an active submission.
 
-An allowlisted moderator can read a contributor submission through the same detail endpoint. Moderator queue and command endpoints do not exist yet.
+An allowlisted moderator can read a contributor submission through the same detail endpoint, or use the dedicated moderator queue/detail and command routes.
 
 Submissions are private workflow records. Creating or revising one never creates an `AlbumCatalog` record and therefore cannot make pending metadata appear in public search, album routes, feeds, statistics, reviews, saves, likes, profiles, boards, or notifications.
 
@@ -23,6 +23,8 @@ The implementation is centered on:
 - `models/AlbumSubmission.js` for the aggregate, embedded revisions, and audit events.
 - `routes/suggestions.js` for the contributor API.
 - `routes/utils/submissions.js` for normalization, validation, fingerprints, duplicate candidates, pagination cursors, serialization, and configuration parsing.
+- `routes/moderation.js` for moderator authorization, queue/detail reads, and explicit state commands.
+- `routes/utils/approval.js` for transactional, idempotent catalog linking/creation.
 - `routes/utils/rateLimit.js` for contributor mutation limits.
 
 ### Phase 2 status
@@ -33,8 +35,8 @@ The implementation is centered on:
 | Contributor create, history, detail, revise, and withdraw API | Implemented |
 | Submission feature flag and contributor mutation limits | Implemented |
 | Advisory catalog and active-submission duplicate signals | Implemented |
-| Moderator queue, detail, authorization boundary, and commands | Deferred |
-| Idempotent approval and immediate `AlbumCatalog` publication | Deferred |
+| Moderator queue, detail, authorization boundary, and commands | Implemented |
+| Idempotent approval and immediate `AlbumCatalog` publication | Implemented |
 | Optional public approved-submission feed | Deferred |
 | Contributor and moderator UI | Phase 3 |
 
@@ -46,21 +48,23 @@ The existing API requirements still apply:
 - `CLERK_SECRET_KEY`
 - `CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`
 
-Phase 2a adds two optional variables:
+Phase 2 adds three optional variables:
 
 | Variable | Behavior |
 | --- | --- |
 | `COMMUNITY_SUBMISSIONS_ENABLED` | Submission mutations are enabled only when this value is `true`, ignoring case and surrounding whitespace. It is disabled when missing or set to any other value. Read endpoints remain available. |
-| `MODERATOR_USER_IDS` | Comma-separated Clerk user IDs allowed to read any submission detail. This does not grant moderator mutation powers because those routes are not implemented yet. |
+| `MODERATOR_USER_IDS` | Comma-separated Clerk user IDs allowed to read any submission detail and use moderator routes. This is a server-only allowlist. |
+| `COMMUNITY_MODERATION_ENABLED` | Moderator commands are enabled only when this value is `true`. Moderator reads remain available while commands are disabled. |
 
 Example local values:
 
 ```dotenv
 COMMUNITY_SUBMISSIONS_ENABLED=true
 MODERATOR_USER_IDS=user_abc123,user_def456
+COMMUNITY_MODERATION_ENABLED=true
 ```
 
-The rate limiters use process memory, matching the rest of the current API. Each API instance therefore maintains its own counters. Shared storage is required before horizontally scaling the API. Except for `/health`, requests also pass through the global limit of 300 requests per IP per five minutes before reaching the submission router. `TRUST_PROXY_HOPS` controls Express proxy handling and therefore affects IP-based keys. Unexpected limiter failures log and fail open rather than taking down the API.
+The rate limiters use process memory, matching the rest of the current API. Each API instance therefore maintains its own counters. Each moderator receives 120 commands per 10 minutes; contributor creation remains 6 per 10 minutes and contributor revision/withdrawal remains 20 per 10 minutes. Shared storage is required before horizontally scaling the API. Except for `/health`, requests also pass through the global limit of 300 requests per IP per five minutes. `TRUST_PROXY_HOPS` controls Express proxy handling and therefore affects IP-based keys. Unexpected limiter failures log and fail open rather than taking down the API.
 
 ## Public identity and privacy
 
@@ -93,8 +97,8 @@ All endpoints require Clerk authentication. A detail request made by an authenti
 | `candidateSubmissionIds` | Up to ten internal references to possible active-submission matches. |
 | `duplicateSignals` | Internal match type, target type, match key, and target reference; at most twenty signals are retained by the API. |
 | `status` | Current workflow state. |
-| `approvedAlbumCatalogId` | Future approval result; required whenever status is `approved`. |
-| `duplicateOfSubmissionId` | Future duplicate decision; required whenever status is `duplicate`. |
+| `approvedAlbumCatalogId` | Catalog album created or explicitly linked by approval; required whenever status is `approved`. |
+| `duplicateOfSubmissionId` | Approved submission selected by a moderator duplicate decision; required whenever status is `duplicate`. |
 | `currentRevision` | Starts at `1` and increments after each accepted revision. |
 | `revisions` | Append-only complete proposal snapshots, including the duplicate state at submission time. |
 | `moderationHistory` | Append-only actor, action, reason, and timestamp events. |
@@ -102,7 +106,7 @@ All endpoints require Clerk authentication. A detail request made by an authenti
 
 Embedded schemas use strict mode. Unknown database fields throw instead of being silently stored.
 
-“Append-only” is currently an application-service invariant: contributor routes use `$push` and expose no replacement endpoint. The arrays are not marked `immutable` in Mongoose, so future moderator services and administrative scripts must preserve this rule and must never replace or edit earlier snapshots or events.
+Revisions and moderation history are append-only application-service invariants. Contributor and moderator routes use `$push`, while Mongoose query middleware rejects replacement/removal updates and non-append `$push` options. Direct database writers must preserve the same rule.
 
 ### Indexes
 
@@ -129,7 +133,7 @@ The schema supports:
 - `duplicate`
 - `withdrawn`
 
-The contributor API implements only the solid-line transitions below. Dashed moderator transitions describe the intended next backend slice and are not callable today.
+Contributor and moderator APIs implement the transitions below. Moderator commands are limited to pending submissions; needs-changes submissions return to pending only through contributor revision.
 
 ```mermaid
 stateDiagram-v2
@@ -137,10 +141,10 @@ stateDiagram-v2
     pending --> withdrawn: contributor withdraws
     needs_changes --> pending: contributor revises
     needs_changes --> withdrawn: contributor withdraws
-    pending --> needs_changes: moderator requests changes (deferred)
-    pending --> approved: moderator approves (deferred)
-    pending --> rejected: moderator rejects (deferred)
-    pending --> duplicate: moderator marks duplicate (deferred)
+    pending --> needs_changes: moderator requests changes
+    pending --> approved: moderator approves
+    pending --> rejected: moderator rejects
+    pending --> duplicate: moderator marks duplicate
 ```
 
 Contributor commands use conditional atomic updates:
@@ -149,6 +153,8 @@ Contributor commands use conditional atomic updates:
 - Withdrawal requires ownership and status `pending` or `needs_changes`. A concurrent change returns `409 STATE_CONFLICT`.
 - No API accepts an arbitrary status value, reviewer identity, moderation note, audit event, or revision number.
 - No deletion endpoint exists. Closed submissions remain available for audit and future duplicate detection.
+
+Moderator commands use `MODERATOR_USER_IDS`, return `401` to anonymous callers and `403 MODERATOR_REQUIRED` to authenticated non-moderators, and are disabled with `503 MODERATION_DISABLED` unless `COMMUNITY_MODERATION_ENABLED=true`. Reads remain available while that flag is off.
 
 The model recognizes these moderation-history actions so later moderator services can use the same aggregate:
 
@@ -349,7 +355,50 @@ Closes an active owned proposal.
 - Atomically changes status to `withdrawn` and appends a `withdrawn` event.
 - A terminal or concurrently changed submission returns `409`.
 
-There is no `DELETE` endpoint, arbitrary status endpoint, public approved feed, or moderator command route.
+There is no `DELETE` endpoint, arbitrary status endpoint, or public approved feed.
+
+## Moderator API
+
+Moderator routes are mounted below `/moderation/album-suggestions` and require Clerk authentication plus membership in `MODERATOR_USER_IDS`. Mongo `_id` values never appear in these responses.
+
+### `GET /moderation/album-suggestions`
+
+Returns the queue oldest-first by `updatedAt` and `_id`.
+
+- `status` is an optional comma-separated subset of `pending`, `needs_changes`, `approved`, `rejected`, `duplicate`, and `withdrawn`; it defaults to `pending`.
+- `hasPossibleDuplicate` and `submittedByUserId` are optional filters.
+- `limit` defaults to 20 and is capped at 50.
+- `cursor` is an opaque `{updatedAt, _id}` cursor; malformed filters or cursors return `400`.
+- The response is `{ suggestions, nextCursor }`. Queue entries contain proposal metadata, submitter, status, revision, timestamps, evidence counts/types, and `hasPossibleDuplicate`, but not revision or audit arrays.
+
+### `GET /moderation/album-suggestions/:submissionId`
+
+Returns full proposal history, evidence, revisions, moderation history, and sanitized duplicate candidates. Candidate albums use public `albumId` values. Candidate submissions use public `submissionId` values and limited core metadata; raw match keys and Mongo IDs are omitted.
+
+### Moderator commands
+
+All command bodies are strict and reject unknown fields, client-supplied reviewer identity, status, audit data, and revision values.
+
+| Endpoint | Body | Transition |
+| --- | --- | --- |
+| `POST /:submissionId/request-changes` | `{ reason }` | `pending → needs_changes` |
+| `POST /:submissionId/reject` | `{ reason }` | `pending → rejected` |
+| `POST /:submissionId/mark-duplicate` | `{ duplicateOfSubmissionId, reason }` | `pending → duplicate` |
+| `POST /:submissionId/approve` | `{ albumId?, confirmPossibleDuplicate?, reason? }` | `pending → approved` |
+
+Reasons are required, trimmed, and limited to 1,000 characters for change requests, rejections, and duplicate decisions. Approval reason is optional with the same limit. Duplicate targets must be another approved submission with a usable catalog album. Existing catalog matches are handled by explicit `albumId` selection rather than `mark-duplicate`.
+
+All successful commands append one moderation-history event and return `{ suggestion }`; approval additionally returns `{ album, albumUrl }`. Concurrent or stale commands return `409 STATE_CONFLICT`.
+
+## Approval publication
+
+Approval runs through one transactional, idempotent service. It rechecks duplicate candidates inside the transaction, never auto-links a candidate, and requires `confirmPossibleDuplicate=true` before creating a new album when only advisory matches exist. Exact catalog-reference matches require an explicit `albumId`.
+
+When creating an album, the service copies normalized title, artist credits, release fields, tracks, label, and external references; adds normalized barcode/catalog-number references; sets `catalogSource: "community"`; generates local album/track UUIDs; and leaves `cover` empty. Supporting evidence, country, and `coverSourceUrl` remain in the private submission record, and no submitted URL is fetched.
+
+Each copied catalog field receives field-level provenance containing `source: "community"`, the public submission ID, revision, approving Clerk user ID, and approval timestamp. Linking an existing catalog album does not overwrite that album.
+
+Catalog creation/linking, the submission status transition, and the approval audit event run in one Mongo transaction. Unsupported standalone Mongo returns `503 APPROVAL_UNAVAILABLE`; it never performs an unsafe create-then-update sequence. Retrying an already approved submission returns the same catalog album without creating another row or audit event.
 
 ## Response representation
 
@@ -366,6 +415,7 @@ currentRevision
 hasPossibleDuplicate
 candidateAlbumId       optional public album UUID
 approvedAlbumId        optional public album UUID
+duplicateAlbumId       optional public album UUID for a duplicate decision
 createdAt
 updatedAt
 ```
@@ -385,12 +435,15 @@ Internal candidate submission IDs and duplicate-signal records are intentionally
 | --- | --- | --- |
 | `400` | `INVALID_SUBMISSION` | Request shape, field value, date, count, URL, or Mongoose validation failed. Normalizer errors also include `details`. |
 | `400` | `INVALID_CURSOR` | Pagination cursor could not be decoded or validated. |
-| `401` | `{ "error": "Unauthorized" }` | Clerk did not provide a user ID. |
-| `404` | `{ "error": "Suggestion not found" }` | Submission is absent or private to another user. |
-| `409` | `INVALID_SUBMISSION_STATE` | Revision or withdrawal is not allowed from the current state. |
+| `401` | `{ "error": "Unauthorized", "code": "UNAUTHORIZED" }` on moderator routes; contributor routes preserve the existing shape | Clerk did not provide a user ID. |
+| `403` | `MODERATOR_REQUIRED` | Authenticated caller is not in the moderator allowlist. |
+| `404` | `SUGGESTION_NOT_FOUND` | Submission is absent or private to another user. |
+| `409` | `INVALID_SUBMISSION_STATE` | Revision, withdrawal, or moderation command is not allowed from the current state. |
 | `409` | `REVISION_CONFLICT` or `STATE_CONFLICT` | A concurrent mutation invalidated the conditional update. |
+| `409` | `EXACT_CATALOG_MATCH`, `POSSIBLE_DUPLICATE_CONFIRMATION_REQUIRED`, or `INVALID_DUPLICATE_TARGET` | Moderator must resolve an exact match, confirm an advisory duplicate, or select a valid approved duplicate target. |
 | `429` | `RATE_LIMITED` | Per-user mutation bucket was exhausted. Includes `retryAfterSeconds` and a `Retry-After` header. |
 | `503` | `SUBMISSIONS_DISABLED` | Contributor mutations are disabled by feature flag. |
+| `503` | `MODERATION_DISABLED` or `APPROVAL_UNAVAILABLE` | Moderator commands are disabled or Mongo transactions are unavailable. |
 | `500` | Endpoint-specific `error` message | Unexpected server or database failure. |
 
 ## Tests and verification
@@ -401,13 +454,21 @@ Run the backend tests:
 npm test
 ```
 
+Run the replica-set-backed approval tests in an environment that permits local Mongo processes:
+
+```sh
+npm run test:integration
+```
+
+The normal `npm test` run keeps these integration cases skipped unless `RUN_MONGO_INTEGRATION=true` is supplied.
+
 Run the provider-neutral catalog guard:
 
 ```sh
 npm run check:catalog-contract
 ```
 
-`tests/submissions.test.js` covers:
+`tests/submissions.test.js` and `tests/moderation.test.js` cover:
 
 - Metadata, date, barcode, URL, source, and fingerprint normalization.
 - Unknown-field, insecure-URL, and Spotify-reference rejection.
@@ -421,56 +482,21 @@ npm run check:catalog-contract
 - Owner privacy and moderator allowlist reads.
 - Revision, withdrawal, and terminal-state behavior.
 - Public serialization without internal identifiers.
+- Moderator authentication, allowlist privacy, queue filters/cursors, command transitions, reasons, duplicate targets, feature flags, approval mapping, idempotent retries, and transaction-unavailable handling.
 
-These tests mock persistence and route dependencies. Live Mongo transaction, index-build, and concurrent approval tests belong with the remaining moderator/approval implementation.
+The optional integration suite uses a MongoMemoryReplSet for real transaction, index, rollback, and concurrency behavior.
 
 ### Known implementation constraints
 
-- Append-only revisions and audit history are enforced by route/service behavior, not an immutable Mongoose array.
+- Append-only revisions and audit history are enforced by route/service behavior plus Mongoose query middleware; direct database access should still be restricted.
 - The API normalizer caps external references at twenty, and duplicate discovery caps retained signals at twenty; direct database writers must preserve those bounds because the top-level arrays do not repeat both limits at the schema layer.
 - Pagination cursors are opaque base64url JSON but are not signed. Tampering can only move the caller's pagination position because every query independently enforces `submittedByUserId`.
-- Submission tests are unit and route tests with mocked persistence, not live Clerk, Express, or Mongo integration tests.
-- Public-exclusion behavior follows structurally from never writing a pending submission into `AlbumCatalog`, but a live-database isolation test has not yet been added.
+- Submission and moderator route tests use mocked persistence for fast contract coverage. `npm run test:integration` runs the replica-set-backed transaction, rollback, provenance, and concurrency checks; the normal `npm test` run skips them unless `RUN_MONGO_INTEGRATION=true` is supplied.
+- Public-exclusion behavior follows structurally from never writing a pending submission into `AlbumCatalog`; the integration suite verifies that pending metadata has no catalog row before approval.
 
-## Remaining Phase 2 work
+## Phase 2 exit gate
 
-Phase 2 is not complete until the moderator and publication backend is implemented and tested.
-
-### Moderator authorization and queue
-
-- Add `COMMUNITY_MODERATION_ENABLED`, disabled by default.
-- Add dedicated per-user moderator mutation limits.
-- Add `GET /moderation/album-suggestions` with status filters and stable cursor pagination.
-- Add `GET /moderation/album-suggestions/:submissionId` with private duplicate candidates and complete audit data.
-- Centralize the server-only moderator authorization check for every moderator route.
-
-### Moderator commands
-
-- `POST /moderation/album-suggestions/:submissionId/request-changes`
-- `POST /moderation/album-suggestions/:submissionId/approve`
-- `POST /moderation/album-suggestions/:submissionId/reject`
-- `POST /moderation/album-suggestions/:submissionId/mark-duplicate`
-
-Commands must enforce explicit transition rules, derive the reviewer from Clerk, require reasons where appropriate, append moderation history, and never accept arbitrary status replacement.
-
-### Approval and catalog publication
-
-- Build one idempotent approval service.
-- Re-run exact and fingerprint duplicate checks at approval time.
-- Link to an existing `AlbumCatalog` record or create a valid local catalog album.
-- Record community/moderator field provenance.
-- Set `approvedAlbumCatalogId` and append the approval event only after a usable catalog record exists.
-- Use a Mongo transaction where supported, with unique constraints and retry-safe recovery as the fallback.
-- Return the normal public album UUID and URL.
-- Prove concurrent approval requests cannot create duplicate albums or expose an approved-but-unusable submission.
-
-### Additional tests
-
-- Moderator `401`/`403`, feature-flag, filtering, and pagination coverage.
-- Every moderator state transition and reason requirement.
-- Exact-reference and fingerprint candidate behavior with real persistence.
-- Approval linking, catalog creation, provenance, idempotency, rollback, and concurrent races.
-- Verification that pending, rejected, duplicate, withdrawn, and needs-changes metadata never enters public catalog or social queries.
+Phase 2 backend is complete when the moderator route tests and transaction-backed approval tests pass, and pending, needs-changes, rejected, duplicate, and withdrawn submissions remain absent from public catalog and social queries. Build indexes using the repository's normal Mongoose auto-index behavior; production index rollout remains Phase 4 deployment work.
 
 ### Explicitly later
 

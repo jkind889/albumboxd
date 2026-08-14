@@ -266,7 +266,13 @@ function normalizedFingerprint(metadata) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-async function resolveRows(query, limit) {
+function withSession(query, session) {
+  if (session && query && typeof query.session === "function") return query.session(session);
+  return query;
+}
+
+async function resolveRows(query, limit, session) {
+  query = withSession(query, session);
   let result = query;
   if (result && typeof result.limit === "function") result = result.limit(limit);
   if (result && typeof result.exec === "function") result = result.exec();
@@ -290,7 +296,7 @@ function addSignal(signals, signal) {
   if (!signals.some((item) => `${item.targetType}|${item.matchType}|${item.key}` === key)) signals.push(signal);
 }
 
-async function findDuplicateSignals(payload, { excludeSubmissionId } = {}) {
+async function findDuplicateSignals(payload, { excludeSubmissionId, session } = {}) {
   const fingerprint = normalizedFingerprint(payload.proposedMetadata);
   const signals = [];
   let candidateAlbumCatalogId = null;
@@ -304,7 +310,7 @@ async function findDuplicateSignals(payload, { excludeSubmissionId } = {}) {
     catalogConditions.push({ externalReferences: { $elemMatch: { provider: "catalog_number", entityType: "release", externalId: payload.proposedMetadata.catalogNumber } } });
   }
   if (catalogConditions.length) {
-    const catalogRows = await resolveRows(AlbumCatalog.find({ $or: catalogConditions }), 20);
+    const catalogRows = await resolveRows(AlbumCatalog.find({ $or: catalogConditions }), 20, session);
     catalogRows.forEach((album) => {
       const references = Array.isArray(album.externalReferences) ? album.externalReferences : [];
       payload.externalReferences.forEach((reference) => {
@@ -338,7 +344,11 @@ async function findDuplicateSignals(payload, { excludeSubmissionId } = {}) {
     });
   }
 
-  const catalogRows = await resolveRows(AlbumCatalog.find({ releaseType: payload.proposedMetadata.releaseType, releaseYear: payload.proposedMetadata.releaseYear }), 100);
+  const catalogRows = await resolveRows(
+    AlbumCatalog.find({ releaseType: payload.proposedMetadata.releaseType, releaseYear: payload.proposedMetadata.releaseYear }),
+    100,
+    session,
+  );
   catalogRows.forEach((album) => {
     const credits = Array.isArray(album.artistCredits) ? album.artistCredits : [];
     const albumFingerprint = normalizedFingerprint({
@@ -361,7 +371,7 @@ async function findDuplicateSignals(payload, { excludeSubmissionId } = {}) {
   if (payload.proposedMetadata.catalogNumber) submissionConditions.push({ "proposedMetadata.catalogNumber": payload.proposedMetadata.catalogNumber });
   const submissionQuery = { status: { $in: ACTIVE_STATUSES }, $or: submissionConditions };
   if (excludeSubmissionId) submissionQuery._id = { $ne: excludeSubmissionId };
-  const submissionRows = await resolveRows(AlbumSubmission.find(submissionQuery), 20);
+  const submissionRows = await resolveRows(AlbumSubmission.find(submissionQuery), 20, session);
   submissionRows.forEach((submission) => {
     if (candidateSubmissionIds.length < 10) candidateSubmissionIds.push(submission._id);
     if (submission.normalizedFingerprint === fingerprint) addSignal(signals, {
@@ -454,6 +464,7 @@ function serializeSubmission(value, { detail = false } = {}) {
     ),
     candidateAlbumId: publicAlbumId(source.candidateAlbumCatalogId) || undefined,
     approvedAlbumId: publicAlbumId(source.approvedAlbumCatalogId) || undefined,
+    duplicateAlbumId: publicAlbumId(source.duplicateOfSubmissionId?.approvedAlbumCatalogId) || undefined,
     createdAt: source.createdAt,
     updatedAt: source.updatedAt,
   };

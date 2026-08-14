@@ -49,6 +49,7 @@ const boardRoutes = require("./routes/boards")
 const likeRoutes = require("./routes/likes")
 const notificationRoutes = require("./routes/notifications")
 const suggestionRoutes = require("./routes/suggestions")
+const moderationRoutes = require("./routes/moderation")
 
 app.use("/auth", authRoutes);
 app.use("/search", searchRoutes);
@@ -59,6 +60,7 @@ app.use("/boards", boardRoutes)
 app.use("/likes", likeRoutes)
 app.use("/notifications", notificationRoutes)
 app.use("/suggestions", suggestionRoutes)
+app.use("/moderation/album-suggestions", moderationRoutes)
 
 const port = parsePort();
 

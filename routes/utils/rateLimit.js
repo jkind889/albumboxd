@@ -55,6 +55,12 @@ const RATE_LIMITS = {
     duration: 10 * 60,
     message: "Too many suggestion updates. Please try again soon.",
   },
+  moderationMutation: {
+    keyPrefix: "rescened:moderation-mutation",
+    points: 120,
+    duration: 10 * 60,
+    message: "Too many moderation commands. Please try again soon.",
+  },
 };
 
 class RateLimitExceededError extends Error {
@@ -188,6 +194,7 @@ const reviewMutationLimiter = createRateLimiter(RATE_LIMITS.reviewMutation);
 const likeMutationLimiter = createRateLimiter(RATE_LIMITS.likeMutation);
 const submissionCreateLimiter = createRateLimiter(RATE_LIMITS.submissionCreate);
 const submissionMutationLimiter = createRateLimiter(RATE_LIMITS.submissionMutation);
+const moderationMutationLimiter = createRateLimiter(RATE_LIMITS.moderationMutation);
 
 module.exports = {
   RATE_LIMIT_ERROR_CODE,
@@ -229,6 +236,10 @@ module.exports = {
   submissionMutationRateLimit: createRateLimitMiddleware(submissionMutationLimiter, {
     keyGenerator: getAuthenticatedUserRateLimitKey,
     message: RATE_LIMITS.submissionMutation.message,
+  }),
+  moderationMutationRateLimit: createRateLimitMiddleware(moderationMutationLimiter, {
+    keyGenerator: getAuthenticatedUserRateLimitKey,
+    message: RATE_LIMITS.moderationMutation.message,
   }),
   searchRateLimit: createRateLimitMiddleware(searchLimiter, {
     keyGenerator: getIpRateLimitKey,

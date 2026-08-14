@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "test": "node --test",
+    "test:integration": "RUN_MONGO_INTEGRATION=true node --test tests/moderation.integration.test.js",
     "start": "node server.js",
     "devStart": "nodemon server.js",
     "seed:social": "node scripts/seedSocialDemo.js",
@@ -33,6 +34,7 @@
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "mongodb-memory-server": "^10.4.3",
     "nodemon": "^3.1.14"
   }
 }

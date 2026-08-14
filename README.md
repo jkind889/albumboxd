@@ -4,9 +4,9 @@ Rescened is a community-curated album catalog. Albums receive an immutable UUID 
 
 ## Local development
 
-Set `MONGO_URI`, `CLERK_SECRET_KEY`, and either `CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`. Spotify credentials are not used or required. Set `COMMUNITY_SUBMISSIONS_ENABLED=true` to enable contributor submission mutations; they are disabled by default. Start the API with `npm run devStart` and the frontend from `frontend/` with `npm run dev`.
+Set `MONGO_URI`, `CLERK_SECRET_KEY`, and either `CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`. Spotify credentials are not used or required. Set `COMMUNITY_SUBMISSIONS_ENABLED=true` to enable contributor submission mutations and `COMMUNITY_MODERATION_ENABLED=true` to enable moderator commands; both are disabled by default. Set `MODERATOR_USER_IDS` to a comma-separated Clerk allowlist. Start the API with `npm run devStart` and the frontend from `frontend/` with `npm run dev`.
 
-The database is intentionally empty after the generation-2 cutover. Phase 1 has no public album-creation endpoint. The Phase 2a contributor backend can now store private album suggestions, but moderator decisions and catalog publication are still in development, so approved albums must still be seeded directly for local testing.
+The database is intentionally empty after the generation-2 cutover. Phase 2 now includes the contributor and moderator APIs: approval links or creates a usable local catalog album inside a Mongo transaction. Approval commands require a transaction-capable replica-set or sharded deployment; standalone Mongo remains safe for reads and non-publication moderation commands only.
 
 ## Catalog contract
 
@@ -16,4 +16,4 @@ Saved albums are the deduplicated union of every board a user owns. Removing an 
 
 ## Community submissions
 
-See [Phase 2 community album submissions](./docs/PHASE_2_SUBMISSIONS.md) for the implemented contributor API, data model, configuration, validation, duplicate handling, tests, and the remaining moderator and approval work.
+See [Phase 2 community album submissions](./docs/PHASE_2_SUBMISSIONS.md) for the contributor and moderator APIs, data model, configuration, validation, duplicate handling, approval publication, and test contract. The approved feed and UI remain later phases.

@@ -237,7 +237,7 @@ const albumSubmissionSchema = new mongoose.Schema(
   { timestamps: true, strict: "throw" },
 );
 
-albumSubmissionSchema.pre("validate", function validateSubmissionInvariants(next) {
+albumSubmissionSchema.pre("validate", function validateSubmissionInvariants() {
   if (this.status === "approved" && !this.approvedAlbumCatalogId) {
     this.invalidate("approvedAlbumCatalogId", "Approved submissions must reference a catalog album.");
   }
@@ -247,7 +247,43 @@ albumSubmissionSchema.pre("validate", function validateSubmissionInvariants(next
   if (Array.isArray(this.revisions) && this.revisions.length > 0 && this.currentRevision !== this.revisions.length) {
     this.invalidate("currentRevision", "Current revision must match the number of stored revisions.");
   }
-  next();
+});
+
+function invariantValidationError(path, message) {
+  const error = new mongoose.Error.ValidationError();
+  error.addError(path, new mongoose.Error.ValidatorError({ path, message }));
+  return error;
+}
+
+albumSubmissionSchema.pre(["findOneAndUpdate", "updateOne"], function validateSubmissionUpdate() {
+  const update = this.getUpdate() || {};
+  const set = update.$set || update;
+  ["revisions", "moderationHistory"].forEach((field) => {
+    if (set[field] !== undefined
+      || update.$unset?.[field] !== undefined
+      || update.$pull?.[field] !== undefined
+      || update.$pullAll?.[field] !== undefined
+      || update.$pop?.[field] !== undefined) {
+      throw invariantValidationError(field, `${field} are append-only and cannot be replaced or removed.`);
+    }
+    const push = update.$push?.[field];
+    if (push && typeof push === "object" && (push.$position !== undefined || push.$slice !== undefined)) {
+      throw invariantValidationError(field, `${field} may only be appended.`);
+    }
+  });
+  const status = set.status;
+  if (status === "approved" && !set.approvedAlbumCatalogId) {
+    throw invariantValidationError("approvedAlbumCatalogId", "Approved submissions must reference a catalog album.");
+  }
+  if (status === "duplicate" && !set.duplicateOfSubmissionId) {
+    throw invariantValidationError("duplicateOfSubmissionId", "Duplicate submissions must reference another submission.");
+  }
+  if (status === "approved" && set.duplicateOfSubmissionId && set.duplicateOfSubmissionId !== null) {
+    throw invariantValidationError("duplicateOfSubmissionId", "Approved submissions cannot reference a duplicate submission.");
+  }
+  if (status === "duplicate" && set.approvedAlbumCatalogId && set.approvedAlbumCatalogId !== null) {
+    throw invariantValidationError("approvedAlbumCatalogId", "Duplicate submissions cannot reference an approved album.");
+  }
 });
 
 albumSubmissionSchema.index({ submittedByUserId: 1, createdAt: -1, _id: -1 });
