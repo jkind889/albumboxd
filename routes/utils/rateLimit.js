@@ -43,6 +43,18 @@ const RATE_LIMITS = {
     duration: 10 * 60,
     message: "Too many like updates. Please try again soon.",
   },
+  submissionCreate: {
+    keyPrefix: "rescened:submission-create",
+    points: 6,
+    duration: 10 * 60,
+    message: "Too many suggestion submissions. Please try again soon.",
+  },
+  submissionMutation: {
+    keyPrefix: "rescened:submission-mutation",
+    points: 20,
+    duration: 10 * 60,
+    message: "Too many suggestion updates. Please try again soon.",
+  },
 };
 
 class RateLimitExceededError extends Error {
@@ -174,6 +186,8 @@ const albumSaveLimiter = createRateLimiter(RATE_LIMITS.albumSave);
 const reviewCreateLimiter = createRateLimiter(RATE_LIMITS.reviewCreate);
 const reviewMutationLimiter = createRateLimiter(RATE_LIMITS.reviewMutation);
 const likeMutationLimiter = createRateLimiter(RATE_LIMITS.likeMutation);
+const submissionCreateLimiter = createRateLimiter(RATE_LIMITS.submissionCreate);
+const submissionMutationLimiter = createRateLimiter(RATE_LIMITS.submissionMutation);
 
 module.exports = {
   RATE_LIMIT_ERROR_CODE,
@@ -207,6 +221,14 @@ module.exports = {
   reviewMutationRateLimit: createRateLimitMiddleware(reviewMutationLimiter, {
     keyGenerator: getAuthenticatedUserRateLimitKey,
     message: RATE_LIMITS.reviewMutation.message,
+  }),
+  submissionCreateRateLimit: createRateLimitMiddleware(submissionCreateLimiter, {
+    keyGenerator: getAuthenticatedUserRateLimitKey,
+    message: RATE_LIMITS.submissionCreate.message,
+  }),
+  submissionMutationRateLimit: createRateLimitMiddleware(submissionMutationLimiter, {
+    keyGenerator: getAuthenticatedUserRateLimitKey,
+    message: RATE_LIMITS.submissionMutation.message,
   }),
   searchRateLimit: createRateLimitMiddleware(searchLimiter, {
     keyGenerator: getIpRateLimitKey,

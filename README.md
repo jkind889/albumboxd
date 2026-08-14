@@ -4,9 +4,9 @@ Rescened is a community-curated album catalog. Albums receive an immutable UUID 
 
 ## Local development
 
-Set `MONGO_URI`, `CLERK_SECRET_KEY`, and either `CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`. Spotify credentials are not used or required. Start the API with `npm run devStart` and the frontend from `frontend/` with `npm run dev`.
+Set `MONGO_URI`, `CLERK_SECRET_KEY`, and either `CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`. Spotify credentials are not used or required. Set `COMMUNITY_SUBMISSIONS_ENABLED=true` to enable contributor submission mutations; they are disabled by default. Start the API with `npm run devStart` and the frontend from `frontend/` with `npm run dev`.
 
-The database is intentionally empty after the generation-2 cutover. Phase 1 has no public album-creation endpoint; seed development records directly or use the Phase 2 moderation workflow when it lands.
+The database is intentionally empty after the generation-2 cutover. Phase 1 has no public album-creation endpoint. The Phase 2a contributor backend can now store private album suggestions, but moderator decisions and catalog publication are still in development, so approved albums must still be seeded directly for local testing.
 
 ## Catalog contract
 
@@ -14,6 +14,6 @@ Catalog responses expose `albumId`, `title`, `artistDisplayName`, `artistCredits
 
 Saved albums are the deduplicated union of every board a user owns. Removing an item from one board does not remove it from the saved shelf while another board still contains it; manage membership from board detail pages.
 
-## Roadmap
+## Community submissions
 
-See [COMMUNITY_CATALOG_ROADMAP.md](./COMMUNITY_CATALOG_ROADMAP.md) for the phased community submission, moderation, deployment, and future MusicBrainz import plan.
+See [Phase 2 community album submissions](./docs/PHASE_2_SUBMISSIONS.md) for the implemented contributor API, data model, configuration, validation, duplicate handling, tests, and the remaining moderator and approval work.
