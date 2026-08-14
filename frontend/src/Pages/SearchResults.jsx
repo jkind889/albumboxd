@@ -94,13 +94,13 @@ export function SearchResults()
     return (
       <div className={viewMode === "list" ? "results-list" : "results-grid"}>
         {Array.isArray(searchresults) && searchresults.map((result) => (
-          <Link className="result-card" key={result.id} to={`/album/${result.id}`}>
+          <Link className="result-card" key={result.albumId} to={`/album/${result.albumId}`}>
             <img className="result-cover" src={result.cover} alt={`${result.title} cover`} />
             <span className="result-copy">
               <h3>{result.title}</h3>
-              <p>{result.artist}</p>
+              <p>{result.artistDisplayName}</p>
             </span>
-            <span className="result-year">{result.year || "Year unknown"}</span>
+            <span className="result-year">{result.releaseYear || "Year unknown"}</span>
           </Link>
         ))}
       </div>

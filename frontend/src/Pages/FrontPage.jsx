@@ -29,7 +29,7 @@ function ArrowIcon() {
 }
 
 function formatAlbumYear(album) {
-    return album?.year || album?.releaseYear || "----";
+    return album?.releaseYear || "----";
 }
 
 function formatRating(value) {
@@ -56,11 +56,11 @@ function formatWordmarkUsername(user) {
 }
 
 function getAlbumId(album) {
-    return album?.spotifyId || album?.id || "";
+    return album?.albumId || "";
 }
 
 function getAlbumCover(album) {
-    return album?.cover || album?.images?.[0]?.url || album?.imgs?.[0]?.url || "";
+    return album?.cover || "";
 }
 
 function uniqueAlbums(albums) {
@@ -165,7 +165,7 @@ function LiveAlbumRow({ album, index, context }) {
             <AlbumCover album={album} className="front-live-cover" />
             <span className="front-live-copy">
                 <strong>{album.title || "Untitled album"}</strong>
-                <small>{album.artist || "Unknown artist"}</small>
+                <small>{album.artistDisplayName || "Unknown artist"}</small>
             </span>
             <span className="front-live-context">{context}</span>
         </Link>
@@ -242,7 +242,7 @@ export function FrontPage() {
                         <AlbumCover album={leadAlbum} className="front-lead-cover" />
                         <span className="front-lead-copy">
                             <strong>{leadAlbum.title || "Untitled album"}</strong>
-                            <small>{leadAlbum.artist || "Unknown artist"} / {formatAlbumYear(leadAlbum)}</small>
+                            <small>{leadAlbum.artistDisplayName || "Unknown artist"} / {formatAlbumYear(leadAlbum)}</small>
                         </span>
                     </Link>
                 ) : (
@@ -335,7 +335,7 @@ export function FrontPage() {
                             {signals.catalog.slice(0, 8).map((album) => (
                                 <Link to={`/album/${getAlbumId(album)}`} key={getAlbumId(album)}>
                                     <span>{album.title || "Untitled album"}</span>
-                                    <small>{album.artist || "Unknown artist"}</small>
+                                    <small>{album.artistDisplayName || "Unknown artist"}</small>
                                     <em>{formatAlbumYear(album)}</em>
                                 </Link>
                             ))}

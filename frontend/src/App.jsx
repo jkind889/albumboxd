@@ -30,8 +30,8 @@ export function App() {
               path="/collection"
               element={<Navigate to="/account" state={{ activeTab: "saved" }} replace />}
             />
-            <Route path="/album/:id" element={<AlbumDetail />} />
-            <Route path="/album/:id/reviews" element={<AlbumDetail />} />
+            <Route path="/album/:albumId" element={<AlbumDetail />} />
+            <Route path="/album/:albumId/reviews" element={<AlbumDetail />} />
             <Route path="/viewreviews" element={
             <ProtectedRoute>
               <ViewReviews />

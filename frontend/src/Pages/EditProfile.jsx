@@ -57,7 +57,7 @@ function getClerkUsernameError(error) {
 }
 
 function getAlbumId(album) {
-  return album.spotifyId || album.id;
+  return album.albumId;
 }
 
 function AlbumCover({ src, title }) {
@@ -314,7 +314,7 @@ export function EditProfile() {
     }
 
     setSearchError("");
-    setFavoriteAlbums((currentFavorites) => [...currentFavorites, { ...album, spotifyId: albumId }]);
+    setFavoriteAlbums((currentFavorites) => [...currentFavorites, { ...album, albumId }]);
   }
 
   function removeFavoriteAlbum(albumId) {
@@ -330,7 +330,7 @@ export function EditProfile() {
       return;
     }
 
-    setListeningNextAlbum({ ...album, spotifyId: albumId });
+    setListeningNextAlbum({ ...album, albumId });
   }
 
   function moveFavoriteAlbum(albumId, direction) {
@@ -485,7 +485,7 @@ export function EditProfile() {
                       <AlbumCover src={listeningNextAlbum.cover} title={listeningNextAlbum.title} />
                       <div>
                         <h3>{listeningNextAlbum.title || "Untitled album"}</h3>
-                        <p>{listeningNextAlbum.artist || "Artist unknown"}</p>
+                        <p>{listeningNextAlbum.artistDisplayName || "Artist unknown"}</p>
                       </div>
                       <div className="edit-profile-album-actions">
                         <button type="button" onClick={() => setListeningNextAlbum(null)}>
@@ -523,7 +523,7 @@ export function EditProfile() {
                             <AlbumCover src={album.cover} title={album.title} />
                             <div>
                               <h3>{album.title || "Untitled album"}</h3>
-                              <p>{album.artist || "Artist unknown"}</p>
+                              <p>{album.artistDisplayName || "Artist unknown"}</p>
                             </div>
                             <div className="edit-profile-album-actions">
                               <button
@@ -577,7 +577,7 @@ export function EditProfile() {
                             <AlbumCover src={album.cover} title={album.title} />
                             <div>
                               <h3>{album.title || "Untitled album"}</h3>
-                              <p>{album.artist || "Artist unknown"}</p>
+                              <p>{album.artistDisplayName || "Artist unknown"}</p>
                             </div>
                             <div className="edit-profile-album-actions">
                               <button

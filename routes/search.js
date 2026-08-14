@@ -1,228 +1,64 @@
-const express = require("express")
-const { getSpotifyAccessToken } = require("./utils/spotify");
+const express = require("express");
 const AlbumCatalog = require("../models/AlbumCatalog");
-const {
-    normalizeSpotifyAlbumSummary,
-    toSearchResult,
-    upsertAlbumCatalog,
-} = require("./utils/albumCatalog");
-const {
-    consumeSpotifyRateLimit,
-    getUserOrIpRateLimitKey,
-    isRateLimitError,
-    searchRateLimit,
-    sendRateLimitError,
-} = require("./utils/rateLimit");
-const router = express.Router()
-const SEARCH_RESULT_LIMIT = 24;
-const MAX_SEARCH_RESULT_LIMIT = 24;
+const { normalizeCatalogAlbum, toSearchResult } = require("./utils/albumCatalog");
 
-// User search text becomes a regex query, so escape special characters first.
+const router = express.Router();
+const DEFAULT_LIMIT = 24;
+const MAX_LIMIT = 24;
+
 function escapeRegex(value) {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function buildRegexSearchQuery(query) {
-    const escapedQuery = escapeRegex(query);
-
-    return {
-        $or: [
-            { title: { $regex: escapedQuery, $options: "i" } },
-            { artist: { $regex: escapedQuery, $options: "i" } },
-            { artists: { $regex: escapedQuery, $options: "i" } },
-        ],
-    };
+function getLimit(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Math.min(Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_LIMIT, MAX_LIMIT);
 }
 
-async function getLocalAlbums(query, limit = SEARCH_RESULT_LIMIT) {
-    const textAlbums = await AlbumCatalog.find(
-        { $text: { $search: query } },
-        { score: { $meta: "textScore" } },
-    )
-        .sort({ score: { $meta: "textScore" } })
-        .limit(limit);
-
-    if (textAlbums.length > 0) {
-        return textAlbums;
-    }
-
-    return AlbumCatalog.find(buildRegexSearchQuery(query)).limit(limit);
+function buildQuery(query) {
+  const escaped = escapeRegex(query);
+  return {
+    $or: [
+      { title: { $regex: escaped, $options: "i" } },
+      { artistDisplayName: { $regex: escaped, $options: "i" } },
+      { "artistCredits.name": { $regex: escaped, $options: "i" } },
+      { label: { $regex: escaped, $options: "i" } },
+    ],
+  };
 }
 
-function getPositiveInteger(value, fallback) {
-    const parsedValue = Number.parseInt(value, 10);
-
-    if (Number.isNaN(parsedValue) || parsedValue < 1) {
-        return fallback;
-    }
-
-    return parsedValue;
+async function findLocal(query, { skip = 0, limit }) {
+  const searchQuery = buildQuery(query);
+  const [total, albums] = await Promise.all([
+    AlbumCatalog.countDocuments(searchQuery),
+    AlbumCatalog.find(searchQuery).sort({ artistDisplayName: 1, title: 1 }).skip(skip).limit(limit),
+  ]);
+  return { total, albums };
 }
 
-function getSearchLimit(value) {
-    return Math.min(getPositiveInteger(value, SEARCH_RESULT_LIMIT), MAX_SEARCH_RESULT_LIMIT);
-}
+router.get("/search", async (req, res) => {
+  const query = String(req.query.q || "").trim();
+  if (!query) return res.json([]);
 
-async function getPagedLocalAlbums(query, { limit, skip }) {
-    const textQuery = { $text: { $search: query } };
-    const textCount = await AlbumCatalog.countDocuments(textQuery);
-
-    if (textCount > 0) {
-        const albums = await AlbumCatalog.find(
-            textQuery,
-            { score: { $meta: "textScore" } },
-        )
-            .sort({ score: { $meta: "textScore" } })
-            .skip(skip)
-            .limit(limit);
-
-        return {
-            albums,
-            total: textCount,
-        };
-    }
-
-    const regexQuery = buildRegexSearchQuery(query);
-    const regexCount = await AlbumCatalog.countDocuments(regexQuery);
-    const albums = await AlbumCatalog.find(regexQuery)
-        .skip(skip)
-        .limit(limit);
-
-    return {
-        albums,
-        total: regexCount,
-    };
-}
-
-async function searchSpotifyAlbums(query, { limit, offset = 0, excludedIds = [], rateLimitKey }) {
-    if (limit <= 0) {
-        return {
-            results: [],
-            total: 0,
-        };
-    }
-
-    if (rateLimitKey) {
-        await consumeSpotifyRateLimit(rateLimitKey);
-    }
-
-    const token = await getSpotifyAccessToken();
-
-    const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=album&limit=${limit}&offset=${offset}`, {
-        headers: {
-            "Authorization": `Bearer ${token}`
-        }
-    });
-
-    if (!response.ok) {
-        throw new Error(`Spotify search failed with status ${response.status}`);
-    }
-
-    const data = await response.json();
-    const spotifyItems = data.albums.items || [];
-    const spotifyTotal = Number(data.albums.total) || spotifyItems.length;
-    const seenAlbums = new Set(excludedIds);
-    const spotifyAlbums = await Promise.all(
-        spotifyItems.map((item) => upsertAlbumCatalog(normalizeSpotifyAlbumSummary(item))),
-    );
-    const results = [];
-
-    for (const catalogAlbum of spotifyAlbums) {
-        const result = toSearchResult(catalogAlbum);
-
-        if (seenAlbums.has(result.id)) {
-            continue;
-        }
-
-        seenAlbums.add(result.id);
-        results.push(result);
-    }
-
-    return {
-        results,
-        total: spotifyTotal,
-    };
-}
-
-async function getPagedSearchResults(query, { page, limit, rateLimitKey }) {
-    const pageOffset = (page - 1) * limit;
-    const localSearch = await getPagedLocalAlbums(query, {
-        limit,
-        skip: pageOffset,
-    });
-    const localResults = localSearch.albums.map(toSearchResult);
-    const missingCount = limit - localResults.length;
-    let spotifyResults = [];
-    let spotifyTotal = 0;
-
-    if (missingCount > 0) {
-        const spotifyOffset = Math.max(pageOffset - localSearch.total, 0);
-        const spotifySearch = await searchSpotifyAlbums(query, {
-            limit: missingCount,
-            offset: spotifyOffset,
-            excludedIds: localResults.map((result) => result.id),
-            rateLimitKey,
-        });
-
-        spotifyResults = spotifySearch.results;
-        spotifyTotal = spotifySearch.total;
-    }
-
-    const results = [...localResults, ...spotifyResults];
-    const totalAvailable = localSearch.total + spotifyTotal;
-    const consumedCount = pageOffset + results.length;
-
-    return {
-        results,
+  try {
+    const limit = getLimit(req.query.limit);
+    if (req.query.page !== undefined) {
+      const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
+      const result = await findLocal(query, { skip: (page - 1) * limit, limit });
+      return res.json({
+        results: result.albums.map(toSearchResult),
         page,
         limit,
         hasPreviousPage: page > 1,
-        hasNextPage: consumedCount < totalAvailable,
-    };
-}
-
-router.get("/search", searchRateLimit, async(req, res) =>
-{
-    const query = req.query.q?.trim();
-
-    if (!query) {
-        return res.json([]);
+        hasNextPage: page * limit < result.total,
+      });
     }
+    const result = await findLocal(query, { limit });
+    return res.json(result.albums.map(toSearchResult));
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Failed to fetch search results" });
+  }
+});
 
-    try {
-        const rateLimitKey = getUserOrIpRateLimitKey(req);
-
-        if (req.query.page !== undefined) {
-            const page = getPositiveInteger(req.query.page, 1);
-            const limit = getSearchLimit(req.query.limit);
-            return res.json(await getPagedSearchResults(query, { page, limit, rateLimitKey }));
-        }
-
-        // Return local catalog hits first; only ask Spotify when the cache cannot fill the page.
-        const limit = getSearchLimit(req.query.limit);
-        const localAlbums = await getLocalAlbums(query, limit);
-        const localResults = localAlbums.map(toSearchResult);
-
-        if (localResults.length >= limit) {
-            return res.json(localResults);
-        }
-
-        const spotifyLimit = limit - localResults.length;
-        const spotifySearch = await searchSpotifyAlbums(query, {
-            limit: spotifyLimit,
-            excludedIds: localResults.map((result) => result.id),
-            rateLimitKey,
-        });
-        const results = [...localResults, ...spotifySearch.results];
-
-        res.json(results);
-    } catch (error) {
-        if (isRateLimitError(error)) {
-            return sendRateLimitError(res, error);
-        }
-
-        res.status(500).json({ error: "Failed to fetch search results" });
-    }
-})
-
-module.exports = router
+module.exports = router;

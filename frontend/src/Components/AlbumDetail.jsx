@@ -64,7 +64,7 @@ const getDefaultAlbumSocial = () => ({
 
 export function AlbumDetail()
 {
-    const {id} = useParams();
+    const {albumId} = useParams();
     const [album, setAlbum] = useState(null);
     const [isAlbumLoading, setIsAlbumLoading] = useState(true);
     const [albumError, setAlbumError] = useState("");
@@ -93,7 +93,7 @@ export function AlbumDetail()
             try {
                 const token = userId ? await getToken() : null;
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await fetch(`${API_BASE_URL}/reviews/review/album/${id}`, { headers });
+                const res = await fetch(`${API_BASE_URL}/reviews/review/album/${albumId}`, { headers });
 
                 if (!res.ok) {
                     console.error("Failed to fetch reviews");
@@ -109,17 +109,17 @@ export function AlbumDetail()
             }
         }
 
-        if (id) {
+        if (albumId) {
             fetchReviews();
         }
-    }, [getToken, id, userId])
+    }, [getToken, albumId, userId])
 
     useEffect(() => {
         async function fetchAlbumLike() {
             try {
                 const token = userId ? await getToken() : null;
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await fetch(`${API_BASE_URL}/likes/album/${id}`, { headers });
+                const res = await fetch(`${API_BASE_URL}/likes/album/${albumId}`, { headers });
 
                 if (!res.ok) {
                     setAlbumLike({ likeCount: 0, likedByViewer: false });
@@ -137,10 +137,10 @@ export function AlbumDetail()
             }
         }
 
-        if (id) {
+        if (albumId) {
             fetchAlbumLike();
         }
-    }, [getToken, id, userId]);
+    }, [getToken, albumId, userId]);
 
     useEffect(() => {
         let shouldIgnore = false;
@@ -149,7 +149,7 @@ export function AlbumDetail()
             try {
                 const token = userId ? await getToken() : null;
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await fetch(`${API_BASE_URL}/albums/album/${id}/social`, { headers });
+                const res = await fetch(`${API_BASE_URL}/albums/album/${albumId}/social`, { headers });
 
                 if (!res.ok) {
                     throw new Error("Failed to fetch album social context");
@@ -176,14 +176,14 @@ export function AlbumDetail()
             }
         }
 
-        if (id) {
+        if (albumId) {
             fetchAlbumSocial();
         }
 
         return () => {
             shouldIgnore = true;
         };
-    }, [getToken, id, userId]);
+    }, [getToken, albumId, userId]);
 
     useEffect(() => {
         let shouldIgnore = false;
@@ -203,7 +203,7 @@ export function AlbumDetail()
                 const token = await getToken();
 
                 const res = await fetch(
-                `${API_BASE_URL}/boards/album/${id}`,
+                `${API_BASE_URL}/boards/album/${albumId}`,
                 {
                     headers: {
                     Authorization: `Bearer ${token}`,
@@ -238,14 +238,14 @@ export function AlbumDetail()
             }
         }
 
-        if (id) {
+        if (albumId) {
             checkIfSaved();
         }
 
         return () => {
             shouldIgnore = true;
         };
-    }, [canUseAuthenticatedActions, id, getToken]);
+    }, [canUseAuthenticatedActions, albumId, getToken]);
         
 
     useEffect(() => {
@@ -256,7 +256,7 @@ export function AlbumDetail()
                 setIsAlbumLoading(true);
                 setAlbumError("");
 
-                const res = await fetch(`${API_BASE_URL}/albums/album/${id}`);
+                const res = await fetch(`${API_BASE_URL}/albums/album/${albumId}`);
 
                 if (!res.ok) {
                     throw new Error(await getApiErrorMessage(res, "Failed to fetch album"));
@@ -281,14 +281,14 @@ export function AlbumDetail()
             }
         }
 
-        if (id) {
+        if (albumId) {
             fetchAlbum();
         }
 
         return () => {
             shouldIgnore = true;
         };
-    }, [id])
+    }, [albumId])
 
     async function addReview(review) {
         if (!canUseAuthenticatedActions) {
@@ -435,7 +435,7 @@ export function AlbumDetail()
 
         try {
             const token = await getToken();
-            const response = await fetch(`${API_BASE_URL}/likes/album/${id}`, {
+            const response = await fetch(`${API_BASE_URL}/likes/album/${albumId}`, {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json",
@@ -475,7 +475,7 @@ export function AlbumDetail()
         );
      }
 
-    const artistNames = album.artists?.length ? album.artists : [album.artist];
+    const artistNames = album.artistCredits?.length ? album.artistCredits.map((credit) => credit.name) : [album.artistDisplayName];
     const userReviews = reviews.filter((review) => review.userId);
     const socialReviewCount = Number(albumSocial.reviewCount) || userReviews.length;
     const socialSavedCount = Number(albumSocial.savedCount) || 0;
@@ -488,12 +488,7 @@ export function AlbumDetail()
         ? Number(albumSocial.averageRating).toFixed(1)
         : distributionAverageRating || localAverageRating;
     const maxRatingBucketCount = Math.max(...ratingDistribution.map((bucket) => bucket.count), 0);
-    const albumArt = album.imgs?.[0]?.url;
-    const genreRankings = Array.isArray(album.genreRankings) ? album.genreRankings : [];
-    const primaryGenre = genreRankings.length > 0 ? album.primaryGenre || "" : "";
-    const secondaryGenres = genreRankings.length > 0 && Array.isArray(album.secondaryGenres)
-        ? album.secondaryGenres
-        : [];
+    const albumArt = album.cover;
     const isReviewsRoute = location.pathname.endsWith("/reviews");
     const reviewSort = new URLSearchParams(location.search).get("sort") === "popular" ? "popular" : "recent";
     const releaseDateLabel = album.releaseDate
@@ -555,7 +550,7 @@ export function AlbumDetail()
             },
             // The backend uses this ID to find or create the catalog album before saving.
             body: JSON.stringify({
-                spotifyId: album.id,
+                albumId: album.albumId,
              }),
         });
         if (!res.ok) {
@@ -632,7 +627,7 @@ export function AlbumDetail()
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify({ spotifyId: album.id }),
+                body: JSON.stringify({ albumId: album.albumId }),
             });
 
             if (!res.ok) {
@@ -821,16 +816,6 @@ export function AlbumDetail()
                                 Rate
                             </button>
                         ) : renderSignInAction("Rate", "★")}
-                        {album.spotifyUrl && (
-                            <a
-                                className="album-side-action"
-                                href={album.spotifyUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                Open in Spotify
-                            </a>
-                        )}
                         {boardSaveMessage && <p className="board-save-message">{boardSaveMessage}</p>}
                     </div>
 
@@ -885,25 +870,13 @@ export function AlbumDetail()
 
                 <div className="album-detail-main">
                     <div className="album-title-block">
-                        <p className="album-detail-kicker">{album.albumType}</p>
+                        <p className="album-detail-kicker">{album.releaseType}</p>
                         <h1>{album.title}</h1>
                         <div className="album-meta-line">
-                            <span>{album.year}</span>
+                            <span>{album.releaseYear || "Unknown year"}</span>
                             <span>{artistNames.join(", ")}</span>
                             {album.label && <span>{album.label}</span>}
                         </div>
-                        {primaryGenre && (
-                            <ul className="album-genre-list" aria-label="Album genres">
-                                <li className="album-genre-badge album-genre-badge-primary">
-                                    {primaryGenre}
-                                </li>
-                                {secondaryGenres.map((genre) => (
-                                    <li className="album-genre-badge album-genre-badge-secondary" key={genre}>
-                                        {genre}
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
                     </div>
 
                     <nav className="album-tabs" aria-label="Album sections">
@@ -940,11 +913,11 @@ export function AlbumDetail()
                                 <dl className="album-facts">
                                     <div>
                                         <dt>Release</dt>
-                                        <dd>{releaseDateLabel || album.year || "Unknown"}</dd>
+                                        <dd>{releaseDateLabel || album.releaseYear || "Unknown"}</dd>
                                     </div>
                                     <div>
                                         <dt>Year</dt>
-                                        <dd>{album.year || "Unknown"}</dd>
+                                        <dd>{album.releaseYear || "Unknown"}</dd>
                                     </div>
                                 </dl>
                             )}
@@ -953,11 +926,11 @@ export function AlbumDetail()
                                 <dl className="album-facts">
                                     <div>
                                         <dt>Format</dt>
-                                        <dd>{album.albumType || "Album"}</dd>
+                                        <dd>{album.releaseType || "Album"}</dd>
                                     </div>
                                     <div>
                                         <dt>Tracks</dt>
-                                        <dd>{album.totalTracks || sortedTracks.length || "Unknown"}</dd>
+                                        <dd>{sortedTracks.length || "Unknown"}</dd>
                                     </div>
                                 </dl>
                             )}
@@ -975,7 +948,7 @@ export function AlbumDetail()
                                                     : trackNumber;
 
                                                 return (
-                                                    <li key={track.spotifyId || `${discNumber}-${trackNumber}-${track.title}`}>
+                                                    <li key={track.trackId || `${discNumber}-${trackNumber}-${track.title}`}>
                                                         <span className="album-track-number">{trackLabel}</span>
                                                         <span className="album-track-title">{track.title || "Untitled Track"}</span>
                                                         <span className="album-track-duration">{formatTrackDuration(track.durationMs)}</span>
@@ -983,11 +956,7 @@ export function AlbumDetail()
                                                 );
                                             })}
                                             </ol>
-                                            {hasMoreTracks && album.spotifyUrl && (
-                                                <a className="album-more-link" href={album.spotifyUrl} target="_blank" rel="noreferrer">
-                                                    More
-                                                </a>
-                                            )}
+                                            {hasMoreTracks && <span className="album-more-link">Showing first {previewTracks.length} tracks</span>}
                                         </>
                                     ) : (
                                         <p className="album-empty-copy">
@@ -1005,7 +974,7 @@ export function AlbumDetail()
                         <section className="album-reviews-section">
                             <div className="album-section-heading">
                                 <h2>{reviewSort === "popular" ? "Popular Reviews" : "Recent Reviews"}</h2>
-                                <Link className="album-more-link" to={`/album/${id}`}>Back to album</Link>
+                                <Link className="album-more-link" to={`/album/${albumId}`}>Back to album</Link>
                             </div>
                             <AlbumReviewFeed
                                 reviews={selectedReviews}
@@ -1020,7 +989,7 @@ export function AlbumDetail()
                             <div className="album-review-column">
                                 <div className="album-section-heading">
                                     <h2>Popular Reviews</h2>
-                                    {popularReviews.length > 2 && <Link className="album-more-link" to={`/album/${id}/reviews?sort=popular`}>More</Link>}
+                                    {popularReviews.length > 2 && <Link className="album-more-link" to={`/album/${albumId}/reviews?sort=popular`}>More</Link>}
                                 </div>
                                 <AlbumReviewFeed
                                     reviews={popularReviews.slice(0, 2)}
@@ -1033,7 +1002,7 @@ export function AlbumDetail()
                             <div className="album-review-column">
                                 <div className="album-section-heading">
                                     <h2>Recent Reviews</h2>
-                                    {recentReviews.length > 2 && <Link className="album-more-link" to={`/album/${id}/reviews?sort=recent`}>More</Link>}
+                                    {recentReviews.length > 2 && <Link className="album-more-link" to={`/album/${albumId}/reviews?sort=recent`}>More</Link>}
                                 </div>
                                 <AlbumReviewFeed
                                     reviews={recentReviews.slice(0, 2)}

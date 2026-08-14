@@ -13,12 +13,6 @@ const RATE_LIMITS = {
     duration: 5 * 60,
     message: "Too many requests. Please slow down and try again soon.",
   },
-  spotifyFallback: {
-    keyPrefix: "rescened:spotify-fallback",
-    points: 60,
-    duration: 10 * 60,
-    message: "Too many Spotify-backed requests. Please try again soon.",
-  },
   search: {
     keyPrefix: "rescened:search",
     points: 90,
@@ -175,20 +169,11 @@ function createRateLimitMiddleware(limiter, options = {}) {
 }
 
 const globalApiLimiter = createRateLimiter(RATE_LIMITS.globalApi);
-const spotifyFallbackLimiter = createRateLimiter(RATE_LIMITS.spotifyFallback);
 const searchLimiter = createRateLimiter(RATE_LIMITS.search);
 const albumSaveLimiter = createRateLimiter(RATE_LIMITS.albumSave);
 const reviewCreateLimiter = createRateLimiter(RATE_LIMITS.reviewCreate);
 const reviewMutationLimiter = createRateLimiter(RATE_LIMITS.reviewMutation);
 const likeMutationLimiter = createRateLimiter(RATE_LIMITS.likeMutation);
-
-async function consumeSpotifyRateLimit(key) {
-  return consumeRateLimit(
-    spotifyFallbackLimiter,
-    key,
-    RATE_LIMITS.spotifyFallback.message,
-  );
-}
 
 module.exports = {
   RATE_LIMIT_ERROR_CODE,
@@ -200,7 +185,6 @@ module.exports = {
   }),
   buildRateLimitPayload,
   consumeRateLimit,
-  consumeSpotifyRateLimit,
   createRateLimitMiddleware,
   createRateLimiter,
   getAuthenticatedUserRateLimitKey,

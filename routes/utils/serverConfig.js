@@ -74,14 +74,6 @@ function validateServerEnv(env = process.env) {
     missing.push("CLERK_PUBLISHABLE_KEY or VITE_CLERK_PUBLISHABLE_KEY");
   }
 
-  if (!env.SPOTIFY_CLIENT_ID) {
-    missing.push("SPOTIFY_CLIENT_ID");
-  }
-
-  if (!env.SPOTIFY_CLIENT_SECRET) {
-    missing.push("SPOTIFY_CLIENT_SECRET");
-  }
-
   if (env.NODE_ENV === "production" && getAllowedOrigins(env).length === 0) {
     missing.push("CORS_ALLOWED_ORIGINS or FRONTEND_URL");
   }

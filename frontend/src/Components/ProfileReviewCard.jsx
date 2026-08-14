@@ -30,11 +30,11 @@ function AlbumCover({ src, title }) {
 export function ProfileReviewCard({ review, likeMessage = "", onToggleLike }) {
   return (
     <article className="profile-review-card">
-      <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
-        <AlbumCover src={review.cover} title={review.title} />
+      <Link className="profile-review-album" to={`/album/${review.albumId}`}>
+        <AlbumCover src={review.album?.cover} title={review.album?.title} />
         <div>
-          <h3>{review.title || "Untitled album"}</h3>
-          <p>{review.artist || "Artist unknown"}</p>
+          <h3>{review.album?.title || "Untitled album"}</h3>
+          <p>{review.album?.artistDisplayName || "Artist unknown"}</p>
         </div>
       </Link>
       <div className="profile-review-meta">

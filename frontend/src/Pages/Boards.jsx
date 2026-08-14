@@ -13,7 +13,7 @@ function BoardPreview({ albums }) {
         const album = previewAlbums[index];
 
         return album?.cover ? (
-          <img key={album.spotifyId || index} src={album.cover} alt="" />
+          <img key={album.albumId || index} src={album.cover} alt="" />
         ) : (
           <span key={index} />
         );

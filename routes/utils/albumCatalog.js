@@ -1,223 +1,144 @@
+const crypto = require("node:crypto");
 const AlbumCatalog = require("../../models/AlbumCatalog");
-const {
-  scheduleAlbumGenreEnrichment,
-} = require("./albumGenreEnrichment");
-const { getSpotifyAccessToken } = require("./spotify");
-const { consumeSpotifyRateLimit } = require("./rateLimit");
 
-const ALBUM_DETAIL_METADATA_VERSION = 2;
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const RELEASE_TYPES = new Set(["album", "ep", "single", "mixtape", "soundtrack", "compilation", "live", "remix", "other"]);
 
-function normalizeSpotifyArtistRefs(artists) {
-  const normalizedArtists = [];
-  const seenArtists = new Set();
+function isAlbumId(value) {
+  return UUID_V4.test(String(value || "").trim());
+}
 
-  for (const artist of Array.isArray(artists) ? artists : []) {
-    const name = String(artist?.name || "").trim();
-    const spotifyId = String(artist?.id || "").trim();
+function requireAlbumId(value) {
+  const albumId = String(value || "").trim().toLowerCase();
+  if (!isAlbumId(albumId)) {
+    const error = new Error("albumId must be a UUID v4");
+    error.status = 400;
+    throw error;
+  }
+  return albumId;
+}
 
-    if (!name) {
-      continue;
-    }
+function deriveReleaseYear(releaseDate) {
+  const match = String(releaseDate || "").match(/^(\d{4})/);
+  return match ? Number(match[1]) : null;
+}
 
-    const identityKey = spotifyId || name.toLowerCase();
+function deriveReleasePrecision(releaseDate) {
+  const value = String(releaseDate || "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return "day";
+  if (/^\d{4}-\d{2}$/.test(value)) return "month";
+  if (/^\d{4}$/.test(value)) return "year";
+  return "";
+}
 
-    if (seenArtists.has(identityKey)) {
-      continue;
-    }
+function normalizeTrack(track, index) {
+  const title = String(track?.title || "").trim();
+  if (!title) return null;
+  return {
+    trackId: String(track?.trackId || crypto.randomUUID()).trim(),
+    discNumber: Math.max(Number(track?.discNumber) || 1, 1),
+    trackNumber: Math.max(Number(track?.trackNumber) || index + 1, 1),
+    title,
+    durationMs: Math.max(Number(track?.durationMs) || 0, 0),
+    artistDisplayName: String(track?.artistDisplayName || "").trim(),
+  };
+}
 
-    seenArtists.add(identityKey);
-    normalizedArtists.push({
-      spotifyId,
-      name,
-      spotifyUrl: artist?.external_urls?.spotify || "",
-    });
+function normalizeAlbumInput(input = {}, options = {}) {
+  const title = String(input.title || "").trim();
+  const artistDisplayName = String(input.artistDisplayName || input.artist || "").trim();
+  if (!title || !artistDisplayName) {
+    const error = new Error("title and artistDisplayName are required");
+    error.status = 400;
+    throw error;
   }
 
-  return normalizedArtists;
-}
+  const releaseDate = String(input.releaseDate || "").trim();
+  const releaseType = RELEASE_TYPES.has(input.releaseType) ? input.releaseType : "album";
+  const artistCredits = (Array.isArray(input.artistCredits) ? input.artistCredits : [])
+    .map((credit) => ({ name: String(credit?.name || credit || "").trim(), role: String(credit?.role || "main").trim() }))
+    .filter((credit) => credit.name);
+  if (artistCredits.length === 0) artistCredits.push({ name: artistDisplayName, role: "main" });
 
-// Search results contain summary metadata but not the tracks/detail enrichment.
-function normalizeSpotifyAlbumSummary(data) {
-  return {
-    spotifyId: data.id,
-    title: data.name,
-    artist: data.artists?.[0]?.name || "Unknown Artist",
-    artists: data.artists?.map((artist) => artist.name) || [],
-    artistRefs: normalizeSpotifyArtistRefs(data.artists),
-    year: data.release_date?.slice(0, 4) || "unknown",
-    releaseDate: data.release_date || "",
-    imgs: data.images || [],
-    cover: data.images?.[0]?.url || null,
-    totalTracks: data.total_tracks || 0,
-    albumType: data.album_type || "album",
-    spotifyUrl: data.external_urls?.spotify || "",
-  };
-}
-
-// Full album payloads enrich the cached summary when album details are requested.
-function normalizeSpotifyAlbum(data) {
-  return {
-    ...normalizeSpotifyAlbumSummary(data),
-    detailMetadataVersion: ALBUM_DETAIL_METADATA_VERSION,
-    tracks: data.tracks?.items?.map((track) => ({
-      spotifyId: track.id || "",
-      trackNumber: track.track_number || 0,
-      discNumber: track.disc_number || 1,
-      title: track.name || "",
-      durationMs: track.duration_ms || 0,
-      spotifyUrl: track.external_urls?.spotify || "",
-      artistRefs: normalizeSpotifyArtistRefs(track.artists),
-    })) || [],
-    label: data.label || "",
-  };
-}
-
-// Converts catalog documents into the album shape the frontend already expects.
-function normalizeCatalogAlbum(album) {
-  const source = typeof album.toObject === "function" ? album.toObject() : album;
-  const genreRankings = (Array.isArray(source.genreRankings) ? source.genreRankings : [])
-    .map((genre) => ({
-      name: String(genre?.name || "").trim(),
-      score: Number(genre?.score) || 0,
+  const externalReferences = (Array.isArray(input.externalReferences) ? input.externalReferences : [])
+    .map((reference) => ({
+      provider: String(reference?.provider || "").trim().toLowerCase(),
+      entityType: String(reference?.entityType || "album").trim().toLowerCase(),
+      externalId: String(reference?.externalId || "").trim(),
+      url: String(reference?.url || "").trim(),
     }))
-    .filter((genre) => genre.name && genre.score > 0);
+    .filter((reference) => reference.provider && reference.entityType && reference.externalId)
+    .map((reference) => ({ ...reference, url: reference.url.startsWith("https://") ? reference.url : "" }))
+    .filter((reference, index, all) => all.findIndex((candidate) => (
+      candidate.provider === reference.provider
+      && candidate.entityType === reference.entityType
+      && candidate.externalId === reference.externalId
+    )) === index);
 
   return {
-    id: source.spotifyId,
-    spotifyId: source.spotifyId,
-    title: source.title,
-    artist: source.artist,
-    artists: source.artists || [],
-    artistRefs: source.artistRefs || [],
-    year: source.year || "unknown",
+    albumId: options.albumId || (isAlbumId(input.albumId) ? String(input.albumId).trim().toLowerCase() : crypto.randomUUID()),
+    title,
+    artistDisplayName,
+    artistCredits,
+    releaseType,
+    releaseDate,
+    releaseDatePrecision: ["year", "month", "day"].includes(input.releaseDatePrecision) ? input.releaseDatePrecision : deriveReleasePrecision(releaseDate),
+    releaseYear: Number.isInteger(Number(input.releaseYear)) && Number(input.releaseYear) > 0 ? Number(input.releaseYear) : deriveReleaseYear(releaseDate),
+    tracks: (Array.isArray(input.tracks) ? input.tracks : []).map(normalizeTrack).filter(Boolean),
+    label: String(input.label || "").trim(),
+    cover: String(input.cover || "").trim(),
+    externalReferences,
+    fieldProvenance: input.fieldProvenance && typeof input.fieldProvenance === "object" ? input.fieldProvenance : {},
+    catalogSource: ["community", "import", "manual"].includes(input.catalogSource) ? input.catalogSource : "community",
+  };
+}
+
+function normalizeCatalogAlbum(album) {
+  if (!album) return null;
+  const source = typeof album.toObject === "function" ? album.toObject() : album;
+  return {
+    albumId: source.albumId,
+    title: source.title || "",
+    artistDisplayName: source.artistDisplayName || "",
+    artistCredits: Array.isArray(source.artistCredits) ? source.artistCredits : [],
+    releaseType: source.releaseType || "album",
     releaseDate: source.releaseDate || "",
-    genres: source.genres || [],
-    genreRankings,
-    primaryGenre: genreRankings[0]?.name || null,
-    secondaryGenres: genreRankings.slice(1).map((genre) => genre.name),
-    genreSource: source.genreSource || "",
-    musicBrainzReleaseGroupId: source.musicBrainzReleaseGroupId || null,
-    imgs: source.imgs || [],
-    cover: source.cover || source.imgs?.[0]?.url || null,
-    totalTracks: source.totalTracks || 0,
-    tracks: source.tracks || [],
+    releaseDatePrecision: source.releaseDatePrecision || "",
+    releaseYear: source.releaseYear ?? deriveReleaseYear(source.releaseDate),
+    cover: source.cover || "",
+    tracks: Array.isArray(source.tracks) ? source.tracks : [],
     label: source.label || "",
-    albumType: source.albumType || "album",
-    spotifyUrl: source.spotifyUrl || "",
+    externalReferences: Array.isArray(source.externalReferences) ? source.externalReferences : [],
+    catalogSource: source.catalogSource || "community",
   };
 }
 
-function hasCurrentAlbumDetails(album) {
-  return Boolean(
-    album?.tracks?.length
-      && Number(album.detailMetadataVersion || 0) >= ALBUM_DETAIL_METADATA_VERSION,
-  );
-}
-
-// Search dropdown/results only need a smaller album summary.
 function toSearchResult(album) {
-  const normalized = normalizeCatalogAlbum(album);
-
-  return {
-    id: normalized.spotifyId,
-    title: normalized.title,
-    artist: normalized.artist,
-    artistId: normalized.artistRefs[0]?.spotifyId || "",
-    artistRefs: normalized.artistRefs,
-    year: normalized.year,
-    cover: normalized.cover,
-  };
+  return normalizeCatalogAlbum(album);
 }
 
-// Creates or refreshes a cached album while keeping spotifyId unique.
-async function upsertAlbumCatalog(albumData) {
-  return AlbumCatalog.findOneAndUpdate(
-    { spotifyId: albumData.spotifyId },
-    { $set: albumData },
-    { returnDocument: "after", upsert: true, setDefaultsOnInsert: true },
-  );
-}
-
-async function fetchSpotifyAlbum(spotifyId, options = {}) {
-  if (options.rateLimitKey) {
-    await consumeSpotifyRateLimit(options.rateLimitKey);
+async function findAlbumByPublicId(albumId) {
+  const normalized = requireAlbumId(albumId);
+  const album = await AlbumCatalog.findOne({ albumId: normalized });
+  if (!album) {
+    const error = new Error("Album not found");
+    error.status = 404;
+    throw error;
   }
-
-  const token = await getSpotifyAccessToken();
-
-  const response = await fetch(`https://api.spotify.com/v1/albums/${spotifyId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Spotify album fetch failed with status ${response.status}`);
-  }
-
-  return response.json();
-}
-
-// Reads from the catalog first and falls back to Spotify on cache miss.
-async function getOrCreateAlbumCatalog(spotifyId, options = {}) {
-  const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
-
-  if (hasCurrentAlbumDetails(cachedAlbum)) {
-    scheduleAlbumGenreEnrichment(cachedAlbum);
-    return cachedAlbum;
-  }
-
-  const spotifyAlbum = await fetchSpotifyAlbum(spotifyId, options);
-  const album = await upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
-  scheduleAlbumGenreEnrichment(album);
   return album;
 }
 
-// Album detail reads can degrade to cached metadata when Spotify enrichment fails.
-async function getAlbumCatalogDetails(spotifyId, options = {}) {
-  const cachedAlbum = await AlbumCatalog.findOne({ spotifyId });
-
-  if (hasCurrentAlbumDetails(cachedAlbum)) {
-    scheduleAlbumGenreEnrichment(cachedAlbum);
-    return {
-      album: cachedAlbum,
-      isPartial: false,
-    };
-  }
-
-  try {
-    const spotifyAlbum = await fetchSpotifyAlbum(spotifyId, options);
-    const album = await upsertAlbumCatalog(normalizeSpotifyAlbum(spotifyAlbum));
-    scheduleAlbumGenreEnrichment(album);
-
-    return {
-      album,
-      isPartial: false,
-    };
-  } catch (error) {
-    if (!cachedAlbum) {
-      throw error;
-    }
-
-    scheduleAlbumGenreEnrichment(cachedAlbum);
-    return {
-      album: cachedAlbum,
-      isPartial: true,
-      enrichmentError: error,
-    };
-  }
+async function createCatalogAlbum(input) {
+  return AlbumCatalog.create(normalizeAlbumInput(input));
 }
 
 module.exports = {
-  ALBUM_DETAIL_METADATA_VERSION,
-  fetchSpotifyAlbum,
-  getAlbumCatalogDetails,
-  getOrCreateAlbumCatalog,
-  hasCurrentAlbumDetails,
+  UUID_V4,
+  isAlbumId,
+  requireAlbumId,
+  normalizeAlbumInput,
   normalizeCatalogAlbum,
-  normalizeSpotifyArtistRefs,
-  normalizeSpotifyAlbum,
-  normalizeSpotifyAlbumSummary,
   toSearchResult,
-  upsertAlbumCatalog,
+  findAlbumByPublicId,
+  createCatalogAlbum,
 };

@@ -16,10 +16,7 @@ export function ReviewForm({album, onAddReview, onSubmitted})
         }
 
         const newReview = {
-            spotifyId: album.id,
-            title: album.title,
-            artist: album.artist,
-            cover: album.imgs?.[0]?.url,
+            albumId: album.albumId,
             rating: numericRating,
             reviewText: reviewText.trim(),
             date: Date.now()

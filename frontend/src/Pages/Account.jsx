@@ -61,11 +61,7 @@ function formatMonthYear(value) {
 }
 
 function getArtistName(album) {
-  if (Array.isArray(album.artists) && album.artists.length > 0) {
-    return album.artists.join(", ");
-  }
-
-  return album.artist || "Artist unknown";
+  return album.artistDisplayName || "Artist unknown";
 }
 
 function ProfileEmptyState({ title, body }) {
@@ -94,7 +90,7 @@ function BoardPreview({ albums }) {
         const album = previewAlbums[index];
 
         return album?.cover ? (
-          <img key={album.spotifyId || index} src={album.cover} alt="" />
+          <img key={album.albumId || index} src={album.cover} alt="" />
         ) : (
           <span key={index} />
         );
@@ -228,14 +224,14 @@ export function Account() {
           }
         } else {
           const [
-            defaultBoardResponse,
+            savedResponse,
             reviewsResponse,
             profileResponse,
             activityResponse,
             networkResponse,
             boardsResponse,
           ] = await Promise.all([
-            fetch(`${API_BASE_URL}/boards/default`, { headers }),
+            fetch(`${API_BASE_URL}/profile/me/saved`, { headers }),
             fetch(`${API_BASE_URL}/reviews/review/user/`, { headers }),
             fetch(`${API_BASE_URL}/profile/me`, { headers }),
             fetch(`${API_BASE_URL}/profile/me/activity`, { headers }),
@@ -244,7 +240,7 @@ export function Account() {
           ]);
 
           if (
-            !defaultBoardResponse.ok
+            !savedResponse.ok
             || !reviewsResponse.ok
             || !profileResponse.ok
             || !activityResponse.ok
@@ -254,15 +250,15 @@ export function Account() {
             throw new Error("Failed to load profile data");
           }
 
-          const [defaultBoardData, nextReviewsData, nextProfileData, nextActivityData, nextNetworkData, nextBoardsData] = await Promise.all([
-            defaultBoardResponse.json(),
+          const [savedResponseData, nextReviewsData, nextProfileData, nextActivityData, nextNetworkData, nextBoardsData] = await Promise.all([
+            savedResponse.json(),
             reviewsResponse.json(),
             profileResponse.json(),
             activityResponse.json(),
             networkResponse.json(),
             boardsResponse.json(),
           ]);
-          savedData = Array.isArray(defaultBoardData.albums) ? defaultBoardData.albums : [];
+          savedData = Array.isArray(savedResponseData) ? savedResponseData : [];
           reviewsData = nextReviewsData;
           profileData = nextProfileData;
           activityData = nextActivityData;
@@ -389,28 +385,6 @@ export function Account() {
   const socialPath = isPublicProfile && profileUserId
     ? `/profile/${encodeURIComponent(profileUserId)}/network`
     : "/account/network";
-
-  async function removeSavedAlbum(spotifyId) {
-    const token = await getToken();
-    const response = await fetch(
-      `${API_BASE_URL}/boards/default/albums/${spotifyId}`,
-      {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
-
-    if (!response.ok) {
-      console.error("Failed to remove album from saved albums");
-      return;
-    }
-
-    setSavedAlbums((currentAlbums) => (
-      currentAlbums.filter((album) => album.spotifyId !== spotifyId)
-    ));
-  }
 
   async function removeReview(reviewId) {
     const token = await getToken();
@@ -617,7 +591,7 @@ export function Account() {
           </div>
           <div className="profile-pin-grid">
             {profile.listeningNextAlbum ? (
-              <Link className="profile-pin-card profile-listening-next-card" to={`/album/${profile.listeningNextAlbum.spotifyId}`}>
+              <Link className="profile-pin-card profile-listening-next-card" to={`/album/${profile.listeningNextAlbum.albumId}`}>
                 <AlbumCover src={profile.listeningNextAlbum.cover} title={profile.listeningNextAlbum.title} />
                 <div>
                   <span>Listening Next</span>
@@ -634,7 +608,7 @@ export function Account() {
             )}
 
             {profile.pinnedReview ? (
-              <Link className="profile-pin-card" to={`/album/${profile.pinnedReview.spotifyId}`}>
+              <Link className="profile-pin-card" to={`/album/${profile.pinnedReview.albumId}`}>
                 <AlbumCover src={profile.pinnedReview.cover} title={profile.pinnedReview.title} />
                 <div>
                   <span>Pinned Review</span>
@@ -686,8 +660,8 @@ export function Account() {
               {favoriteAlbums.map((album) => (
                 <Link
                   className="profile-favorite-card"
-                  key={album.spotifyId}
-                  to={`/album/${album.spotifyId}`}
+                  key={album.albumId}
+                  to={`/album/${album.albumId}`}
                 >
                   <AlbumCover src={album.cover} title={album.title} />
                   <h3>{album.title || "Untitled album"}</h3>
@@ -800,30 +774,21 @@ export function Account() {
         {savedViewMode === "grid" ? (
           <div className="profile-album-grid">
             {sortedSavedAlbums.map((album) => (
-              <article className="profile-album-card" key={album.spotifyId}>
-                <Link to={`/album/${album.spotifyId}`} className="profile-album-card-link">
+              <article className="profile-album-card" key={album.albumId}>
+                <Link to={`/album/${album.albumId}`} className="profile-album-card-link">
                   <AlbumCover src={album.cover} title={album.title} />
                   <h3>{album.title || "Untitled album"}</h3>
                   <p>{getArtistName(album)}</p>
                   <span>Saved {formatMonthYear(album.savedAt)}</span>
                 </Link>
-                {canManageProfile && (
-                  <button
-                    className="profile-secondary-button"
-                    type="button"
-                    onClick={() => removeSavedAlbum(album.spotifyId)}
-                  >
-                    Remove
-                  </button>
-                )}
               </article>
             ))}
           </div>
         ) : (
           <div className="profile-saved-list">
             {sortedSavedAlbums.map((album) => (
-              <article className="profile-saved-row" key={album.spotifyId}>
-                <Link to={`/album/${album.spotifyId}`} className="profile-saved-album">
+              <article className="profile-saved-row" key={album.albumId}>
+                <Link to={`/album/${album.albumId}`} className="profile-saved-album">
                   <AlbumCover src={album.cover} title={album.title} />
                   <div>
                     <h3>{album.title || "Untitled album"}</h3>
@@ -834,15 +799,6 @@ export function Account() {
                   <span>Saved</span>
                   <strong>{formatMonthYear(album.savedAt)}</strong>
                 </div>
-                {canManageProfile && (
-                  <button
-                    className="profile-secondary-button"
-                    type="button"
-                    onClick={() => removeSavedAlbum(album.spotifyId)}
-                  >
-                    Remove
-                  </button>
-                )}
               </article>
             ))}
           </div>
@@ -929,7 +885,7 @@ export function Account() {
                       {actorName}
                     </Link>
                     {` ${actionText} `}
-                    <Link to={`/album/${album.spotifyId}`}>
+                    <Link to={`/album/${album.albumId}`}>
                       {album.title || "Untitled album"}
                     </Link>
                   </h3>
@@ -938,7 +894,7 @@ export function Account() {
                   <p>Reviewed by {reviewAuthorName}</p>
                 )}
                 {activity.type !== "follow" && activity.type !== "liked_review" && (
-                  <p>{album.artist || "Artist unknown"}</p>
+                  <p>{album.artistDisplayName || "Artist unknown"}</p>
                 )}
                 {activity.reviewText && <p className="profile-review-copy">{activity.reviewText}</p>}
                 {activity.type === "review" && (
@@ -1061,11 +1017,11 @@ export function Account() {
     const shouldShowMoreReviews = reviews.length > REVIEW_PREVIEW_LIMIT;
     const renderReviewCard = (review) => (
       <article className="profile-review-card" key={review._id}>
-        <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
+        <Link className="profile-review-album" to={`/album/${review.albumId}`}>
           <AlbumCover src={review.cover} title={review.title} />
           <div>
             <h3>{review.title || "Untitled album"}</h3>
-            <p>{review.artist || "Artist unknown"}</p>
+            <p>{review.album?.artistDisplayName || "Artist unknown"}</p>
           </div>
         </Link>
         <div className="profile-review-meta">
@@ -1369,7 +1325,7 @@ export function Account() {
                         const actionLabel = actionLabelByType[activity.type] || "Activity";
                         const activityPath = activity.type === "follow" && targetUser.userId
                           ? `/profile/${encodeURIComponent(targetUser.userId)}`
-                          : `/album/${album.spotifyId}`;
+                          : `/album/${album.albumId}`;
 
                         return (
                           <Link

@@ -38,7 +38,7 @@ export function FeaturedAlbums({ limit = 24 }) {
                 const nextAlbums = Array.isArray(results) ? results : [];
 
                 setAlbums(nextAlbums);
-                setActiveAlbumId(nextAlbums[2]?.id || nextAlbums[0]?.id || "");
+                setActiveAlbumId(nextAlbums[2]?.albumId || nextAlbums[0]?.albumId || "");
                 setStatus(nextAlbums.length ? "ready" : "empty");
             } catch (error) {
                 if (error.name !== "AbortError") {
@@ -74,21 +74,21 @@ export function FeaturedAlbums({ limit = 24 }) {
                 )}
 
                 {albums.map((album) => {
-                    const isActive = album.id === activeAlbumId;
+                    const isActive = album.albumId === activeAlbumId;
 
                     return (
                         <Link
                             className={`featured-catalog-row${isActive ? " is-active" : ""}`}
-                            key={album.id}
-                            to={`/album/${album.id}`}
-                            onMouseEnter={() => setActiveAlbumId(album.id)}
-                            onFocus={() => setActiveAlbumId(album.id)}
+                            key={album.albumId}
+                            to={`/album/${album.albumId}`}
+                            onMouseEnter={() => setActiveAlbumId(album.albumId)}
+                            onFocus={() => setActiveAlbumId(album.albumId)}
                         >
                             <span className="featured-catalog-copy">
                                 <strong>{album.title}</strong>
-                                <small>{album.artist}</small>
+                                <small>{album.artistDisplayName}</small>
                             </span>
-                            <span className="featured-catalog-year">{album.year || "—"}</span>
+                            <span className="featured-catalog-year">{album.releaseYear || "—"}</span>
                             <span className="featured-catalog-arrow">
                                 <ArrowIcon />
                             </span>

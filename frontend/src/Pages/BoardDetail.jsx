@@ -5,11 +5,7 @@ import { useAuth } from "@clerk/react";
 import AsyncState from "../Components/Loading/AsyncState";
 
 function getArtistName(album) {
-  if (Array.isArray(album.artists) && album.artists.length > 0) {
-    return album.artists.join(", ");
-  }
-
-  return album.artist || "Artist unknown";
+  return album.artistDisplayName || "Artist unknown";
 }
 
 export function BoardDetail() {
@@ -76,9 +72,8 @@ export function BoardDetail() {
 
     return albums.filter((album) => [
       album.title,
-      album.artist,
-      ...(album.artists || []),
-      album.year,
+      album.artistDisplayName,
+      album.releaseYear,
     ].join(" ").toLowerCase().includes(normalizedQuery));
   }, [board, query]);
 
@@ -146,7 +141,7 @@ export function BoardDetail() {
     }
   }
 
-  async function removeAlbum(spotifyId) {
+  async function removeAlbum(albumId) {
     if (!board) {
       return;
     }
@@ -154,7 +149,7 @@ export function BoardDetail() {
     try {
       setActionError("");
       const token = await getToken();
-      const response = await fetch(`${API_BASE_URL}/boards/${board._id}/albums/${spotifyId}`, {
+      const response = await fetch(`${API_BASE_URL}/boards/${board._id}/albums/${albumId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -168,7 +163,7 @@ export function BoardDetail() {
       setBoard((currentBoard) => ({
         ...currentBoard,
         itemCount: Math.max(0, (currentBoard.itemCount || 1) - 1),
-        albums: currentBoard.albums.filter((album) => album.spotifyId !== spotifyId),
+        albums: currentBoard.albums.filter((album) => album.albumId !== albumId),
       }));
     } catch (removeError) {
       console.error(removeError);
@@ -271,14 +266,14 @@ export function BoardDetail() {
       ) : viewMode === "grid" ? (
         <div className="board-album-grid">
           {filteredAlbums.map((album) => (
-            <article className="board-album-card" key={album.spotifyId}>
-              <Link to={`/album/${album.spotifyId}`}>
+            <article className="board-album-card" key={album.albumId}>
+              <Link to={`/album/${album.albumId}`}>
                 {album.cover ? <img src={album.cover} alt={`${album.title} cover`} /> : <span>No cover</span>}
                 <h2>{album.title || "Untitled album"}</h2>
                 <p>{getArtistName(album)}</p>
               </Link>
               {!isPublicBoard && (
-                <button type="button" onClick={() => removeAlbum(album.spotifyId)}>Remove</button>
+                <button type="button" onClick={() => removeAlbum(album.albumId)}>Remove</button>
               )}
             </article>
           ))}
@@ -286,14 +281,14 @@ export function BoardDetail() {
       ) : (
         <div className="board-album-list">
           {filteredAlbums.map((album) => (
-            <article className="board-album-row" key={album.spotifyId}>
-              <Link to={`/album/${album.spotifyId}`}>
+            <article className="board-album-row" key={album.albumId}>
+              <Link to={`/album/${album.albumId}`}>
                 {album.cover ? <img src={album.cover} alt={`${album.title} cover`} /> : <span>No cover</span>}
                 <strong>{album.title || "Untitled album"}</strong>
                 <em>{getArtistName(album)}</em>
               </Link>
               {!isPublicBoard && (
-                <button type="button" onClick={() => removeAlbum(album.spotifyId)}>Remove</button>
+                <button type="button" onClick={() => removeAlbum(album.albumId)}>Remove</button>
               )}
             </article>
           ))}

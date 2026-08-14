@@ -33,8 +33,8 @@ function getNotificationCopy(notification) {
 }
 
 function getNotificationPath(notification) {
-  if (notification.type === "review_like" && notification.spotifyId) {
-    return `/album/${notification.spotifyId}`;
+  if (notification.type === "review_like" && notification.albumId) {
+    return `/album/${notification.albumId}`;
   }
 
   if (notification.type === "follow" && notification.actorUserId) {
@@ -166,7 +166,7 @@ export function Notifications() {
                 <span>{getNotificationTypeLabel(notification)}</span>
                 <h2>{getNotificationCopy(notification)}</h2>
                 {notification.review ? (
-                  <p>{notification.review.title || "Untitled album"} by {notification.review.artist || "Unknown artist"}</p>
+                  <p>{notification.review.album?.title || "Untitled album"} by {notification.review.album?.artistDisplayName || "Unknown artist"}</p>
                 ) : (
                   <p>{notification.actor?.username || notification.actorUserId}</p>
                 )}
