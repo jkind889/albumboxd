@@ -17,3 +17,7 @@ Saved albums are the deduplicated union of every board a user owns. Removing an 
 ## Community submissions
 
 See [Phase 2 community album submissions](./docs/PHASE_2_SUBMISSIONS.md) for the contributor and moderator APIs, data model, configuration, validation, duplicate handling, approval publication, and test contract. The approved feed and UI remain later phases.
+
+## Catalog bootstrap
+
+The offline ListenBrainz catalog pipeline can generate a versioned MusicBrainz-hydrated seed, validate it without a database, dry-run it against MongoDB, and transactionally import accepted rows. See [ListenBrainz catalog import](./docs/CATALOG_IMPORT.md) for commands, the strict JSON contract, quarantine behavior, refresh rules, licensing, and staged rollout.

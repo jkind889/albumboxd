@@ -1,7 +1,16 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const roots = ["routes", "models", "server.js", "frontend/src"];
+const roots = [
+  "routes",
+  "models",
+  "server.js",
+  "frontend/src",
+  "lib/catalogImport",
+  "scripts/fetchListenBrainzCatalog.js",
+  "scripts/importCatalogDataset.js",
+  "scripts/validateCatalogDataset.js",
+];
 const allowed = ["spotifyProfileUrl", "Spotify Profile", "open.spotify.com/user/"];
 const forbidden = ["spotifyId", "SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET", "api.spotify.com", "accounts.spotify.com", "getSpotifyAccessToken", "normalizeSpotify"];
 

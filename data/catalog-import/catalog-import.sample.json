@@ -1,0 +1,140 @@
+{
+  "schemaVersion": "1.0.0",
+  "datasetId": "rescened-listenbrainz-sample-2026-08-14",
+  "generatedAt": "2026-08-15T03:40:00.000Z",
+  "selection": {
+    "targetAlbumCount": 2,
+    "maxPerPrimaryArtist": 5,
+    "ranges": [
+      {
+        "range": "all_time",
+        "quota": 2,
+        "candidateLimit": 100,
+        "from": "2002-01-01",
+        "to": "2026-07-27",
+        "fetchedAt": "2026-08-15T03:40:00.000Z"
+      },
+      {
+        "range": "year",
+        "quota": 0,
+        "candidateLimit": 100,
+        "from": "2025-01-01",
+        "to": "2026-01-01",
+        "fetchedAt": "2026-08-15T03:40:00.000Z"
+      },
+      {
+        "range": "month",
+        "quota": 0,
+        "candidateLimit": 100,
+        "from": "2026-06-01",
+        "to": "2026-07-01",
+        "fetchedAt": "2026-08-15T03:40:00.000Z"
+      }
+    ]
+  },
+  "sourceLicenses": {
+    "listenbrainz": {
+      "license": "CC0-1.0",
+      "url": "https://listenbrainz.org/data/"
+    },
+    "musicbrainz": {
+      "license": "CC0-1.0",
+      "url": "https://musicbrainz.org/doc/About/Data_License"
+    },
+    "coverArtArchive": {
+      "license": "varies-by-image",
+      "url": "https://musicbrainz.org/doc/Cover_Art_Archive",
+      "notice": "Cover artwork licensing varies by image; linking through the Cover Art Archive does not grant reuse rights."
+    }
+  },
+  "albums": [
+    {
+      "releaseGroupMbid": "b1392450-e666-3926-a536-22c65f834433",
+      "representativeReleaseMbid": "30702389-5c67-4438-9ea0-2351c8de0f1d",
+      "selectedRange": "all_time",
+      "selectionSignals": [
+        {
+          "range": "all_time",
+          "rank": 1,
+          "listenCount": 1254408
+        },
+        {
+          "range": "year",
+          "rank": 17,
+          "listenCount": 170472
+        },
+        {
+          "range": "month",
+          "rank": 63,
+          "listenCount": 14155
+        }
+      ],
+      "title": "OK Computer",
+      "artistDisplayName": "Radiohead",
+      "artistCredits": [
+        {
+          "artistMbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+          "name": "Radiohead",
+          "joinPhrase": ""
+        }
+      ],
+      "releaseType": "album",
+      "releaseDate": "1997-05-21",
+      "releaseDatePrecision": "day",
+      "releaseYear": 1997,
+      "cover": {
+        "releaseMbid": "30702389-5c67-4438-9ea0-2351c8de0f1d",
+        "imageId": 43287476628,
+        "url500": "https://coverartarchive.org/release/30702389-5c67-4438-9ea0-2351c8de0f1d/front-500"
+      },
+      "sourceFetchedAt": {
+        "listenbrainz": "2026-08-15T03:40:00.000Z",
+        "musicbrainz": "2026-08-15T03:39:30.000Z"
+      }
+    },
+    {
+      "releaseGroupMbid": "1b022e01-4da6-387b-8658-8678046e4cef",
+      "representativeReleaseMbid": "c771f7fc-9e62-4349-a2e3-ceaf7122bf5b",
+      "selectedRange": "all_time",
+      "selectionSignals": [
+        {
+          "range": "all_time",
+          "rank": 2,
+          "listenCount": 1158027
+        },
+        {
+          "range": "year",
+          "rank": 43,
+          "listenCount": 118673
+        },
+        {
+          "range": "month",
+          "rank": 68,
+          "listenCount": 13392
+        }
+      ],
+      "title": "Nevermind",
+      "artistDisplayName": "Nirvana",
+      "artistCredits": [
+        {
+          "artistMbid": "5b11f4ce-a62d-471e-81fc-a69a8278c7da",
+          "name": "Nirvana",
+          "joinPhrase": ""
+        }
+      ],
+      "releaseType": "album",
+      "releaseDate": "1991-09-24",
+      "releaseDatePrecision": "day",
+      "releaseYear": 1991,
+      "cover": {
+        "releaseMbid": "c771f7fc-9e62-4349-a2e3-ceaf7122bf5b",
+        "imageId": 30501372565,
+        "url500": "https://coverartarchive.org/release/c771f7fc-9e62-4349-a2e3-ceaf7122bf5b/front-500"
+      },
+      "sourceFetchedAt": {
+        "listenbrainz": "2026-08-15T03:40:00.000Z",
+        "musicbrainz": "2026-08-15T03:39:31.000Z"
+      }
+    }
+  ]
+}
