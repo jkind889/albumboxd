@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import "./App.css";
@@ -16,10 +17,15 @@ import BoardDetail from "./Pages/BoardDetail";
 import Notifications from "./Pages/Notifications";
 import ProtectedRoute from "./Components/ProtectedRoute";
 
+const Suggestions = lazy(() => import("./Pages/Suggestions"));
+const SuggestionEditor = lazy(() => import("./Pages/SuggestionEditor"));
+const ModerationSuggestions = lazy(() => import("./Pages/ModerationSuggestions"));
+
 export function App() {
    return (
     <BrowserRouter>
       <div className="app-shell">
+        <Suspense fallback={<div className="community-loading" role="status">Loading community workspace…</div>}>
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<FrontPage />} />
@@ -44,6 +50,30 @@ export function App() {
               <ProtectedRoute>
                 <Notifications />
               </ProtectedRoute>} />
+            <Route path="/suggestions" element={
+              <ProtectedRoute>
+                <Suggestions />
+              </ProtectedRoute>} />
+            <Route path="/suggestions/new" element={
+              <ProtectedRoute>
+                <SuggestionEditor />
+              </ProtectedRoute>} />
+            <Route path="/suggestions/:submissionId/revise" element={
+              <ProtectedRoute>
+                <SuggestionEditor mode="revise" />
+              </ProtectedRoute>} />
+            <Route path="/suggestions/:submissionId" element={
+              <ProtectedRoute>
+                <Suggestions />
+              </ProtectedRoute>} />
+            <Route path="/moderation/album-suggestions" element={
+              <ProtectedRoute>
+                <ModerationSuggestions />
+              </ProtectedRoute>} />
+            <Route path="/moderation/album-suggestions/:submissionId" element={
+              <ProtectedRoute>
+                <ModerationSuggestions />
+              </ProtectedRoute>} />
             <Route path="/profile/:userId/reviews" element={<ViewReviews />} />
             <Route path="/profile/:userId/network" element={<ProfileNetwork />} />
             <Route path="/profile/:userId/boards/:boardId" element={<BoardDetail />} />
@@ -54,6 +84,7 @@ export function App() {
               </ProtectedRoute>} />
           </Route>
         </Routes>
+        </Suspense>
       </div>
     </BrowserRouter>
   );

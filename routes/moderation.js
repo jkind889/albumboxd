@@ -95,6 +95,9 @@ async function rowsForIds(Model, ids) {
   const uniqueIds = [...new Set(ids.filter(Boolean).map((id) => String(id)))];
   if (!uniqueIds.length || typeof Model.find !== "function") return [];
   let query = Model.find({ _id: { $in: uniqueIds } });
+  if (Model === AlbumSubmission && query && typeof query.populate === "function") {
+    query = query.populate("approvedAlbumCatalogId");
+  }
   if (query && typeof query.exec === "function") query = query.exec();
   const rows = (await query) || [];
   return rows.filter((row) => uniqueIds.includes(String(asPlain(row)?._id)));
@@ -177,6 +180,10 @@ function stateQuery(submissionId, currentRevision) {
 async function transition(req, res, action) {
   try {
     const body = normalizeCommandBody(req.body || {}, action);
+    const historyAction = {
+      mark_duplicate: "marked_duplicate",
+      reject: "rejected",
+    }[action] || action;
     const current = await AlbumSubmission.findOne({ submissionId: req.params.submissionId });
     if (!current) return res.status(404).json({ error: "Suggestion not found", code: "SUGGESTION_NOT_FOUND" });
     if (current.status !== "pending") {
@@ -203,7 +210,7 @@ async function transition(req, res, action) {
         $push: {
           moderationHistory: {
             actorUserId: req.userId,
-            action,
+            action: historyAction,
             reason: body.reason,
             createdAt: now,
           },

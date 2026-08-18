@@ -16,7 +16,7 @@ Saved albums are the deduplicated union of every board a user owns. Removing an 
 
 ## Community submissions
 
-See [Phase 2 community album submissions](./docs/PHASE_2_SUBMISSIONS.md) for the contributor and moderator APIs, data model, configuration, validation, duplicate handling, approval publication, and test contract. The approved feed and UI remain later phases.
+See [Phase 2 community album submissions](./docs/PHASE_2_SUBMISSIONS.md) for the contributor and moderator APIs, data model, configuration, validation, duplicate handling, approval publication, and test contract. See [Phase 3 community-submission UI](./docs/PHASE_3_UI.md) for the authenticated contributor and moderator routes and workflows. The optional public approved-submission feed remains deferred.
 
 ## Catalog bootstrap
 

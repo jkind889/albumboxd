@@ -61,10 +61,13 @@ function makeSubmission(overrides = {}) {
   };
 }
 
-function createChain(rows) {
+function createChain(rows, populateRows = null) {
   let result = [...rows];
   return {
-    populate() { return this; },
+    populate(path) {
+      if (typeof populateRows === "function") result = populateRows(path, result);
+      return this;
+    },
     sort(spec) {
       const direction = spec.updatedAt || spec.createdAt || 1;
       result.sort((a, b) => (new Date(a.updatedAt || a.createdAt) - new Date(b.updatedAt || b.createdAt)) * direction);
@@ -141,7 +144,15 @@ function installMocks({ userId = "user_mod", documents = [], catalogs = [] } = {
     if (query.submittedByUserId) rows = rows.filter((row) => row.submittedByUserId === query.submittedByUserId);
     if (query._id?.$in) rows = rows.filter((row) => query._id.$in.some((id) => String(id) === String(row._id)));
     if (query._id?.$ne) rows = rows.filter((row) => String(row._id) !== String(query._id.$ne));
-    return createChain(rows);
+    return createChain(rows, (path, populatedRows) => {
+      if (path !== "approvedAlbumCatalogId") return populatedRows;
+      return populatedRows.map((row) => {
+        const reference = row.approvedAlbumCatalogId;
+        if (!reference || reference.albumId) return row;
+        const album = currentCatalogs.find((candidate) => String(candidate._id) === String(reference));
+        return album ? { ...row, approvedAlbumCatalogId: album } : row;
+      });
+    });
   };
   AlbumSubmission.findOne = (query = {}) => Promise.resolve(currentDocuments.find((row) => (
     (!query.submissionId || row.submissionId === query.submissionId)
@@ -219,6 +230,37 @@ test("moderator reads remain available while command writes are disabled", async
   assert.equal(command.body.code, "MODERATION_DISABLED");
 });
 
+test("moderator detail exposes the published album for approved duplicate candidates", async () => {
+  const catalog = {
+    _id: new mongoose.Types.ObjectId(),
+    albumId: crypto.randomUUID(),
+    title: "Kind of Blue",
+  };
+  const approvedCandidate = makeSubmission({
+    status: "approved",
+    approvedAlbumCatalogId: catalog._id,
+  });
+  const document = makeSubmission({
+    candidateSubmissionIds: [approvedCandidate._id],
+    duplicateSignals: [{
+      targetType: "submission",
+      matchType: "fingerprint",
+      key: "same-release",
+      submissionId: approvedCandidate._id,
+    }],
+  });
+  const state = installMocks({ documents: [document, approvedCandidate], catalogs: [catalog] });
+
+  const result = await callRoute(state.router, "get", "/:submissionId", {
+    params: { submissionId: document.submissionId },
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.duplicateCandidates.submissions.length, 1);
+  assert.equal(result.body.duplicateCandidates.submissions[0].submissionId, approvedCandidate.submissionId);
+  assert.equal(result.body.duplicateCandidates.submissions[0].approvedAlbumId, catalog.albumId);
+});
+
 test("moderator commands enforce reasons, target validation, and conditional transitions", async () => {
   const target = makeSubmission({ status: "approved", approvedAlbumCatalogId: new mongoose.Types.ObjectId() });
   const document = makeSubmission();
@@ -230,7 +272,7 @@ test("moderator commands enforce reasons, target validation, and conditional tra
   const rejected = await callRoute(state.router, "post", "/:submissionId/reject", { params: { submissionId: document.submissionId }, body: { reason: "Insufficient evidence" } });
   assert.equal(rejected.status, 200);
   assert.equal(rejected.body.suggestion.status, "rejected");
-  assert.equal(rejected.body.suggestion.moderationHistory.at(-1).action, "reject");
+  assert.equal(rejected.body.suggestion.moderationHistory.at(-1).action, "rejected");
 
   const duplicateDocument = makeSubmission();
   state.documents.push(duplicateDocument);
@@ -240,6 +282,7 @@ test("moderator commands enforce reasons, target validation, and conditional tra
   });
   assert.equal(duplicate.status, 200);
   assert.equal(duplicate.body.suggestion.status, "duplicate");
+  assert.equal(duplicate.body.suggestion.moderationHistory.at(-1).action, "marked_duplicate");
   const terminal = await callRoute(state.router, "post", "/:submissionId/reject", { params: { submissionId: duplicateDocument.submissionId }, body: { reason: "Again" } });
   assert.equal(terminal.status, 409);
   assert.equal(terminal.body.code, "INVALID_SUBMISSION_STATE");
