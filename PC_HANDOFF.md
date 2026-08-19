@@ -4,14 +4,14 @@ This file is the durable handoff for continuing Rescened on a Windows PC. Keep i
 
 ## Current snapshot
 
-Last verified: **August 18, 2026**
+Last verified: **August 19, 2026**
 
 - App name: **Rescened**
 - GitHub repository: `https://github.com/jkind889/albumboxd.git`
 - Active branch: `community-driven`
-- Verified commit: `556aee1` — `implementing top 500 albums fetch from musicbrainz`
+- Verified commit: `dc66e27` — `implementing phase 3 of community suggestions - the ui`
 - At the time of this snapshot, `community-driven` was clean and synchronized with `origin/community-driven`.
-- The repository and remote are still named `albumboxd`; the package and product are named `rescened`. Clone the `albumboxd` URL above.
+- The checked-out directory and actual Git remote are still named `albumboxd`; the product, npm package, and `package.json` repository metadata use `rescened`. For this checkout, clone the working `albumboxd` URL above unless the remote is deliberately renamed.
 - Backend: Express, Mongoose, MongoDB, and Clerk in the repository root.
 - Frontend: React, Vite, and Clerk in `frontend/`.
 - Package manager: npm. The backend and frontend are separate npm packages and each has its own lockfile.
@@ -34,20 +34,29 @@ Recent work completed on `community-driven`:
 3. Implemented moderation commands and transactional approval.
 4. Added the ListenBrainz/MusicBrainz catalog fetch, validation, and import pipeline.
 5. Checked in a validated 500-album seed at `data/catalog-import/seeds/listenbrainz-2026-08-14.json`.
+6. Implemented the authenticated Phase 3 contributor and moderator submission UI.
+7. Checked in an apply report for the 500-album seed showing 498 inserts, 2 refreshes, and no quarantined or conflicting rows.
 
-The likely next milestone is **Phase 3 community-submission UI**:
+Phase 3 is now implemented and documented in `docs/PHASE_3_UI.md`. The signed-in frontend includes:
 
-- Contributor submission screens.
-- Moderator queue and moderation screens.
-- Optional public feed for approved submissions.
+- Contributor history, detail, create, revise, and withdraw workflows under `/suggestions`.
+- A moderator queue, submission detail, duplicate review, and approve/request-changes/reject/mark-duplicate workflows under `/moderation/album-suggestions`.
+- A signed-in **Suggestions** navbar entry and lazy-loaded community routes.
 
-Before starting that milestone, finish the catalog rollout described in `docs/CATALOG_IMPORT.md`: dry-run the checked-in seed against development/staging, apply it, and smoke-test listing, search, album detail, reviews, likes, and board saves. The README notes that the database was intentionally emptied during the generation-2 cutover, so a fresh database will not show useful catalog content until it is seeded or imported.
+Remaining work explicitly documented in the repository:
+
+- The optional public approved-submission feed (`GET /suggestions/approved`) remains deferred.
+- The production index-build rollout remains Phase 4 deployment work.
+- The catalog still needs environment-specific confirmation and smoke testing. A tracked report proves that an apply completed, but it does not identify the target database. Confirm the PC's `MONGO_URI` and current catalog contents before applying the seed again.
 
 Source-of-truth project docs:
 
 - `README.md`
 - `docs/CATALOG_IMPORT.md`
 - `docs/PHASE_2_SUBMISSIONS.md`
+- `docs/PHASE_3_UI.md`
+
+`docs/PHASE_2_SUBMISSIONS.md` remains the backend contract, but its opening Phase 2 status predates the completed UI work. Use `docs/PHASE_3_UI.md` for the current frontend status.
 
 ## Recommended PC setup: WSL2
 
@@ -161,6 +170,13 @@ Expected local addresses:
 
 The API may start even when MongoDB cannot connect. Confirm that the health response reports `status: "ok"`, not `degraded`.
 
+After signing in, smoke-test the new Phase 3 routes:
+
+- `/suggestions` and `/suggestions/new` as a normal contributor.
+- `/moderation/album-suggestions` as a Clerk user listed in the server-only `MODERATOR_USER_IDS` allowlist.
+
+Contributor mutations require `COMMUNITY_SUBMISSIONS_ENABLED=true`; moderator decisions require `COMMUNITY_MODERATION_ENABLED=true`. The server remains the authorization boundary even though the frontend routes are protected.
+
 ## Verify the checkout
 
 From the repository root in WSL or Git Bash:
@@ -173,9 +189,9 @@ npm --prefix frontend run lint
 npm --prefix frontend run build
 ```
 
-Latest Mac results:
+Latest Mac results at `dc66e27`:
 
-- Unit suite: 83 passed; 10 network/integration cases intentionally skipped by the default run.
+- Unit suite: 94 total; 84 passed and 10 network/integration cases intentionally skipped by the default run.
 - Replica-set integration suite: all 9 passed.
 - Catalog contract: passed.
 - Frontend lint and production build: passed.
@@ -200,15 +216,22 @@ The live provider test is optional and makes network requests. Normal tests use 
 
 ## Catalog bootstrap on the PC
 
-The checked-in dataset can be validated and imported without fetching a new one:
+The checked-in dataset can be validated and dry-run without fetching a new one:
 
 ```sh
 npm run catalog:validate -- --input data/catalog-import/seeds/listenbrainz-2026-08-14.json
 npm run catalog:import -- --input data/catalog-import/seeds/listenbrainz-2026-08-14.json --dry-run
+```
+
+The tracked full-seed report at `data/catalog-import/seeds/listenbrainz-2026-08-14.import-report.json` records a successful apply on August 18, 2026: 498 albums inserted, 2 refreshed, and none quarantined or conflicted. The report does not identify whether that was development, staging, or production. Verify the selected database and inspect a fresh dry-run before writing again:
+
+```sh
 npm run catalog:import -- --input data/catalog-import/seeds/listenbrainz-2026-08-14.json --apply
 ```
 
-`--apply` writes to the database selected by `MONGO_URI`; inspect the dry-run output first. For quick disposable UI data, `npm run seed:social` adds a small demo dataset instead.
+`--apply` writes to the database selected by `MONGO_URI`. For quick disposable UI data, `npm run seed:social` adds a small demo dataset instead.
+
+Known artifact issue at this snapshot: `data/catalog-import/catalog-import.sample.quarantine-report.json` begins with an accidentally pasted shell command and is not valid JSON. Do not use that sample report until it is repaired. The full-seed import and quarantine reports are valid JSON.
 
 In native PowerShell, an inline environment value must be set separately:
 
@@ -243,7 +266,7 @@ Do not assume every local task or uncommitted file automatically appears on the 
 
 If chat handoff is unavailable, start a Codex task from the PC repository and use:
 
-> Read `PC_HANDOFF.md`, `README.md`, `docs/CATALOG_IMPORT.md`, and `docs/PHASE_2_SUBMISSIONS.md`. Confirm the current branch and Git status, run the relevant verification commands, then help me continue the Phase 3 Rescened work without changing unrelated files.
+> Read `PC_HANDOFF.md`, `README.md`, `docs/CATALOG_IMPORT.md`, `docs/PHASE_2_SUBMISSIONS.md`, and `docs/PHASE_3_UI.md`. Confirm the current branch, Git status, database target, and relevant verification results. Treat the authenticated Phase 3 UI as implemented, then help me continue the selected remaining Rescened work without changing unrelated files.
 
 ## Safe routine when switching machines
 
