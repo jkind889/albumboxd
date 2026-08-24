@@ -1,5 +1,6 @@
 node_modules/
 dist/
 .cache/
+.migration/
 .env
 .DS_Store

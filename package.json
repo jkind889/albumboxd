@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "test": "node --test",
-    "test:integration": "RUN_MONGO_INTEGRATION=true node --test tests/moderation.integration.test.js tests/catalogImport.integration.test.js",
+    "test:integration": "node scripts/runIntegrationTests.js",
     "test:catalog-live": "RUN_LIVE_CATALOG_FETCH=true node --test tests/listenBrainzCatalog.live.test.js",
     "start": "node server.js",
     "devStart": "nodemon server.js",
@@ -13,6 +13,7 @@
     "catalog:fetch": "node scripts/fetchListenBrainzCatalog.js",
     "catalog:validate": "node scripts/validateCatalogDataset.js",
     "catalog:import": "node scripts/importCatalogDataset.js",
+    "db:migrate:legacy": "node scripts/migrateLegacyDatabase.js",
     "check:catalog-contract": "node scripts/checkCatalogContract.js"
   },
   "repository": {
