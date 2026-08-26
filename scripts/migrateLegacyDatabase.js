@@ -2,7 +2,6 @@
 
 require("dotenv").config({ quiet: true });
 
-const fs = require("node:fs/promises");
 const path = require("node:path");
 const { ObjectId } = require("mongodb");
 const {
@@ -11,11 +10,12 @@ const {
   canonicalHash,
   connectMongo,
   ensureRunDirectory,
+  newRunId,
   parseArguments,
   requiredEnvironment,
 } = require("../lib/legacyMigration/runtime");
 const { readJson, sealJson, writeJson } = require("../lib/legacyMigration/artifacts");
-const { inventoryDatabase, inventorySourceTarget, SOURCE_COLLECTIONS } = require("../lib/legacyMigration/inventory");
+const { inventorySourceTarget, SOURCE_COLLECTIONS } = require("../lib/legacyMigration/inventory");
 const { buildCatalogCrosswalk } = require("../lib/legacyMigration/catalogCrosswalk");
 const { createMusicBrainzClient } = require("../lib/legacyMigration/musicBrainz");
 const { transformSocial } = require("../lib/legacyMigration/transform");
@@ -25,7 +25,11 @@ const { verifyPlanApplied } = require("../lib/legacyMigration/verify");
 const { MODELS, forbiddenFields } = require("../lib/legacyMigration/validate");
 
 const TARGET_COLLECTIONS = ["albumcatalogs", "albumsubmissions", "reviews", "likes", "boards", "boarditems", "userprofiles", "follows", "notifications"];
-const USAGE = `Usage:
+const USAGE = `Routine workflow:
+  npm run db:migrate:legacy:plan -- --run-dir <path> [--overrides <file>]
+  npm run db:migrate:legacy:execute -- --run-dir <path> --plan-sha256 <sha> --confirm-target <database>
+
+Advanced/recovery modes:
   npm run db:migrate:legacy -- --inventory --run-dir <path>
   npm run db:migrate:legacy -- --dry-run --run-dir <path> [--overrides <file>]
   npm run db:migrate:legacy -- --validate --run-dir <path>
@@ -79,14 +83,35 @@ async function loadOverrides(filePath) {
 
 async function loadOrCreateInventory(runDir, sourceDb, targetDb, sourceName, targetName) {
   const filePath = path.join(runDir, "inventory.json");
+  const current = await inventorySourceTarget({ sourceDb, targetDb, sourceName, targetName });
   try {
-    return await readJson(filePath, { canonical: true });
+    const existing = await readJson(filePath, { canonical: true });
+    const drift = ["source", "target"].flatMap((side) => {
+      const expected = existing[side];
+      const actual = current[side];
+      return expected?.databaseName === actual?.databaseName && expected?.databaseHash === actual?.databaseHash
+        ? []
+        : [{ side, expectedDatabase: expected?.databaseName, actualDatabase: actual?.databaseName, expectedHash: expected?.databaseHash, actualHash: actual?.databaseHash }];
+    });
+    if (drift.length) throw new LegacyMigrationError("Stored inventory no longer matches the migration databases; use a new run directory", "INVENTORY_DRIFT", drift);
+    return existing;
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
-  const inventory = await inventorySourceTarget({ sourceDb, targetDb, sourceName, targetName });
-  await sealJson(runDir, "inventory.json", inventory);
-  return inventory;
+  await sealJson(runDir, "inventory.json", current);
+  return current;
+}
+
+function assertDocumentsMatchInventory(documents, inventory, collectionNames, side) {
+  const drift = [];
+  for (const collection of collectionNames) {
+    const rows = documents[collection] || [];
+    const expected = inventory.collections?.[collection]?.dataHash;
+    const actual = canonicalHash(rows);
+    if ((expected === undefined && rows.length === 0) || expected === actual) continue;
+    drift.push({ side, collection, expectedHash: expected || null, actualHash: actual });
+  }
+  if (drift.length) throw new LegacyMigrationError("Database changed while its migration inventory was being read", "INVENTORY_DRIFT", drift);
 }
 
 async function checkClerkUsers(sourceDocuments, overrides = {}) {
@@ -150,6 +175,8 @@ async function runDryRun(options, env) {
     const sourceDocuments = await readCollections(sourceDb, SOURCE_COLLECTIONS);
     const targetDocuments = await readCollections(targetDb, TARGET_COLLECTIONS);
     const inventory = await loadOrCreateInventory(options.runDir, sourceDb, targetDb, env.source, env.target);
+    assertDocumentsMatchInventory(sourceDocuments, inventory.source, SOURCE_COLLECTIONS, "source");
+    assertDocumentsMatchInventory(targetDocuments, inventory.target, TARGET_COLLECTIONS, "target");
     const overrides = await loadOverrides(options.overrides);
     const clerk = await checkClerkUsers(sourceDocuments, overrides);
     if (clerk.missing.length) throw new LegacyMigrationError("Legacy social data references missing Clerk users", "BLOCKING_QUARANTINE", clerk.missing.map((userId) => ({ userId })));
@@ -199,11 +226,23 @@ async function runValidate(options) {
 async function runApply(options, env) {
   const plan = await loadPlan(options.runDir);
   verifyPlanHash(plan, options.planSha256);
+  // Apply is independently safe to invoke: never rely on a prior `validate`
+  // process having inspected the exact plan file that is about to be written.
+  await validatePlanDocuments(plan);
   const targetClient = await connectMongo(env.targetUri);
   try {
     const result = await applyPlan({ targetDb: targetClient.db(env.target), client: targetClient, plan, expectedPlanSha256: options.planSha256, confirmTarget: options.confirmTarget });
-    await writeJson(path.join(options.runDir, "apply-report.json"), { ...result, planSha256: options.planSha256, target: env.target });
-    return { mode: options.mode, planSha256: options.planSha256, result, exitCode: 0 };
+    const attemptId = options.attemptId || `apply-${newRunId()}`;
+    const reportPath = path.join(options.runDir, "execution", attemptId, "apply-report.json");
+    try {
+      await writeJson(reportPath, { ...result, attemptId, planSha256: options.planSha256, target: env.target });
+    } catch (error) {
+      const committed = new LegacyMigrationError(`Migration applied but its report could not be written: ${error.message}`, "APPLY_COMMITTED_REPORT_FAILED", [{ attemptId, reportPath }]);
+      committed.databaseCommitted = true;
+      committed.cause = error;
+      throw committed;
+    }
+    return { mode: options.mode, planSha256: options.planSha256, reportPath, result, exitCode: 0 };
   } finally { await targetClient.close(); }
 }
 
@@ -212,9 +251,59 @@ async function runVerify(options, env) {
   const targetClient = await connectMongo(env.targetUri, { readPreference: "secondaryPreferred" });
   try {
     const result = await verifyPlanApplied({ targetDb: targetClient.db(env.target), plan, expectedPlanSha256: options.planSha256 });
-    await writeJson(path.join(options.runDir, "verify-report.json"), { ...result, planSha256: options.planSha256, target: env.target });
-    return { mode: options.mode, planSha256: options.planSha256, result, exitCode: 0 };
+    const attemptId = options.attemptId || `verify-${newRunId()}`;
+    const reportPath = path.join(options.runDir, "execution", attemptId, "verify-report.json");
+    await writeJson(reportPath, { ...result, attemptId, planSha256: options.planSha256, target: env.target });
+    return { mode: options.mode, planSha256: options.planSha256, reportPath, result, exitCode: 0 };
   } finally { await targetClient.close(); }
+}
+
+async function runPlan(options, env, steps = {}) {
+  const planStep = steps.plan || runDryRun;
+  const validateStep = steps.validate || runValidate;
+  const planned = await planStep({ ...options, mode: "dry-run" }, env);
+  if (![0, 2].includes(planned.exitCode)) return { ...planned, mode: "plan", runDir: options.runDir, exitCode: planned.exitCode };
+  const validated = await validateStep({ ...options, mode: "validate" });
+  return {
+    mode: "plan",
+    runDir: options.runDir,
+    planSha256: planned.planSha256,
+    fileSha256: planned.fileSha256,
+    counts: planned.counts,
+    validation: validated.report,
+    exitCode: validated.exitCode || planned.exitCode,
+  };
+}
+
+async function runExecute(options, env, steps = {}) {
+  const applyStep = steps.apply || runApply;
+  const verifyStep = steps.verify || runVerify;
+  const attemptId = options.attemptId || newRunId();
+  const applied = await applyStep({ ...options, mode: "apply", attemptId }, env);
+  if (applied.exitCode !== 0) {
+    return { mode: "execute", attemptId, runDir: options.runDir, planSha256: options.planSha256, target: options.confirmTarget, apply: applied.result, verification: null, exitCode: applied.exitCode };
+  }
+  let verified;
+  try {
+    verified = await verifyStep({ ...options, mode: "verify", attemptId }, env);
+  } catch (error) {
+    const committed = new LegacyMigrationError(`Migration apply committed, but candidate verification failed: ${error.message}`, "APPLY_COMMITTED_VERIFICATION_FAILED", [{ attemptId, applyReportPath: applied.reportPath || null, causeCode: error.code || null }]);
+    committed.databaseCommitted = true;
+    committed.cause = error;
+    throw committed;
+  }
+  return {
+    mode: "execute",
+    attemptId,
+    runDir: options.runDir,
+    planSha256: options.planSha256,
+    target: options.confirmTarget,
+    apply: applied.result,
+    verification: verified.result,
+    databaseCommitted: true,
+    reports: { apply: applied.reportPath || null, verify: verified.reportPath || null },
+    exitCode: verified.exitCode,
+  };
 }
 
 async function main(argv = process.argv.slice(2), environment = process.env, output = console) {
@@ -229,15 +318,18 @@ async function main(argv = process.argv.slice(2), environment = process.env, out
     // any network access.
     const env = options.mode === "validate" ? null : requiredEnvironment(environment);
     if (options.mode !== "validate") releaseRunLock = await acquireRunLock(options.runDir, options.mode);
-    const result = options.mode === "inventory" ? await runInventory(options, env)
-      : options.mode === "dry-run" ? await runDryRun(options, env)
-        : options.mode === "validate" ? await runValidate(options)
-          : options.mode === "apply" ? await runApply(options, env)
-            : await runVerify(options, env);
+    const result = options.mode === "plan" ? await runPlan(options, env)
+      : options.mode === "execute" ? await runExecute(options, env)
+        : options.mode === "inventory" ? await runInventory(options, env)
+          : options.mode === "dry-run" ? await runDryRun(options, env)
+            : options.mode === "validate" ? await runValidate(options)
+              : options.mode === "apply" ? await runApply(options, env)
+                : await runVerify(options, env);
     output.log(JSON.stringify(result, null, 2));
     return result.exitCode;
   } catch (error) {
     output.error(`${error.code || "LEGACY_MIGRATION_FAILED"}: ${error.message}`);
+    if (error.databaseCommitted) output.error("Database changes were committed; do not treat this as a rollback. Rerun execute with the same sealed plan to retry verification safely.");
     if (error.details?.length) output.error(JSON.stringify(error.details, null, 2));
     return 1;
   } finally {
@@ -247,4 +339,4 @@ async function main(argv = process.argv.slice(2), environment = process.env, out
 
 if (require.main === module) main().then((code) => { process.exitCode = code; });
 
-module.exports = { USAGE, checkClerkUsers, loadOverrides, main, readCollections, validatePlanDocuments };
+module.exports = { USAGE, assertDocumentsMatchInventory, checkClerkUsers, loadOrCreateInventory, loadOverrides, main, readCollections, runExecute, runPlan, validatePlanDocuments };

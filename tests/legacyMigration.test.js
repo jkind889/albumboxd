@@ -12,6 +12,7 @@ const { buildCatalogCrosswalk } = require("../lib/legacyMigration/catalogCrosswa
 const { transformSocial } = require("../lib/legacyMigration/transform");
 const { buildMigrationPlan, verifyPlanHash } = require("../lib/legacyMigration/plan");
 const { forbiddenFields, validateDocuments } = require("../lib/legacyMigration/validate");
+const { assertDocumentsMatchInventory, runExecute, runPlan } = require("../scripts/migrateLegacyDatabase");
 const mb = require("../lib/legacyMigration/musicBrainz");
 
 const ids = {
@@ -49,10 +50,101 @@ function fixture() {
 
 test("migration argument and namespace guards require explicit safe databases", () => {
   assert.equal(parseArguments(["--inventory", "--run-dir", ".migration/run"]).mode, "inventory");
+  assert.equal(parseArguments(["--plan", "--run-dir", ".migration/run"]).mode, "plan");
+  assert.equal(parseArguments(["--execute", "--help"]).help, true);
+  assert.throws(() => parseArguments(["plan", "--run-dir", ".migration/run"]), (error) => error.code === "INVALID_ARGUMENTS");
+  assert.throws(() => parseArguments(["--execute", "--run-dir", "x", "--plan-sha256", "a", "--confirm-target", "candidate", "--overrides", "ignored.json"]), (error) => error.code === "INVALID_ARGUMENTS");
+  assert.throws(() => parseArguments(["--plan", "--run-dir", "x", "--plan-sha256", "a"]), (error) => error.code === "INVALID_ARGUMENTS");
   assert.throws(() => parseArguments(["--apply", "--run-dir", "x"]), (error) => error.code === "INVALID_ARGUMENTS");
+  assert.throws(() => parseArguments(["--execute", "--run-dir", "x", "--confirm-target", "candidate"]), (error) => error.code === "INVALID_ARGUMENTS");
   assert.throws(() => databaseNameFromUri("mongodb://localhost:27017/test"), (error) => error.code === "SOURCE_NAMESPACE_INVALID");
   assert.deepEqual(requiredEnvironment({ LEGACY_MONGO_URI: "mongodb://localhost/source", MIGRATION_TARGET_MONGO_URI: "mongodb://localhost/candidate" }).source, "source");
   assert.throws(() => requiredEnvironment({ LEGACY_MONGO_URI: "mongodb://localhost/source", MIGRATION_TARGET_MONGO_URI: "mongodb://localhost/source" }), (error) => error.code === "SOURCE_TARGET_COLLISION");
+});
+
+test("condensed workflow composes plan/validate and apply/verify in order", async () => {
+  const calls = [];
+  const planned = await runPlan({ runDir: ".migration/run" }, {}, {
+    plan: async (options) => {
+      calls.push(options.mode);
+      return { planSha256: "a".repeat(64), fileSha256: "b".repeat(64), counts: { operations: 7 }, exitCode: 2 };
+    },
+    validate: async (options) => {
+      calls.push(options.mode);
+      return { report: { valid: true }, exitCode: 0 };
+    },
+  });
+  assert.deepEqual(calls, ["dry-run", "validate"]);
+  assert.equal(planned.exitCode, 2);
+  assert.equal(planned.validation.valid, true);
+
+  calls.length = 0;
+  const executed = await runExecute({ runDir: ".migration/run", planSha256: "a".repeat(64), confirmTarget: "candidate" }, {}, {
+    apply: async (options) => {
+      calls.push(options.mode);
+      return { result: { applied: true }, exitCode: 0 };
+    },
+    verify: async (options) => {
+      calls.push(options.mode);
+      return { result: { verified: true }, exitCode: 0 };
+    },
+  });
+  assert.deepEqual(calls, ["apply", "verify"]);
+  assert.equal(executed.apply.applied, true);
+  assert.equal(executed.verification.verified, true);
+
+  const validationFailure = await runPlan({ runDir: ".migration/run" }, {}, {
+    plan: async () => ({ exitCode: 0 }),
+    validate: async () => ({ exitCode: 1 }),
+  });
+  assert.equal(validationFailure.exitCode, 1);
+
+  let verifyCalled = false;
+  const applyFailure = await runExecute({ runDir: ".migration/run", planSha256: "a".repeat(64), confirmTarget: "candidate" }, {}, {
+    apply: async () => ({ result: { applied: false }, exitCode: 1 }),
+    verify: async () => { verifyCalled = true; },
+  });
+  assert.equal(applyFailure.exitCode, 1);
+  assert.equal(verifyCalled, false);
+
+  const verifyFailure = await runExecute({ runDir: ".migration/run", planSha256: "a".repeat(64), confirmTarget: "candidate" }, {}, {
+    apply: async () => ({ result: { applied: true }, exitCode: 0 }),
+    verify: async () => ({ result: { verified: false }, exitCode: 2 }),
+  });
+  assert.equal(verifyFailure.exitCode, 2);
+  assert.equal(verifyFailure.databaseCommitted, true);
+});
+
+test("condensed execute never verifies after a failed apply", async () => {
+  let verifyCalled = false;
+  await assert.rejects(
+    runExecute({ runDir: ".migration/run", planSha256: "a".repeat(64), confirmTarget: "candidate" }, {}, {
+      apply: async () => { throw new LegacyMigrationError("apply failed", "APPLY_FAILED"); },
+      verify: async () => { verifyCalled = true; },
+    }),
+    (error) => error.code === "APPLY_FAILED",
+  );
+  assert.equal(verifyCalled, false);
+});
+
+test("condensed execute marks a thrown verification failure as committed", async () => {
+  await assert.rejects(
+    runExecute({ runDir: ".migration/run", planSha256: "a".repeat(64), confirmTarget: "candidate" }, {}, {
+      apply: async () => ({ result: { applied: true }, reportPath: "apply-report.json", exitCode: 0 }),
+      verify: async () => { throw new LegacyMigrationError("verify failed", "RECONCILIATION_FAILED"); },
+    }),
+    (error) => error.code === "APPLY_COMMITTED_VERIFICATION_FAILED" && error.databaseCommitted === true,
+  );
+});
+
+test("document snapshots must match the inventory used by the plan", () => {
+  const rows = [{ _id: new ObjectId(), title: "Baseline" }];
+  const inventory = { collections: { albumcatalogs: { dataHash: canonicalHash(rows) } } };
+  assert.doesNotThrow(() => assertDocumentsMatchInventory({ albumcatalogs: rows }, inventory, ["albumcatalogs"], "target"));
+  assert.throws(
+    () => assertDocumentsMatchInventory({ albumcatalogs: [...rows, { _id: new ObjectId() }] }, inventory, ["albumcatalogs"], "target"),
+    (error) => error.code === "INVENTORY_DRIFT",
+  );
 });
 
 test("canonical hashes are stable and plan checksums detect tampering", () => {

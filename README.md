@@ -21,3 +21,5 @@ See [Phase 2 community album submissions](./docs/PHASE_2_SUBMISSIONS.md) for the
 ## Catalog bootstrap
 
 The offline ListenBrainz catalog pipeline can generate a versioned MusicBrainz-hydrated seed, validate it without a database, dry-run it against MongoDB, and transactionally import accepted rows. See [ListenBrainz catalog import](./docs/CATALOG_IMPORT.md) for commands, the strict JSON contract, quarantine behavior, refresh rules, licensing, and staged rollout.
+
+The legacy generation-1 database workflow uses two operator commands after the isolated source and candidate databases exist: `npm run db:migrate:legacy:plan -- --run-dir <path>` creates and validates a sealed plan, and `npm run db:migrate:legacy:execute -- --run-dir <path> --plan-sha256 <sha> --confirm-target <database>` applies and verifies it. See [legacy database migration](./docs/LEGACY_DATA_MIGRATION_WORKFLOW.md) for restore preparation, overrides, artifacts, and recovery modes.

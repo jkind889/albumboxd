@@ -54,7 +54,7 @@ Recommended defaults:
 
 ## Existing historical archive clue
 
-Git history contains `cb625b7:rescened-backup-2026-08-13.archive.gz` as a 387,362-byte blob with SHA-256 `598901cc8801b8f2b0f8634da44148b83154fbaf41d371a12bbbfa71ed286c39`. It appears to be a valid `mongodump` gzip archive made with MongoDB Database Tools `100.16.1`. It is not part of the current tracked tree, but deleting it in a later commit did not remove it from repository history. Treat it as sensitive user/social data, do not extract it into the repository, and compare the incoming transfer against it before assuming they are different snapshots.
+Git history contains `cb625b7:rescened-backup-2026-08-13.archive.gz` as a 387,362-byte blob with SHA-256 `598901cc8801b8f2b0f8634da44148b83154fbaf41d371a12bbbfa71ed286c39`. It appears to be a valid `mongodump` gzip archive made with MongoDB Database Tools `100.16.1`. The same sensitive archive is also tracked in the current tree at `docs/rescened-backup-2026-08-13.archive.gz` as of commit `7d27c45`; `.gitignore` cannot protect an already-tracked blob. Treat it as sensitive user/social data and do not extract it into the repository.
 
 The transferred file at `docs/rescened-backup-2026-08-13.archive.gz` is an exact byte-for-byte copy of that Git blob. Read-only verification completed successfully:
 
@@ -67,7 +67,7 @@ The transferred file at `docs/rescened-backup-2026-08-13.archive.gz` is an exact
 - all 12 namespaces, 2,647 BSON documents, metadata JSON records, namespace EOF markers, and per-namespace CRC64 checksums parsed and matched;
 - no extraction, database connection, or restore was performed.
 
-The verified copy is currently untracked inside the repository. Do not add or commit it. Move the retained working copy to a protected location outside the repository before normal Git staging.
+Move the retained working copy to a protected location outside the repository. Removing the tracked copy and purging shared history require a separate coordinated security decision; do not rewrite history as an incidental migration step.
 
 A read-only inspection of that historical snapshot produced this provisional inventory:
 
@@ -343,11 +343,31 @@ tests/legacyMigration.test.js
 tests/legacyMigration.integration.test.js
 ```
 
-The command is available as `npm run db:migrate:legacy`. It supports inventory, dry-run planning, plan validation, checksum-bound apply, and candidate verification. The integration command is cross-platform through `scripts/runIntegrationTests.js`.
+The routine operator workflow is intentionally condensed to two commands. The first command composes inventory, dry-run planning, artifact sealing, and validation. The second composes checksum-bound transactional apply and candidate verification. The original five phase-specific modes remain available through `npm run db:migrate:legacy` for inspection and recovery. The integration command is cross-platform through `scripts/runIntegrationTests.js`.
 
 Store sensitive local output under the ignored path `.migration/legacy-gen1/<run-id>/`. Use session-only `LEGACY_MONGO_URI` and `MIGRATION_TARGET_MONGO_URI`; never place credentials in CLI arguments, Git, or reports.
 
-Command contract:
+Routine command contract:
+
+```text
+npm run db:migrate:legacy:plan -- --run-dir <run-dir> [--overrides <file>]
+npm run db:migrate:legacy:execute -- --run-dir <run-dir> --plan-sha256 <plan-sha256> --confirm-target <database>
+```
+
+`db:migrate:legacy:plan` performs `inventory -> dry-run -> validate`. Review
+`plan-report.json` and `quarantine.json`, then copy `planSha256` into the
+execute command. `db:migrate:legacy:execute` performs `apply -> verify` and
+stops immediately if either phase fails.
+
+The plan command recomputes the live source/candidate inventory and refuses a
+stale `inventory.json`. Execute requires the connected database name, operator
+confirmation, sealed plan target, and target baseline fingerprint to agree
+before it creates indexes, a ledger, or application documents. Each execution
+attempt writes immutable reports under `execution/<attempt-id>/`; rerunning the
+same checksum is safe after a committed verification/reporting failure and
+revalidates completed and pending batch state before continuing.
+
+Advanced/recovery command contract:
 
 ```text
 npm run db:migrate:legacy -- --inventory --run-dir <run-dir>
@@ -358,11 +378,11 @@ npm run db:migrate:legacy -- --verify --run-dir <run-dir> --plan-sha256 <plan-sh
 ```
 
 The plan checksum is the canonical hash embedded in `plan.json` (the
-`plan-report.json` also records the separate on-disk file digest). `--apply`
-and `--verify` require the embedded checksum, not the file digest.
+`plan-report.json` also records the separate on-disk file digest). Execute,
+apply, and verify require the embedded checksum, not the file digest.
 
 Mirror the existing catalog import exit semantics: `0` clean, `2` completed with quarantine/conflicts, and `1` fatal or rolled back.
 
 ## Next action
 
-The transfer, byte-integrity check, structural archive inventory, Database Tools installation, and first migration implementation are complete. The next operational dependency is an isolated MongoDB `8.0`-compatible deployment. Once its exact source namespace and access controls are set, run a no-write `mongorestore --dryRun` against it, then restore only the archive's `test.*` namespaces into the chosen `rescened_gen1_source_<run-id>` namespace. Do not run either command against a live or existing generation-2 database. After restore counts reconcile, run `npm run db:migrate:legacy -- --inventory --run-dir <run-dir>` followed by the checksum-bound dry-run; do not apply until the generated plan and its social/manual dispositions are reviewed.
+The transfer, byte-integrity check, structural archive inventory, Database Tools installation, and migration implementation are complete. The next operational dependency is an isolated MongoDB `8.0`-compatible deployment. Once its exact source namespace and access controls are set, run a no-write `mongorestore --dryRun` against it, then restore only the archive's `test.*` namespaces into the chosen `rescened_gen1_source_<run-id>` namespace. Do not run either command against a live or existing generation-2 database. After restore counts reconcile, use `db:migrate:legacy:plan`, review its sealed report, and use `db:migrate:legacy:execute` only after the social/manual dispositions are approved.
