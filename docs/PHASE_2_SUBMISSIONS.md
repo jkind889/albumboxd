@@ -234,7 +234,7 @@ Create and revise accept the same body shape. Only these three root properties a
 | `catalogNumber` | Optional, maximum 100 characters. |
 | `barcode` | Optional. Spaces and hyphens are removed, then 8–14 digits are required. |
 | `tracks` | Optional array with at most 200 entries. |
-| `coverSourceUrl` | Optional HTTPS URL, maximum 2048 characters. The API records it as evidence and does not fetch it. |
+| `coverSourceUrl` | Optional HTTPS direct cover-image URL, maximum 2048 characters. A moderator reviews the URL; when the suggestion is approved into a new album, this URL is published as its cover without a server-side fetch. |
 
 Each track accepts only `discNumber`, `trackNumber`, `title`, `durationMs`, and `artistDisplayName`:
 
@@ -394,7 +394,9 @@ All successful commands append one moderation-history event and return `{ sugges
 
 Approval runs through one transactional, idempotent service. It rechecks duplicate candidates inside the transaction, never auto-links a candidate, and requires `confirmPossibleDuplicate=true` before creating a new album when only advisory matches exist. Exact catalog-reference matches require an explicit `albumId`.
 
-When creating an album, the service copies normalized title, artist credits, release fields, tracks, label, and external references; adds normalized barcode/catalog-number references; sets `catalogSource: "community"`; generates local album/track UUIDs; and leaves `cover` empty. Supporting evidence, country, and `coverSourceUrl` remain in the private submission record, and no submitted URL is fetched.
+When creating an album, the service copies normalized title, artist credits, release fields, tracks, label, and external references; adds normalized barcode/catalog-number references; sets `catalogSource: "community"`; generates local album/track UUIDs; and applies cover precedence of moderator-reviewed `coverSourceUrl`, then a best-effort deterministic Cover Art Archive lookup, then an empty `cover`. The lookup runs before the transaction and is accepted only when the pending submission revision is unchanged when re-read. It never fetches a submitted URL, fuzzy-matches metadata, or blocks approval when the provider is unavailable or artwork is unresolved. Supporting evidence and country remain private to the submission record.
+
+When Cover Art Archive resolves artwork, the service stores its canonical `front-500` URL and records cover provenance (provider, resolution method, source MusicBrainz identifiers, image details, submission, revision, moderator, and approval time). Any exact MusicBrainz references derived by the lookup are added to the newly created catalog record. Explicit `albumId` approvals only link the selected album and never apply the suggestion's cover or identity references to it. Retrying an approved suggestion returns the existing catalog album without repeating artwork lookup or appending another audit event.
 
 Each copied catalog field receives field-level provenance containing `source: "community"`, the public submission ID, revision, approving Clerk user ID, and approval timestamp. Linking an existing catalog album does not overwrite that album.
 

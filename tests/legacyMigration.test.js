@@ -177,6 +177,21 @@ test("catalog hydration creates provider-neutral documents and social transforms
   assert.deepEqual(issues, []);
 });
 
+test("legacy album saves reuse a source user's existing default board", async () => {
+  const { source, target, client } = fixture();
+  source.albums.push({ _id: new ObjectId(), userId: "user_1", spotifyId: "legacy-provider-key" });
+  const catalog = await buildCatalogCrosswalk({ sourceDocuments: source, targetRows: target.albumcatalogs, client, overrides: { albums: [] } });
+  const social = transformSocial({ source, target, catalogResults: catalog.results });
+
+  const defaultBoards = social.documents.boards.filter((board) => board.userId === "user_1" && board.isDefault);
+  assert.equal(social.documents.boards.length, 1);
+  assert.equal(defaultBoards.length, 1);
+  assert.equal(social.documents.boarditems.length, 1);
+  assert.equal(social.documents.boarditems[0].boardId.toHexString(), source.boards[0]._id.toHexString());
+  const issues = await validateDocuments({ albumcatalogs: [catalog.results[0].document], ...social.documents });
+  assert.equal(issues.some((issue) => issue.code === "DUPLICATE_DEFAULT_BOARD"), false);
+});
+
 test("orphan review interactions are archived and not converted into active targets", async () => {
   const { source, target, client } = fixture();
   source.likes.push({ _id: new ObjectId(), userId: "user_1", targetType: "review", reviewId: new ObjectId(), spotifyId: "legacy-provider-key" });

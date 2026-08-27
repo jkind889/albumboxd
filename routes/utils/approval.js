@@ -15,6 +15,17 @@ const {
   isTransactionUnavailable,
 } = require("./moderation");
 
+const MBID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Keep the resolver lazy so direct-cover and linked-album approvals do not load
+// or call the provider, and callers can inject a deterministic resolver in tests.
+function defaultCoverResolver() {
+  // eslint-disable-next-line global-require, import/no-dynamic-require
+  const resolver = require("../../lib/coverArtArchive");
+  if (typeof resolver === "function") return resolver;
+  return resolver.resolveCoverArt || resolver.resolveCoverArtArchive || resolver.resolve || null;
+}
+
 function plain(value) {
   return typeof value?.toObject === "function" ? value.toObject() : value;
 }
@@ -38,16 +49,113 @@ function duplicatePayload(submission) {
   };
 }
 
-function appendReference(references, reference) {
-  const exists = references.some((candidate) => (
-    candidate.provider === reference.provider
-    && candidate.entityType === reference.entityType
-    && candidate.externalId === reference.externalId
-  ));
-  if (!exists) references.push(reference);
+function referenceKey(reference) {
+  const provider = String(reference?.provider || "").trim().toLowerCase();
+  const entityType = String(reference?.entityType || "").trim().toLowerCase();
+  let externalId = String(reference?.externalId || "").trim();
+  if (provider === "musicbrainz" && ["release-group", "release"].includes(entityType) && MBID.test(externalId)) {
+    externalId = externalId.toLowerCase();
+  }
+  return `${provider}|${entityType}|${externalId}`;
 }
 
-function buildCatalogInput(submission, actorUserId, approvedAt) {
+function appendReference(references, reference) {
+  const key = referenceKey(reference);
+  if (!references.some((candidate) => referenceKey(candidate) === key)) references.push(reference);
+}
+
+function normalizeResolutionReference(reference) {
+  if (!reference || typeof reference !== "object") return null;
+  const provider = String(reference.provider || "").trim().toLowerCase();
+  const entityType = String(reference.entityType || "").trim().toLowerCase();
+  const externalId = String(reference.externalId || "").trim();
+  if (!provider || !entityType || !externalId) return null;
+  return {
+    provider,
+    entityType,
+    externalId,
+    url: String(reference.url || "").trim(),
+  };
+}
+
+function resolutionReferences(resolution) {
+  const references = [
+    resolution?.externalReferences,
+    resolution?.derivedReferences,
+    resolution?.references,
+    resolution?.externalReference,
+  ].flatMap((value) => (Array.isArray(value) ? value : value ? [value] : []));
+  const derived = [];
+  const provenance = resolution?.provenance && typeof resolution.provenance === "object"
+    ? resolution.provenance
+    : {};
+  const releaseGroupMbid = resolution?.releaseGroupMbid || resolution?.sourceReleaseGroupMbid || provenance.releaseGroupMbid;
+  const releaseMbid = resolution?.releaseMbid || resolution?.sourceReleaseMbid || provenance.releaseMbid;
+  if (MBID.test(String(releaseGroupMbid || ""))) {
+    derived.push({
+      provider: "musicbrainz",
+      entityType: "release-group",
+      externalId: String(releaseGroupMbid).toLowerCase(),
+      url: `https://musicbrainz.org/release-group/${String(releaseGroupMbid).toLowerCase()}`,
+    });
+  }
+  if (MBID.test(String(releaseMbid || ""))) {
+    derived.push({
+      provider: "musicbrainz",
+      entityType: "release",
+      externalId: String(releaseMbid).toLowerCase(),
+      url: `https://musicbrainz.org/release/${String(releaseMbid).toLowerCase()}`,
+    });
+  }
+  return [...references, ...derived]
+    .map(normalizeResolutionReference)
+    .filter(Boolean);
+}
+
+function resolvedCoverUrl(resolution) {
+  if (!resolution || typeof resolution !== "object") return "";
+  if (resolution.status && resolution.status !== "resolved" && resolution.status !== "success") return "";
+  if (resolution.resolved === false) return "";
+  return String(
+    resolution.cover
+      || resolution.coverUrl
+      || resolution.canonicalCoverUrl
+      || resolution.canonicalUrl
+      || resolution.url
+      || resolution.imageUrl
+      || "",
+  ).trim();
+}
+
+function buildCoverProvenance({ source, submission, actorUserId, approvedAt, resolution, sourceUrl = "" }) {
+  const provenance = {
+    source,
+    submissionId: submission.submissionId,
+    revision: submission.currentRevision,
+    approvedByUserId: actorUserId,
+    approvedAt,
+  };
+  if (sourceUrl) {
+    provenance.url = sourceUrl;
+    provenance.sourceUrl = sourceUrl;
+    provenance.coverSourceUrl = sourceUrl;
+  }
+  if (resolution && typeof resolution === "object") {
+    const details = resolution.provenance && typeof resolution.provenance === "object"
+      ? { ...resolution.provenance, ...resolution }
+      : resolution;
+    ["method", "resolutionMethod", "releaseGroupMbid", "releaseMbid", "imageId", "size", "canonicalUrl", "verifiedAt"]
+      .forEach((key) => {
+        if (details[key] !== undefined && details[key] !== null && details[key] !== "") {
+          provenance[key] = details[key];
+        }
+      });
+    if (details.source) provenance.provider = details.source;
+  }
+  return provenance;
+}
+
+function buildCatalogInput(submission, actorUserId, approvedAt, coverResolution = null) {
   const source = plain(submission);
   const metadata = source.proposedMetadata || {};
   const references = (source.externalReferences || []).map((reference) => ({
@@ -73,6 +181,8 @@ function buildCatalogInput(submission, actorUserId, approvedAt) {
     });
   }
 
+  resolutionReferences(coverResolution).forEach((reference) => appendReference(references, reference));
+
   const fields = [
     "title",
     "artistDisplayName",
@@ -96,6 +206,19 @@ function buildCatalogInput(submission, actorUserId, approvedAt) {
     };
   });
 
+  const manualCover = String(metadata.coverSourceUrl || "").trim();
+  const cover = manualCover || resolvedCoverUrl(coverResolution);
+  if (cover) {
+    provenance.cover = buildCoverProvenance({
+      source: manualCover ? "community" : "cover-art-archive",
+      submission: source,
+      actorUserId,
+      approvedAt,
+      resolution: manualCover ? null : coverResolution,
+      sourceUrl: manualCover,
+    });
+  }
+
   return {
     title: metadata.title,
     artistDisplayName: metadata.artistDisplayName,
@@ -106,7 +229,7 @@ function buildCatalogInput(submission, actorUserId, approvedAt) {
     releaseYear: metadata.releaseYear,
     tracks: metadata.tracks || [],
     label: metadata.label || "",
-    cover: "",
+    cover,
     externalReferences: references,
     fieldProvenance: provenance,
     catalogSource: "community",
@@ -131,14 +254,98 @@ async function candidateAlbumIds(duplicate, session) {
   return (Array.isArray(rows) ? rows : []).map((row) => plain(row)?.albumId).filter(Boolean);
 }
 
+function coverResolverInput(submission) {
+  const source = plain(submission) || {};
+  const metadata = source.proposedMetadata || {};
+  return {
+    title: metadata.title || "",
+    artistDisplayName: metadata.artistDisplayName || "",
+    artistCredits: metadata.artistCredits || [],
+    releaseDate: metadata.releaseDate || "",
+    releaseYear: metadata.releaseYear,
+    barcode: metadata.barcode || "",
+    externalReferences: source.externalReferences || [],
+    supportingSources: source.supportingSources || [],
+  };
+}
+
+async function resolveSuggestedCover(submission, coverResolver) {
+  const metadata = plain(submission)?.proposedMetadata || {};
+  // A moderator-approved direct URL is the highest-precedence source and is
+  // intentionally never fetched or otherwise validated by this service.
+  if (String(metadata.coverSourceUrl || "").trim()) return null;
+  if (typeof coverResolver !== "function") return null;
+  try {
+    const resolution = await coverResolver(coverResolverInput(submission), { profile: "approval" });
+    return resolution && typeof resolution === "object" ? resolution : null;
+  } catch {
+    // Artwork is best effort. A provider outage must never prevent approval.
+    return null;
+  }
+}
+
+function mergeReferences(submission, resolution) {
+  const source = plain(submission);
+  const references = [...(source.externalReferences || [])].map((reference) => ({ ...reference }));
+  resolutionReferences(resolution).forEach((reference) => appendReference(references, reference));
+  return references;
+}
+
+function approvalResult(result) {
+  return {
+    suggestion: serializeSubmission(result.submission, { detail: true }),
+    album: normalizeCatalogAlbum(result.album),
+    albumUrl: `/album/${plain(result.album).albumId}`,
+    idempotent: result.idempotent,
+  };
+}
+
 async function approveAlbumSubmission({
   submissionId,
   actorUserId,
   albumId = "",
   confirmPossibleDuplicate = false,
   reason = "",
+  coverResolver,
 }) {
   if (typeof mongoose.startSession !== "function") throw new ApprovalUnavailableError();
+
+  // Avoid a provider call and a transaction for idempotent retries. This also
+  // ensures an already-published album cannot be changed by a stale suggestion.
+  const preliminarySubmission = await readQuery(AlbumSubmission.findOne({ submissionId }));
+  if (!preliminarySubmission) {
+    throw new ModerationConflictError("Suggestion not found", "SUGGESTION_NOT_FOUND");
+  }
+  const preliminary = plain(preliminarySubmission);
+  if (preliminary.status === "approved") {
+    const approvedAlbum = await findCatalogByInternalId(preliminary.approvedAlbumCatalogId);
+    if (!approvedAlbum) throw new ModerationConflictError("Approved suggestion has no usable catalog album", "APPROVAL_INCONSISTENT");
+    if (albumId && plain(approvedAlbum).albumId !== albumId) {
+      throw new ModerationConflictError("Suggestion was already approved for another album", "APPROVAL_CONFLICT");
+    }
+    return approvalResult({
+      submission: { ...preliminary, approvedAlbumCatalogId: approvedAlbum },
+      album: approvedAlbum,
+      idempotent: true,
+    });
+  }
+  if (preliminary.status !== "pending") {
+    throw new ModerationConflictError("Only pending suggestions can be approved", "INVALID_SUBMISSION_STATE");
+  }
+
+  // Resolve before opening Mongo's transaction. The transaction re-reads the
+  // submission and rejects this result if the revision changed meanwhile.
+  const preliminaryRevision = preliminary.currentRevision;
+  const preliminaryUpdatedAt = preliminary.updatedAt ? new Date(preliminary.updatedAt).getTime() : null;
+  let coverResolution = null;
+  if (!albumId) {
+    const metadata = preliminary.proposedMetadata || {};
+    if (!String(metadata.coverSourceUrl || "").trim()) {
+      const resolver = coverResolver === undefined ? defaultCoverResolver() : coverResolver;
+      coverResolution = await resolveSuggestedCover(preliminary, resolver);
+    }
+  }
+
   let session;
   let result = null;
   try {
@@ -168,8 +375,17 @@ async function approveAlbumSubmission({
       if (current.status !== "pending") {
         throw new ModerationConflictError("Only pending suggestions can be approved", "INVALID_SUBMISSION_STATE");
       }
+      if (current.currentRevision !== preliminaryRevision
+        || (preliminaryUpdatedAt !== null && current.updatedAt && new Date(current.updatedAt).getTime() !== preliminaryUpdatedAt)) {
+        throw new ModerationConflictError("Suggestion changed while artwork was being resolved", "STATE_CONFLICT");
+      }
 
-      const duplicate = await findDuplicateSignals(duplicatePayload(current), {
+      const resolvedReferences = resolutionReferences(coverResolution);
+      const duplicateSource = resolvedReferences.length
+        ? { ...current, externalReferences: mergeReferences(current, coverResolution) }
+        : current;
+
+      const duplicate = await findDuplicateSignals(duplicatePayload(duplicateSource), {
         excludeSubmissionId: current._id,
         session,
       });
@@ -198,7 +414,7 @@ async function approveAlbumSubmission({
         album = await findCatalogByPublicId(albumId, session);
         if (!album) throw new ModerationConflictError("Catalog album not found", "CATALOG_ALBUM_NOT_FOUND");
       } else {
-        album = await createCatalogAlbum(buildCatalogInput(current, actorUserId, approvedAt), { session });
+        album = await createCatalogAlbum(buildCatalogInput(current, actorUserId, approvedAt, coverResolution), { session });
       }
 
       const updated = await AlbumSubmission.findOneAndUpdate(
@@ -228,12 +444,7 @@ async function approveAlbumSubmission({
       };
     });
     if (!result) throw new ModerationConflictError("Approval did not produce a result", "APPROVAL_CONFLICT");
-    return {
-      suggestion: serializeSubmission(result.submission, { detail: true }),
-      album: normalizeCatalogAlbum(result.album),
-      albumUrl: `/album/${plain(result.album).albumId}`,
-      idempotent: result.idempotent,
-    };
+    return approvalResult(result);
   } catch (error) {
     if (error instanceof ApprovalUnavailableError) throw error;
     if (isTransactionUnavailable(error)) throw new ApprovalUnavailableError();
@@ -249,4 +460,5 @@ async function approveAlbumSubmission({
 module.exports = {
   approveAlbumSubmission,
   buildCatalogInput,
+  resolveSuggestedCover,
 };

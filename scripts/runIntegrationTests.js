@@ -4,6 +4,7 @@ const { spawnSync } = require("node:child_process");
 
 const files = [
   "tests/moderation.integration.test.js",
+  "tests/coverBackfill.integration.test.js",
   "tests/catalogImport.integration.test.js",
   "tests/legacyMigration.integration.test.js",
 ];

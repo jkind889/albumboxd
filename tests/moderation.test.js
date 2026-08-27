@@ -289,7 +289,8 @@ test("moderator commands enforce reasons, target validation, and conditional tra
 });
 
 test("approval creates a catalog album transactionally and is idempotent", async () => {
-  const document = makeSubmission();
+  const directUrl = "https://example.com/cover.jpg";
+  const document = makeSubmission({ proposedMetadata: { ...validMetadata(), coverSourceUrl: directUrl } });
   const state = installMocks({ documents: [document] });
   const session = {
     async withTransaction(callback) { await callback(); },
@@ -303,7 +304,7 @@ test("approval creates a catalog album transactionally and is idempotent", async
   assert.equal(first.status, 200);
   assert.equal(first.body.suggestion.status, "approved");
   assert.match(first.body.albumUrl, /^\/album\/[0-9a-f-]{36}$/);
-  assert.equal(first.body.album.cover, "");
+  assert.equal(first.body.album.cover, directUrl);
   assert.equal(state.catalogs.length, 1);
   assert.equal(state.documents[0].moderationHistory.at(-1).action, "approved");
 
@@ -315,6 +316,140 @@ test("approval creates a catalog album transactionally and is idempotent", async
   assert.equal(second.body.idempotent, true);
   assert.equal(state.catalogs.length, 1);
   assert.equal(state.documents[0].moderationHistory.filter((event) => event.action === "approved").length, 1);
+});
+
+test("approval publishes a moderator-reviewed direct cover URL without fetching it", async () => {
+  const directUrl = "https://images.example.test/kind-of-blue.jpg";
+  const document = makeSubmission({ proposedMetadata: { ...validMetadata(), coverSourceUrl: directUrl } });
+  const state = installMocks({ documents: [document] });
+  mongoose.startSession = async () => ({ async withTransaction(callback) { await callback(); }, async endSession() {} });
+  const result = await callRoute(state.router, "post", "/:submissionId/approve", {
+    params: { submissionId: document.submissionId },
+    body: { confirmPossibleDuplicate: true },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.album.cover, directUrl);
+  assert.equal(state.catalogs[0].fieldProvenance.cover.source, "community");
+  assert.equal(state.catalogs[0].fieldProvenance.cover.url, directUrl);
+  assert.equal(state.catalogs[0].fieldProvenance.cover.submissionId, document.submissionId);
+  assert.equal(result.body.album.externalReferences.some((reference) => reference.provider === "cover-art-archive"), false);
+});
+
+test("approval applies an injected Cover Art Archive result and derived MusicBrainz references", async () => {
+  mongoose.startSession = async () => ({ async withTransaction(callback) { await callback(); }, async endSession() {} });
+  let input;
+  const releaseMbid = "01234567-89ab-4cde-8123-456789abcdef";
+  const { approveAlbumSubmission } = require("../routes/utils/approval");
+  const secondDocument = makeSubmission({ proposedMetadata: { ...validMetadata(), coverSourceUrl: "" } });
+  const secondState = installMocks({ documents: [secondDocument] });
+  const automatic = await approveAlbumSubmission({
+    submissionId: secondDocument.submissionId,
+    actorUserId: "user_mod",
+    confirmPossibleDuplicate: true,
+    coverResolver: async (candidate) => {
+      input = candidate;
+      return {
+        status: "resolved",
+        coverUrl: `https://coverartarchive.org/release/${releaseMbid}/front-500`,
+        source: "cover-art-archive",
+        method: "release",
+        releaseMbid,
+        imageId: "image-1",
+        size: 500,
+        verifiedAt: "2026-08-26T00:00:00.000Z",
+      };
+    },
+  });
+  assert.equal(automatic.album.cover, `https://coverartarchive.org/release/${releaseMbid}/front-500`);
+  assert.equal(input.title, secondDocument.proposedMetadata.title);
+  assert.equal(automatic.album.fieldProvenance, undefined);
+  const created = secondState.catalogs[0];
+  assert.equal(created.fieldProvenance.cover.provider, "cover-art-archive");
+  assert.equal(created.fieldProvenance.cover.releaseMbid, releaseMbid);
+  assert.equal(created.externalReferences.some((reference) => reference.externalId === releaseMbid), true);
+});
+
+test("approval retains exact resolver references when CAA has no usable artwork", async () => {
+  const groupMbid = "11111111-1111-4111-8111-111111111111";
+  const document = makeSubmission({ proposedMetadata: { ...validMetadata(), coverSourceUrl: "" } });
+  const state = installMocks({ documents: [document] });
+  mongoose.startSession = async () => ({ async withTransaction(callback) { await callback(); }, async endSession() {} });
+  const { approveAlbumSubmission } = require("../routes/utils/approval");
+  const result = await approveAlbumSubmission({
+    submissionId: document.submissionId,
+    actorUserId: "user_mod",
+    confirmPossibleDuplicate: true,
+    coverResolver: async () => ({
+      status: "unresolved",
+      resolved: false,
+      reason: "no_approved_front",
+      derivedReferences: [{
+        provider: "musicbrainz",
+        entityType: "release-group",
+        externalId: groupMbid,
+        url: `https://musicbrainz.org/release-group/${groupMbid}`,
+      }],
+    }),
+  });
+  assert.equal(result.album.cover, "");
+  assert.equal(state.catalogs[0].externalReferences.some((reference) => reference.externalId === groupMbid), true);
+  assert.equal(state.catalogs[0].fieldProvenance.cover, undefined);
+});
+
+test("artwork lookup failures do not block approval and linked albums stay unchanged", async () => {
+  const document = makeSubmission({ proposedMetadata: { ...validMetadata(), coverSourceUrl: "" } });
+  const catalog = {
+    _id: new mongoose.Types.ObjectId(),
+    albumId: crypto.randomUUID(),
+    title: "Existing album",
+    artistDisplayName: "Existing artist",
+    cover: "https://images.example.test/existing.jpg",
+    externalReferences: [],
+  };
+  const state = installMocks({ documents: [document], catalogs: [catalog] });
+  mongoose.startSession = async () => ({ async withTransaction(callback) { await callback(); }, async endSession() {} });
+  let lookupCount = 0;
+  const { approveAlbumSubmission } = require("../routes/utils/approval");
+  const failed = await approveAlbumSubmission({
+    submissionId: document.submissionId,
+    actorUserId: "user_mod",
+    confirmPossibleDuplicate: true,
+    coverResolver: async () => { lookupCount += 1; throw new Error("provider unavailable"); },
+  });
+  assert.equal(failed.album.cover, "");
+  assert.equal(lookupCount, 1);
+
+  const linkedDocument = makeSubmission({ proposedMetadata: { ...validMetadata(), coverSourceUrl: "" } });
+  state.documents.push(linkedDocument);
+  const linked = await approveAlbumSubmission({
+    submissionId: linkedDocument.submissionId,
+    actorUserId: "user_mod",
+    albumId: catalog.albumId,
+    coverResolver: async () => { throw new Error("must not resolve linked album"); },
+  });
+  assert.equal(linked.album.albumId, catalog.albumId);
+  assert.equal(state.catalogs[0].cover, "https://images.example.test/existing.jpg");
+});
+
+test("approval rejects artwork resolved against a stale submission revision", async () => {
+  const document = makeSubmission({ proposedMetadata: { ...validMetadata(), coverSourceUrl: "" } });
+  const state = installMocks({ documents: [document] });
+  mongoose.startSession = async () => ({ async withTransaction(callback) { await callback(); }, async endSession() {} });
+  const { approveAlbumSubmission } = require("../routes/utils/approval");
+  await assert.rejects(
+    approveAlbumSubmission({
+      submissionId: document.submissionId,
+      actorUserId: "user_mod",
+      confirmPossibleDuplicate: true,
+      coverResolver: async () => {
+        document.currentRevision = 2;
+        document.updatedAt = new Date("2026-08-02T00:00:00.000Z");
+        return { status: "resolved", coverUrl: "https://coverartarchive.org/release/01234567-89ab-4cde-8123-456789abcdef/front-500" };
+      },
+    }),
+    (error) => error.code === "STATE_CONFLICT",
+  );
+  assert.equal(state.catalogs.length, 0);
 });
 
 test("approval reports unavailable when Mongo cannot start a transaction", async () => {

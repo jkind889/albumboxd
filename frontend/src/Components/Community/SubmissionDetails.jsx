@@ -85,17 +85,23 @@ function MetadataBlock({ metadata = {}, compact = false, headingLevel = 4 }) {
 
       {metadata.coverSourceUrl ? (
         <p className="suggestion-cover-source">
-          <span className="suggestion-cover-source-label">Cover evidence</span>
+          <span className="suggestion-cover-source-label">Direct cover image URL</span>
           <a
             className="suggestion-external-link"
             href={metadata.coverSourceUrl}
             target="_blank"
             rel="noreferrer"
           >
-            Open source ↗
+            Review image ↗
           </a>
+          <span className="suggestion-cover-source-note">If approved, this moderator-reviewed URL will be published as the album cover.</span>
         </p>
-      ) : null}
+      ) : (
+        <p className="suggestion-cover-source suggestion-cover-source-empty">
+          <span className="suggestion-cover-source-label">Cover image</span>
+          <span className="suggestion-cover-source-note">No direct image URL supplied. Approval will try Cover Art Archive; unresolved artwork can be backfilled later.</span>
+        </p>
+      )}
 
       {tracks.length ? (
         <div className="suggestion-detail-subsection">

@@ -174,7 +174,7 @@ function validateDraft(draft) {
     errors.push("Barcode must contain 8 to 14 digits.");
   }
   if (metadata.coverSourceUrl.trim() && !isHttpsUrl(metadata.coverSourceUrl.trim())) {
-    errors.push("Cover source must be an HTTPS URL.");
+    errors.push("Direct cover image URL must use HTTPS.");
   }
 
   if (!draft.supportingSources.length) errors.push("Add at least one supporting source.");
@@ -582,7 +582,7 @@ export function SuggestionForm({
               />
             </label>
             <label className="suggestion-form-field suggestion-form-field-wide" htmlFor={`${idPrefix}-cover-source`}>
-              <span className="suggestion-form-label">Cover source URL</span>
+              <span className="suggestion-form-label">Direct cover image URL</span>
               <input
                 id={`${idPrefix}-cover-source`}
                 className="suggestion-form-input"
@@ -592,7 +592,7 @@ export function SuggestionForm({
                 placeholder="https://"
                 onChange={(event) => updateMetadata("coverSourceUrl", event.target.value)}
               />
-              <span className="suggestion-form-hint">Evidence only; Rescened will not fetch this image automatically.</span>
+              <span className="suggestion-form-hint">Optional. If approved, this HTTPS image URL will be published as the album cover. Leave blank and Rescened will try Cover Art Archive automatically.</span>
             </label>
           </div>
         </section>
