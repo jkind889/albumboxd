@@ -2,14 +2,22 @@ import { API_BASE_URL } from "../config/api";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import AsyncState from "../Components/Loading/AsyncState";
+import ExternalAlbumCard from "../Components/ExternalAlbumCard";
 import { getApiErrorMessage } from "../utils/apiErrors";
 
-export function SearchResults()
-{
-  const [searchresults, setResults] = useState([])
-  const [hasNextPage, setHasNextPage] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+const EXTERNAL_SEARCH_LIMIT = 12;
+
+export function SearchResults() {
+  const [searchresults, setResults] = useState([]);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [externalLoading, setExternalLoading] = useState(false);
+  const [externalError, setExternalError] = useState("");
+  const [externalState, setExternalState] = useState("idle");
+  const [catalogMatches, setCatalogMatches] = useState([]);
+  const [externalCandidates, setExternalCandidates] = useState([]);
+  const [externalRetry, setExternalRetry] = useState(0);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
@@ -17,59 +25,112 @@ export function SearchResults()
   const viewParam = searchParams.get("view") || "grid";
   const viewMode = viewParam === "list" ? "list" : "grid";
 
+  useEffect(() => {
+    let shouldIgnore = false;
+    const controller = new AbortController();
 
-    useEffect(() =>{
-      let shouldIgnore = false;
+    function resetExternalResults() {
+      setExternalLoading(false);
+      setExternalError("");
+      setExternalState("idle");
+      setCatalogMatches([]);
+      setExternalCandidates([]);
+    }
 
-      async function fetchResults() {
-        if (!query) {
-          setResults([])
-          setHasNextPage(false)
-          setError("")
-          setLoading(false);
-          return;
+    async function fetchExternalResults() {
+      setExternalLoading(true);
+      setExternalState("loading");
+      setExternalError("");
+
+      try {
+        const searchParams = new URLSearchParams({
+          q: query,
+          limit: String(EXTERNAL_SEARCH_LIMIT),
+        });
+        const response = await fetch(`${API_BASE_URL}/search/external?${searchParams.toString()}`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(await getApiErrorMessage(
+            response,
+            "External results are temporarily unavailable.",
+          ));
         }
 
-        setLoading(true)
-        setError("")
+        const data = await response.json();
+        if (shouldIgnore) return;
 
-        try {
-          const res = await fetch(`${API_BASE_URL}/search/search?q=${encodeURIComponent(query)}&page=${page}`)
+        setCatalogMatches(Array.isArray(data?.catalogMatches) ? data.catalogMatches : []);
+        setExternalCandidates(Array.isArray(data?.candidates) ? data.candidates : []);
+        setExternalState("ready");
+      } catch (searchError) {
+        if (shouldIgnore || searchError.name === "AbortError") return;
 
-          if (!res.ok) {
-            throw new Error(await getApiErrorMessage(res, "Search request failed"));
-          }
+        setExternalError(searchError.message || "External results are temporarily unavailable.");
+        setExternalState("error");
+      } finally {
+        if (!shouldIgnore) setExternalLoading(false);
+      }
+    }
 
-          const data = await res.json()
+    async function fetchResults() {
+      resetExternalResults();
 
-          if (shouldIgnore) {
-            return;
-          }
-
-          const results = Array.isArray(data) ? data : data.results;
-          setResults(Array.isArray(results) ? results : [])
-          setHasNextPage(Boolean(data?.hasNextPage))
-        } catch (searchError) {
-          if (shouldIgnore) {
-            return;
-          }
-
-          setResults([])
-          setHasNextPage(false)
-          setError(searchError.message || "Unable to load search results.")
-        } finally {
-          if (!shouldIgnore) {
-            setLoading(false)
-          }
-        }
+      if (!query) {
+        setResults([]);
+        setHasNextPage(false);
+        setError("");
+        setLoading(false);
+        return;
       }
 
-      fetchResults();
+      setLoading(true);
+      setError("");
+      setResults([]);
+      setHasNextPage(false);
 
-      return () => {
-        shouldIgnore = true;
-      };
-    }, [query, page])
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/search/search?q=${encodeURIComponent(query)}&page=${page}`,
+          { signal: controller.signal },
+        );
+
+        if (!response.ok) {
+          throw new Error(await getApiErrorMessage(response, "Search request failed"));
+        }
+
+        const data = await response.json();
+        if (shouldIgnore) return;
+
+        const results = Array.isArray(data) ? data : data.results;
+        const localResults = Array.isArray(results) ? results : [];
+        setResults(localResults);
+        setHasNextPage(Boolean(data?.hasNextPage));
+        setLoading(false);
+
+        if (page === 1 && localResults.length === 0) {
+          await fetchExternalResults();
+        }
+      } catch (searchError) {
+        if (shouldIgnore || searchError.name === "AbortError") return;
+
+        setResults([]);
+        setHasNextPage(false);
+        setError(searchError.message || "Unable to load search results.");
+        setLoading(false);
+      } finally {
+        if (!shouldIgnore) setLoading(false);
+      }
+    }
+
+    fetchResults();
+
+    return () => {
+      shouldIgnore = true;
+      controller.abort();
+    };
+  }, [query, page, externalRetry]);
 
   function updatePage(nextPage) {
     const nextParams = new URLSearchParams(searchParams);
@@ -90,12 +151,16 @@ export function SearchResults()
     setSearchParams(nextParams);
   }
 
-  function renderResults() {
+  function renderResults(results = searchresults) {
     return (
       <div className={viewMode === "list" ? "results-list" : "results-grid"}>
-        {Array.isArray(searchresults) && searchresults.map((result) => (
+        {Array.isArray(results) && results.map((result) => (
           <Link className="result-card" key={result.albumId} to={`/album/${result.albumId}`}>
-            <img className="result-cover" src={result.cover} alt={`${result.title} cover`} />
+            {result.cover ? (
+              <img className="result-cover" src={result.cover} alt={`${result.title} cover`} />
+            ) : (
+              <span className="result-cover result-cover-fallback" aria-label="No cover available">No cover</span>
+            )}
             <span className="result-copy">
               <h3>{result.title}</h3>
               <p>{result.artistDisplayName}</p>
@@ -106,7 +171,74 @@ export function SearchResults()
       </div>
     );
   }
-  
+
+  function renderExternalResults() {
+    if (externalState === "error") {
+      return (
+        <section className="external-search-message" role="alert">
+          <p className="external-search-message-kicker">External discovery unavailable</p>
+          <h3>We couldn’t check MusicBrainz right now.</h3>
+          <p>
+            External results are temporarily unavailable.
+            {externalError ? ` ${externalError}` : ""}
+          </p>
+          <button
+            className="external-search-retry"
+            type="button"
+            onClick={() => setExternalRetry((current) => current + 1)}
+          >
+            Try external search again
+          </button>
+        </section>
+      );
+    }
+
+    return (
+      <div className="external-search-results">
+        <section className="external-search-intro" aria-labelledby="external-search-heading">
+          <p className="external-search-kicker">External discovery</p>
+          <h3 id="external-search-heading">No albums in Rescened matched this search.</h3>
+          <p>These MusicBrainz results are not in the catalog yet. You can suggest one for community review.</p>
+        </section>
+
+        {catalogMatches.length > 0 ? (
+          <section className="external-catalog-matches" aria-labelledby="catalog-matches-heading">
+            <div className="external-section-heading">
+              <p className="external-search-kicker">Known identities</p>
+              <h3 id="catalog-matches-heading">Already in Rescened</h3>
+            </div>
+            {renderResults(catalogMatches)}
+          </section>
+        ) : null}
+
+        {externalCandidates.length > 0 ? (
+          <section className="external-candidates" aria-labelledby="external-candidates-heading">
+            <div className="external-section-heading">
+              <p className="external-search-kicker">MusicBrainz release groups</p>
+              <h3 id="external-candidates-heading">Candidates to add</h3>
+            </div>
+            <div className="external-candidates-grid">
+              {externalCandidates.map((candidate) => (
+                <ExternalAlbumCard key={candidate.externalId} candidate={candidate} />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {catalogMatches.length === 0 && externalCandidates.length === 0 ? (
+          <p className="external-search-no-results">MusicBrainz did not return any usable release groups for this query.</p>
+        ) : null}
+      </div>
+    );
+  }
+
+  const isExternalMiss = Boolean(
+    query && page === 1 && !loading && !error && searchresults.length === 0,
+  );
+  const hasExternalResults = catalogMatches.length > 0 || externalCandidates.length > 0;
+  const hasVisibleResults = searchresults.length > 0 || hasExternalResults;
+  const isLoading = loading || externalLoading;
+
   return (
     <section className="search-results-page">
         <div className="search-results-header">
@@ -114,9 +246,11 @@ export function SearchResults()
           <h2>{query || "Search"}</h2>
           <div className="search-results-toolbar">
             <p className="search-results-summary">
-              {loading
-                ? "Loading albums..."
-                : `${searchresults.length} album${searchresults.length === 1 ? "" : "s"} on page ${page}`}
+              {isLoading
+                ? externalLoading ? "Searching MusicBrainz..." : "Loading albums..."
+                : isExternalMiss && hasExternalResults
+                  ? `${catalogMatches.length + externalCandidates.length} discovery result${catalogMatches.length + externalCandidates.length === 1 ? "" : "s"}`
+                  : `${searchresults.length} album${searchresults.length === 1 ? "" : "s"} on page ${page}`}
             </p>
             <div className="profile-view-toggle search-view-toggle" aria-label="Search results view">
               <button
@@ -138,15 +272,15 @@ export function SearchResults()
         </div>
 
         <AsyncState
-          isLoading={loading && Boolean(query)}
+          isLoading={isLoading && Boolean(query)}
           error={error}
-          isEmpty={!loading && !error && Boolean(query) && searchresults.length === 0}
+          isEmpty={!isLoading && !error && Boolean(query) && !hasVisibleResults && !isExternalMiss}
           loadingVariant="grid"
-          loadingMessage="Loading search results"
+          loadingMessage={externalLoading ? "Searching MusicBrainz" : "Loading search results"}
           errorTitle="Search unavailable"
           emptyTitle="No albums matched that search."
         >
-          {renderResults()}
+          {searchresults.length > 0 ? renderResults() : isExternalMiss ? renderExternalResults() : null}
         </AsyncState>
 
         {query && (page > 1 || hasNextPage) && (

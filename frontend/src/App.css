@@ -2618,6 +2618,16 @@ html:has(.search-results-page) .search-submit {
   filter: saturate(0.82) contrast(1.04);
 }
 
+.result-cover-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--search-muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
 .results-list .result-cover {
   width: 58px;
 }
@@ -2773,6 +2783,236 @@ html:has(.search-results-page) .search-submit {
   font-weight: 400;
   line-height: 1.25;
   white-space: nowrap;
+}
+
+.external-search-results {
+  display: grid;
+  gap: 2.5rem;
+  margin-top: 1.5rem;
+}
+
+.external-search-intro,
+.external-search-message {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 1.25rem 1.35rem;
+  border: 1px solid var(--search-line);
+  border-left: 3px solid var(--search-accent);
+  background: #101010;
+}
+
+.external-search-intro p,
+.external-search-message p,
+.external-search-intro h3,
+.external-search-message h3 {
+  margin: 0;
+}
+
+.external-search-kicker,
+.external-search-message-kicker {
+  margin: 0;
+  color: var(--search-accent);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.external-search-intro h3,
+.external-search-message h3 {
+  color: #efefef;
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.external-search-intro > p:last-child,
+.external-search-message > p:not(.external-search-message-kicker) {
+  color: var(--search-muted);
+  font-size: 0.73rem;
+  line-height: 1.55;
+}
+
+.external-search-message {
+  border-left-color: #d97706;
+}
+
+.external-search-message-kicker {
+  color: #f59e0b;
+}
+
+.external-search-retry,
+.external-album-suggest,
+.external-album-source {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--search-line);
+  border-radius: 0;
+  background: #050505;
+  color: #d8d8d8;
+  font: inherit;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.external-search-retry {
+  justify-self: start;
+  margin-top: 0.35rem;
+  cursor: pointer;
+}
+
+.external-search-retry:hover,
+.external-search-retry:focus-visible,
+.external-album-suggest:hover,
+.external-album-suggest:focus-visible,
+.external-album-source:hover,
+.external-album-source:focus-visible {
+  border-color: var(--search-accent);
+  background: #181818;
+  color: #efefef;
+  outline: none;
+}
+
+.external-catalog-matches,
+.external-candidates {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.external-section-heading {
+  display: grid;
+  gap: 0.25rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--search-line);
+}
+
+.external-section-heading h3 {
+  margin: 0;
+  color: #efefef;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.external-catalog-matches .results-grid,
+.external-catalog-matches .results-list {
+  margin-top: 0;
+}
+
+.external-candidates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.external-album-card {
+  display: grid;
+  grid-template-columns: minmax(110px, 38%) minmax(0, 1fr);
+  gap: 1rem;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--search-line);
+  background: #050505;
+}
+
+.external-album-cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background: #101010;
+  filter: saturate(0.82) contrast(1.04);
+}
+
+.external-album-cover-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--search-muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.external-album-copy {
+  display: grid;
+  align-content: start;
+  gap: 0.38rem;
+  min-width: 0;
+}
+
+.external-album-label-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.external-album-label,
+.external-album-type {
+  color: var(--search-accent);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.external-album-type {
+  color: var(--search-muted);
+}
+
+.external-album-title,
+.external-album-artist,
+.external-album-year {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.external-album-title {
+  color: #efefef;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.external-album-artist,
+.external-album-year {
+  color: var(--search-muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.external-album-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+
+.external-album-suggest {
+  border-color: var(--search-accent);
+  background: var(--search-accent);
+  color: #ffffff;
+}
+
+.external-album-suggest:hover,
+.external-album-suggest:focus-visible {
+  background: #8e63ae;
+  color: #ffffff;
+}
+
+.external-search-no-results {
+  margin: 0;
+  padding: 1rem;
+  border: 1px dashed var(--search-line);
+  color: var(--search-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
 }
 
 .results-empty {
@@ -5714,6 +5954,15 @@ html:has(.search-results-page) .search-submit {
     margin-top: -0.35rem;
   }
 
+  .external-candidates-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .external-album-card {
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 0.8rem;
+  }
+
   .popular-albums-grid {
     grid-template-columns: 1fr;
   }
@@ -6758,6 +7007,42 @@ html:has(.search-results-page) .search-submit {
 
 :root[data-theme="light"] .result-cover {
   background: var(--app-surface-strong);
+}
+
+:root[data-theme="light"] .external-search-intro,
+:root[data-theme="light"] .external-search-message,
+:root[data-theme="light"] .external-album-card,
+:root[data-theme="light"] .external-search-retry,
+:root[data-theme="light"] .external-album-source,
+:root[data-theme="light"] .external-catalog-matches .results-grid .result-card,
+:root[data-theme="light"] .external-catalog-matches .results-list .result-card {
+  border-color: var(--app-line);
+  background: var(--app-surface);
+  color: var(--app-text);
+}
+
+:root[data-theme="light"] .external-search-intro h3,
+:root[data-theme="light"] .external-search-message h3,
+:root[data-theme="light"] .external-section-heading h3,
+:root[data-theme="light"] .external-album-title {
+  color: var(--app-text);
+}
+
+:root[data-theme="light"] .external-album-suggest {
+  border-color: var(--app-accent);
+  background: var(--app-accent);
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .external-search-retry:hover,
+:root[data-theme="light"] .external-search-retry:focus-visible,
+:root[data-theme="light"] .external-album-suggest:hover,
+:root[data-theme="light"] .external-album-suggest:focus-visible,
+:root[data-theme="light"] .external-album-source:hover,
+:root[data-theme="light"] .external-album-source:focus-visible {
+  border-color: var(--app-accent);
+  background: var(--app-surface-strong);
+  color: var(--app-text);
 }
 
 :root[data-theme="light"] .profile-spotify-inline {

@@ -1,0 +1,450 @@
+# External Search Fallback and Incremental Catalog Growth
+
+Status: Proposed implementation scope
+
+Last reviewed: 2026-08-31
+
+This document defines the smallest useful search fallback and recurring catalog-growth plan for Rescened. The local `AlbumCatalog` remains the authoritative public catalog. MusicBrainz supplies read-only discovery candidates when local search has no matches, while the existing community-approval and dataset-import workflows remain the only ways an album becomes public.
+
+The design deliberately favors a few explicit modules over a general provider platform. A second external provider, distributed job system, or fully automated production importer should be justified by observed usage before it is added.
+
+## Decision summary
+
+- Search the local catalog first.
+- Use MusicBrainz release-group search only when the full search-results page has no local matches.
+- Keep navbar suggestions and profile album pickers local-only.
+- Return MusicBrainz matches as external candidates without a Rescened `albumId`.
+- Let a candidate prefill the existing community-suggestion form; search itself never writes catalog data.
+- Continue growing the broad catalog through dated, validated, idempotent import datasets.
+- Begin recurring imports as an operator-reviewed process. Automate production application only after repeated clean runs.
+- Use the existing submission queue for user-requested long-tail albums rather than adding a separate demand-tracking collection.
+
+The resulting flow is:
+
+```text
+local search
+  -> local matches: render normal catalog albums
+  -> no matches: query MusicBrainz
+       -> existing MBID: render the matching local album
+       -> new MBID: render an external candidate
+            -> contributor suggestion
+                 -> moderator approval
+                      -> public AlbumCatalog record
+
+recurring datasets
+  -> validate and dry-run
+       -> operator-reviewed import
+            -> broader local catalog and fewer external misses
+```
+
+## Goals
+
+- Avoid a dead end when the initial catalog does not contain an album.
+- Preserve Rescened-owned UUIDs and the current catalog trust boundary.
+- Reuse MusicBrainz identity, release-type mapping, Cover Art Archive behavior, community submissions, and catalog imports already present in the repository.
+- Keep provider latency and outages isolated from local search.
+- Grow the catalog cumulatively without duplicating albums or replacing community-owned metadata.
+- Make the first implementation safe to deploy on one API instance without adding infrastructure.
+
+## Non-goals
+
+The first version does not include:
+
+- Automatic insertion of every external search result into `AlbumCatalog`.
+- External calls from search-as-you-type suggestions or profile editors.
+- Multiple external providers or cross-provider ranking.
+- A generic provider registry, plugin interface, or provider-agnostic query language.
+- Redis, a message queue, a distributed rate limiter, or background workers.
+- A local mirror of the full MusicBrainz database.
+- Tracklist or label hydration during interactive search.
+- Search-query analytics, user-level search history, or a new demand-signal collection.
+- Automatic production import immediately after dataset generation.
+- Live provider calls in the normal test suite.
+
+Discogs, Apple Music, TheAudioDB, and other providers remain deferred. MusicBrainz already matches the repository's identity and provenance model; another provider should be considered only after real misses show a repeatable MusicBrainz coverage problem.
+
+## Current baseline
+
+| Area | Current behavior | Relevant implementation |
+| --- | --- | --- |
+| Local search | Escaped, case-insensitive catalog search with a maximum page size of 24. | `routes/search.js` |
+| Public album identity | Every usable public album has a Rescened UUID v4; MongoDB IDs stay internal. | `models/AlbumCatalog.js`, `routes/utils/albumCatalog.js` |
+| Search UI | Suggestions and full results assume every result has an `albumId` and can open `/album/:albumId`. | `frontend/src/Components/Searchbar.jsx`, `frontend/src/Pages/SearchResults.jsx` |
+| Community publication | A pending suggestion is not public. Moderator approval links or creates the catalog record. | `routes/suggestions.js`, `routes/utils/approval.js` |
+| Broad catalog import | A dated ListenBrainz selection is hydrated from MusicBrainz, validated, and imported transactionally. | `lib/catalogImport/`, `scripts/fetchListenBrainzCatalog.js`, `scripts/importCatalogDataset.js` |
+| Cover art | Exact MusicBrainz identities can resolve to hotlinked Cover Art Archive images. | `lib/coverArtArchive.js` |
+
+The old Spotify fallback cannot be copied directly. It filled local-result gaps with provider results and wrote those results into the catalog. That would now bypass community moderation, assign catalog status during a read request, and make provider availability part of the public identity path.
+
+### Local search scalability
+
+The catalog model already defines a text index, while the current route uses unanchored regex matching and alphabetical sorting. A larger catalog may eventually make that query slower or expose relevance problems, but changing local ranking and adding external fallback in one slice would make regressions harder to isolate.
+
+Keep local query behavior unchanged for the initial fallback. Capture catalog size, search latency, and representative query results as imports accumulate. Move to text-score ranking, Atlas Search, or another indexed strategy only through a separate measured change; external discovery does not require that redesign.
+
+## Product behavior
+
+### Local results remain primary
+
+`GET /search/search` keeps its current catalog-only contract. Existing consumers do not receive mixed local and external records.
+
+- Navbar autocomplete continues to return up to five local albums.
+- The profile editor continues to offer only albums that can be saved by Rescened `albumId`.
+- The full results page requests external candidates only on page 1 and only after receiving zero local results.
+- Later pages never trigger external search.
+
+Keeping the existing route local-only avoids adding result-type branches to every current search consumer.
+
+### External candidate state
+
+When local results are empty, the page shows a separate state such as:
+
+> No albums in Rescened matched this search. These MusicBrainz results are not in the catalog yet.
+
+Each candidate may show:
+
+- Representative cover or the existing cover placeholder.
+- Album title.
+- Credited artist display name.
+- First release year when available.
+- Release type.
+- A visible `Not in Rescened` label.
+- A `Suggest this album` action.
+
+An external candidate must not link to `/album/:albumId`, appear saveable or reviewable, or use an upstream identifier in the `albumId` field.
+
+### Candidate selection
+
+`Suggest this album` opens `/suggestions/new` with the MusicBrainz release-group MBID. The editor requests one normalized draft from the API and initializes the existing form with:
+
+- Title and artist credits.
+- Artist display name.
+- Release type.
+- First release date, precision, and year when available.
+- A canonical MusicBrainz supporting source.
+- A `musicbrainz` / `release-group` external reference.
+
+Tracks, label, country, catalog number, and barcode remain empty unless a later dedicated source supplies them. A missing release date or other required submission field remains visible for the contributor to complete. The user reviews and submits the normal form; selecting a result does not create a submission automatically.
+
+The existing submission validation, duplicate detection, rate limits, privacy rules, and moderator workflow remain authoritative. Approval remains the point where a public Rescened UUID is linked or created.
+
+### Failure behavior
+
+- A MusicBrainz timeout, rate limit, malformed response, or outage never turns a completed local search into a server error.
+- Because the external endpoint is separate, the results page can retain its normal empty state and add a short `External results are temporarily unavailable` message.
+- Broken or missing Cover Art Archive thumbnails fall back to the existing placeholder.
+- The UI does not retry automatically in a loop. A user-initiated retry is sufficient for the first version.
+
+## HTTP boundaries
+
+### Search candidates
+
+Add a public, read-only endpoint:
+
+```http
+GET /search/external?q={query}&limit={limit}
+```
+
+Rules:
+
+- Trim and normalize whitespace before cache lookup.
+- Require a small non-empty query and enforce the same bounded string length used by the server adapter.
+- Default to 12 candidates and cap the requested limit at 12.
+- Search MusicBrainz release groups, not individual releases.
+- Use core MusicBrainz fields only: identity, title, artist credits, first release date, and release-group types.
+- Rank using the upstream score, then apply only minimal deterministic filtering and deduplication.
+- Query `AlbumCatalog.externalReferences` for returned MBIDs. Move known identities into `catalogMatches` and remove them from `candidates`.
+- Never mutate MongoDB.
+
+Example response:
+
+```json
+{
+  "query": "imaginal disk",
+  "provider": "musicbrainz",
+  "catalogMatches": [],
+  "candidates": [
+    {
+      "kind": "external",
+      "provider": "musicbrainz",
+      "entityType": "release-group",
+      "externalId": "00000000-0000-0000-0000-000000000000",
+      "title": "Imaginal Disk",
+      "artistDisplayName": "Magdalena Bay",
+      "artistCredits": [
+        {
+          "name": "Magdalena Bay",
+          "role": "main"
+        }
+      ],
+      "releaseType": "album",
+      "releaseDate": "2024-08-23",
+      "releaseDatePrecision": "day",
+      "releaseYear": 2024,
+      "cover": "https://coverartarchive.org/release-group/00000000-0000-0000-0000-000000000000/front-250",
+      "sourceUrl": "https://musicbrainz.org/release-group/00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}
+```
+
+`catalogMatches` uses the existing normalized catalog-album representation and therefore contains valid Rescened `albumId` values. The response does not expose provider scores; ranking is an implementation detail.
+
+### Suggestion draft lookup
+
+Add a second read-only endpoint for durable prefill links:
+
+```http
+GET /search/musicbrainz/release-group/:mbid
+```
+
+Rules:
+
+- Reject an invalid MBID before making a provider call.
+- Return the existing catalog album if its release-group MBID is already known locally.
+- Otherwise look up and normalize the release group into the existing suggestion input shape.
+- Include the canonical MusicBrainz source and external reference.
+- Do not create a submission or catalog record.
+- Leave `coverSourceUrl` empty; approval can use the existing identity-based Cover Art Archive resolver.
+
+This endpoint avoids putting a full metadata payload into query parameters or trusting client navigation state after a reload.
+
+### Errors and feature flag
+
+Add a server-only flag:
+
+```dotenv
+EXTERNAL_ALBUM_SEARCH_ENABLED=true
+```
+
+When disabled, both external endpoints return `503` with a stable `EXTERNAL_SEARCH_DISABLED` code. The frontend treats that response as an unavailable optional enhancement, not as a failure of local search.
+
+Expected error classes are:
+
+| Status | Code | Meaning |
+| --- | --- | --- |
+| `400` | `INVALID_EXTERNAL_SEARCH` | Invalid query, limit, or MBID. |
+| `429` | `RATE_LIMITED` | The Rescened external-search limit was exceeded. |
+| `502` | `EXTERNAL_SEARCH_UNAVAILABLE` | MusicBrainz failed, timed out, or returned an invalid response. |
+| `503` | `EXTERNAL_SEARCH_DISABLED` | The feature flag is off. |
+
+## Module boundaries
+
+### Provider adapter
+
+Add one focused module, for example `lib/musicBrainzSearch.js`. It owns:
+
+- Query normalization and MusicBrainz search URL construction.
+- Lucene-special-character escaping.
+- Release-group search and exact release-group lookup.
+- Identifying `User-Agent` behavior.
+- Response validation.
+- Mapping MusicBrainz data to provider-neutral candidate and suggestion-draft shapes.
+- Release-type and partial-date normalization consistent with catalog import.
+- One process-wide MusicBrainz request gate.
+- A bounded in-memory query cache and in-flight request deduplication.
+
+Do not introduce a base provider class or provider registry. If a second provider is approved later, the shared behavior can be extracted from two concrete implementations rather than predicted now.
+
+The adapter may duplicate a small amount of proven request or rate-gate logic from the offline importer. Refactoring all existing MusicBrainz clients into one abstraction is deferred because it expands the change surface without improving the first release.
+
+### Search route
+
+Keep the two external endpoints in `routes/search.js`. The route owns:
+
+- HTTP query and parameter validation.
+- Feature-flag enforcement.
+- Rescened rate-limit middleware.
+- Catalog reconciliation by MusicBrainz external reference.
+- Public response and error serialization.
+
+It does not own provider response parsing or suggestion-form mapping.
+
+### Frontend
+
+Keep orchestration in `frontend/src/Pages/SearchResults.jsx`:
+
+1. Fetch the normal local page.
+2. If page 1 is empty, fetch `/search/external` with the same abort lifecycle.
+3. Render returned `catalogMatches` as normal album cards.
+4. Render remaining candidates in a clearly separate section.
+
+A small `ExternalAlbumCard` component is reasonable if it keeps candidate-only behavior out of the normal catalog card. No new search state library or data-fetching dependency is required.
+
+`frontend/src/Pages/SuggestionEditor.jsx` reads the MBID query parameter, loads the suggestion draft, and passes it through the form's existing `initialValue` boundary. The current form and submission request remain unchanged.
+
+### Rate limiting and cache
+
+MusicBrainz requires an identifying user agent and no more than one request per second per application. The first implementation should use:
+
+- `MUSICBRAINZ_USER_AGENT`, falling back to the repository's existing identifying value.
+- One module-level gate with at least 1,100 milliseconds between upstream request starts.
+- One short interactive timeout.
+- No automatic retry in the user request path.
+- A normalized-query in-memory cache with a short TTL and fixed maximum entry count.
+- In-flight deduplication so simultaneous identical misses share one upstream promise.
+- A stricter external-search limiter in `routes/utils/rateLimit.js`, separate from ordinary local search.
+
+This is intentionally a single-instance design. Before running multiple API instances, replace the process-local upstream gate and cache with a shared mechanism or use an appropriate MetaBrainz service plan. Do not add that infrastructure preemptively.
+
+## Incremental catalog growth
+
+### Keep imports artifact-driven
+
+"Recurring" means producing and reviewing dated batches, not writing to production continuously from search traffic.
+
+Every broad import continues to follow the existing workflow:
+
+1. Generate a dated dataset and fetch report.
+2. Validate its schema and semantic rules.
+3. Run a database-aware dry-run.
+4. Review inserted, refreshed, unchanged, quarantined, and conflicting counts.
+5. Apply the exact reviewed artifact transactionally.
+6. Retain the dataset checksum and reports.
+7. Smoke-test catalog search and album actions.
+
+The importer already provides the desired persistence behavior:
+
+- Match by MusicBrainz release-group identity.
+- Preserve an existing Rescened UUID.
+- Insert new rows as `catalogSource: "import"`.
+- Avoid overwriting manual or community-owned fields.
+- Never delete an album merely because it is absent from a later dataset.
+
+### Growth versus refresh
+
+The current default dataset selects 500 albums from fixed ListenBrainz all-time, year, and month pools. Repeating that exact selection will increasingly refresh existing records instead of adding new ones.
+
+Use this progression:
+
+1. Run updated dated datasets manually and measure their inserted-to-unchanged ratio.
+2. Increase or rotate the existing ListenBrainz selection within its supported candidate ranges before adding another source.
+3. Let MusicBrainz-backed community suggestions cover user-requested long-tail albums.
+4. Add a known-MBID exclusion manifest to dataset generation only when repeated hydration of existing rows becomes a measurable cost.
+5. Consider a recent-release-specific input only after the year/month ranges prove insufficient.
+
+Do not add a search-demand collection in the first version. Approved suggestions already convert user demand into catalog growth with provenance and moderation. Aggregate miss telemetry can be designed later if the moderation queue does not provide enough signal.
+
+### Scheduling
+
+Start with an operator-owned cadence, such as weekly or biweekly. Run at least three clean, reviewed production batches before automating any part of the workflow.
+
+The first useful automation may generate, validate, and dry-run an artifact, then stop for operator review. Production `--apply` remains explicit. Fully unattended imports are deferred until alerting, artifact retention, transaction behavior, and rollback expectations have been exercised in production.
+
+## Data, licensing, and privacy boundaries
+
+- Interactive search imports only MusicBrainz core metadata. Do not add tags, genres, ratings, or annotations through this feature.
+- MusicBrainz core metadata is CC0, but use of the hosted API remains subject to MetaBrainz service terms and rate limits. Confirm the appropriate service tier before enabling a revenue-generating public product.
+- Cover Art Archive images are hotlinked and remain subject to image-specific rights. A successful URL does not grant Rescened a copyright license.
+- External search does not store raw queries in the first version.
+- Server logs should avoid user IDs, authorization headers, cookies, and full upstream response bodies.
+- External candidates do not become public Rescened records until an existing publication workflow accepts them.
+
+Official references:
+
+- [MusicBrainz API](https://musicbrainz.org/doc/MusicBrainz_API)
+- [MusicBrainz release-group search](https://musicbrainz.org/doc/MusicBrainz_API/Search)
+- [MusicBrainz data license](https://musicbrainz.org/doc/About/Data_License)
+- [Cover Art Archive API](https://musicbrainz.org/doc/Cover_Art_Archive/API)
+- [MetaBrainz service tiers](https://metabrainz.org/supporters/account-type)
+
+## Implementation sequence
+
+### Slice 1: server adapter and read API
+
+- Add the MusicBrainz adapter, mapping, cache, request gate, and tests.
+- Add feature-flag parsing and external-search rate limiting.
+- Add candidate search and exact draft endpoints.
+- Reconcile candidate MBIDs against the local catalog.
+- Verify that provider failures do not affect the existing local endpoint.
+
+### Slice 2: results UI and suggestion prefill
+
+- Fetch candidates only after a page-1 local miss.
+- Render catalog matches and external candidates distinctly.
+- Handle missing artwork and optional provider failure.
+- Load a candidate draft into the existing suggestion editor.
+- Confirm that an external candidate cannot be saved, reviewed, liked, or opened as a public album.
+
+### Slice 3: recurring catalog batches
+
+- Produce and review new dated datasets using the current pipeline.
+- Record inserted, unchanged, quarantined, and conflicting ratios across runs.
+- Adjust existing selection ranges only when the reports show a need.
+- Document the chosen operator cadence in `CATALOG_IMPORT.md` after it has been exercised.
+
+### Slice 4: evidence-based follow-up
+
+Only after launch data exists, decide whether to add:
+
+- A known-MBID exclusion manifest.
+- A recent-release-specific dataset input.
+- Shared cache/rate-limit infrastructure for multiple API instances.
+- External-search telemetry.
+- A measured local-search indexing or relevance change if catalog growth makes the current regex query inadequate.
+- Another provider for a demonstrated coverage gap.
+- Automated production import application.
+
+## Expected file changes
+
+| File | Expected responsibility |
+| --- | --- |
+| `lib/musicBrainzSearch.js` | Provider requests, mapping, caching, and upstream request pacing. |
+| `routes/search.js` | External endpoints, catalog reconciliation, flag, and response boundary. |
+| `routes/utils/rateLimit.js` | External-search request limit. |
+| `frontend/src/Pages/SearchResults.jsx` | Local-miss orchestration and external results state. |
+| `frontend/src/Components/ExternalAlbumCard.jsx` | Optional candidate-only presentation and suggestion link. |
+| `frontend/src/Pages/SuggestionEditor.jsx` | MBID draft loading and existing form initialization. |
+| `tests/musicBrainzSearch.test.js` | Captured-response mapping, cache, rate, timeout, and invalid-response tests. |
+| `tests/search.test.js` | Route contracts, local reconciliation, disabled flag, and provider-failure tests. |
+
+The first two slices should not require a new production dependency, schema migration, database model, background service, or frontend state library.
+
+## Acceptance criteria
+
+### Search
+
+- A local hit returns without calling MusicBrainz.
+- A page-1 local miss can return bounded MusicBrainz release-group candidates.
+- Navbar suggestions, profile album selection, and later result pages never call external search.
+- External results use `externalId`, never a fabricated Rescened `albumId`.
+- A returned MBID already present in the catalog becomes a normal catalog match rather than a duplicate candidate.
+- Repeated normalized queries use the bounded cache.
+- Simultaneous identical queries share one upstream request.
+- Upstream requests respect the application pacing rule.
+- An upstream failure leaves local search usable.
+- Disabling the feature requires no frontend rollback.
+- No search request creates or updates `AlbumCatalog` or `AlbumSubmission`.
+
+### Suggestions
+
+- Selecting a candidate loads an editable draft with MusicBrainz evidence and identity.
+- The user must explicitly submit the existing form.
+- Server validation and duplicate detection still run normally.
+- Approval still links or creates the catalog album transactionally.
+- Rejection, withdrawal, and change requests behave exactly as documented for community submissions.
+
+### Catalog growth
+
+- Reimporting a MusicBrainz release-group identity preserves its Rescened UUID.
+- Dataset imports remain validate-first, dry-run-first, report-producing, and transactional.
+- Existing manual and community provenance remains protected.
+- A later dataset never deletes an album simply by omission.
+- Normal tests use checked-in fixtures and require no internet access.
+
+## Explicitly deferred
+
+Do not build these as part of the initial feature:
+
+- Spotify-compatible write-through caching.
+- Multi-provider aggregation or fallback chains.
+- Provider confidence scoring beyond MusicBrainz's result order and basic deduplication.
+- A permanent external-candidate database.
+- One-click submission or approval.
+- Tracklist hydration for every search card.
+- Cover-image proxying, downloading, or rehosting.
+- Shared infrastructure for hypothetical horizontal scale.
+- A scheduler that applies unreviewed datasets to production.
+- Search personalization or recommendation logic.
+
+These constraints are part of the design, not missing work. They keep external discovery replaceable, catalog publication auditable, and the first release small enough to verify thoroughly.

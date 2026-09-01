@@ -505,4 +505,5 @@ Phase 2 backend is complete when the moderator route tests and transaction-backe
 - Optional `GET /suggestions/approved` public feed.
 - Contributor and moderator frontend flows, which are Phase 3.
 - MusicBrainz-assisted prefill and bulk import work.
-- Metadata correction proposals, merges, editions, and contributor reputation.
+- Moderator-approved correction proposals for existing catalog albums when a record has a material discrepancy or is missing specific metadata. This must be an explicit field-level update workflow, separate from the current link-only `albumId` approval path, with current-versus-proposed values, provenance, stale-write/conflict protection, and no blanket replacement of the catalog record.
+- Album merges, editions, and contributor reputation.

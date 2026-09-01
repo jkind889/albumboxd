@@ -19,6 +19,12 @@ const RATE_LIMITS = {
     duration: 60,
     message: "Too many searches. Please slow down and try again soon.",
   },
+  externalSearch: {
+    keyPrefix: "rescened:external-search",
+    points: 30,
+    duration: 60,
+    message: "Too many external searches. Please try again soon.",
+  },
   albumSave: {
     keyPrefix: "rescened:album-save",
     points: 30,
@@ -188,6 +194,7 @@ function createRateLimitMiddleware(limiter, options = {}) {
 
 const globalApiLimiter = createRateLimiter(RATE_LIMITS.globalApi);
 const searchLimiter = createRateLimiter(RATE_LIMITS.search);
+const externalSearchLimiter = createRateLimiter(RATE_LIMITS.externalSearch);
 const albumSaveLimiter = createRateLimiter(RATE_LIMITS.albumSave);
 const reviewCreateLimiter = createRateLimiter(RATE_LIMITS.reviewCreate);
 const reviewMutationLimiter = createRateLimiter(RATE_LIMITS.reviewMutation);
@@ -208,6 +215,10 @@ module.exports = {
   consumeRateLimit,
   createRateLimitMiddleware,
   createRateLimiter,
+  externalSearchRateLimit: createRateLimitMiddleware(externalSearchLimiter, {
+    keyGenerator: getIpRateLimitKey,
+    message: RATE_LIMITS.externalSearch.message,
+  }),
   getAuthenticatedUserRateLimitKey,
   getIpRateLimitKey,
   getTrustProxyHops,

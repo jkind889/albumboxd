@@ -12,6 +12,10 @@ function parsePort(env = process.env) {
   return Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : DEFAULT_PORT;
 }
 
+function isExternalAlbumSearchEnabled(env = process.env) {
+  return String(env.EXTERNAL_ALBUM_SEARCH_ENABLED || "").trim().toLowerCase() === "true";
+}
+
 function parseOriginList(value) {
   return String(value || "")
     .split(",")
@@ -113,6 +117,7 @@ module.exports = {
   buildCorsOptions,
   getAllowedOrigins,
   getConfiguredOrigins,
+  isExternalAlbumSearchEnabled,
   normalizeOrigin,
   parseOriginList,
   parsePort,

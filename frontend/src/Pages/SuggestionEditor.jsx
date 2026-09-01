@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import SuggestionForm from "../Components/Community/SuggestionForm";
 import { API_BASE_URL } from "../config/api";
 import {
@@ -35,25 +35,30 @@ function EditorError({ error, onRetry = null }) {
 
 export function SuggestionEditor({ mode = "create" }) {
   const { submissionId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { getToken } = useAuth();
   const isRevision = mode === "revise";
+  const externalMbid = isRevision ? "" : (searchParams.get("mbid") || "").trim();
   const [submission, setSubmission] = useState(null);
-  const [loadStatus, setLoadStatus] = useState(isRevision ? "idle" : "ready");
+  const [loadStatus, setLoadStatus] = useState(isRevision || externalMbid ? "idle" : "ready");
   const [loadError, setLoadError] = useState(null);
   const [mutationStatus, setMutationStatus] = useState("idle");
   const [mutationError, setMutationError] = useState(null);
   const [refreshIndex, setRefreshIndex] = useState(0);
 
   useEffect(() => {
-    if (!isRevision) {
-      return undefined;
-    }
-
     const controller = new AbortController();
 
-    async function loadSubmission() {
-      if (!submissionId) {
+    async function loadEditorData() {
+      if (!isRevision && !externalMbid) {
+        setSubmission(null);
+        setLoadError(null);
+        setLoadStatus("ready");
+        return;
+      }
+
+      if (isRevision && !submissionId) {
         setLoadError({
           message: "No suggestion ID was provided.",
           code: "MISSING_SUBMISSION_ID",
@@ -68,30 +73,50 @@ export function SuggestionEditor({ mode = "create" }) {
       setSubmission(null);
 
       try {
-        const token = await getToken();
-        if (controller.signal.aborted) return;
-        const data = await requestCommunityJson(
-          `${API_BASE_URL}/suggestions/${encodeURIComponent(submissionId)}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            signal: controller.signal,
-          },
-          "Could not load this suggestion for revision.",
-        );
+        let data;
+        if (isRevision) {
+          const token = await getToken();
+          if (controller.signal.aborted) return;
+          data = await requestCommunityJson(
+            `${API_BASE_URL}/suggestions/${encodeURIComponent(submissionId)}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              signal: controller.signal,
+            },
+            "Could not load this suggestion for revision.",
+          );
+        } else {
+          data = await requestCommunityJson(
+            `${API_BASE_URL}/search/musicbrainz/release-group/${encodeURIComponent(externalMbid)}`,
+            { signal: controller.signal },
+            "Could not load this MusicBrainz release group.",
+          );
+
+          if (!data?.proposedMetadata) {
+            const alreadyInCatalogError = new Error("This album is already in the Rescened catalog.");
+            alreadyInCatalogError.code = "ALBUM_ALREADY_IN_CATALOG";
+            alreadyInCatalogError.details = data?.albumId ? ["Open the catalog album instead of submitting a duplicate suggestion."] : [];
+            alreadyInCatalogError.albumId = data?.albumId || "";
+            throw alreadyInCatalogError;
+          }
+        }
 
         if (controller.signal.aborted) return;
         setSubmission(data);
         setLoadStatus("ready");
       } catch (error) {
         if (controller.signal.aborted) return;
-        setLoadError(communityErrorFrom(error, "Could not load this suggestion for revision."));
+        setLoadError(communityErrorFrom(
+          error,
+          isRevision ? "Could not load this suggestion for revision." : "Could not load this MusicBrainz release group.",
+        ));
         setLoadStatus("error");
       }
     }
 
-    loadSubmission();
+    loadEditorData();
     return () => controller.abort();
-  }, [getToken, isRevision, refreshIndex, submissionId]);
+  }, [externalMbid, getToken, isRevision, refreshIndex, submissionId]);
 
   async function submitSuggestion(payload) {
     setMutationStatus("loading");
@@ -136,6 +161,7 @@ export function SuggestionEditor({ mode = "create" }) {
       .find((event) => ["request_changes", "requested_changes"].includes(event.action))
     : null;
   const revisionBlocked = isRevision && submission && submission.status !== "needs_changes";
+  const externalPrefill = !isRevision && Boolean(externalMbid);
 
   return (
     <section className="community-page community-editor-page">
@@ -143,7 +169,7 @@ export function SuggestionEditor({ mode = "create" }) {
         <nav className="community-breadcrumb" aria-label="Suggestions breadcrumb">
           <Link
             className="community-back-link"
-            to={submissionId ? `/suggestions/${submissionId}` : "/suggestions"}
+            to={submissionId ? `/suggestions/${submissionId}` : "/search"}
           >
             ← {submissionId ? "Suggestion detail" : "Your suggestions"}
           </Link>
@@ -156,7 +182,9 @@ export function SuggestionEditor({ mode = "create" }) {
             <p className="community-page-description">
               {isRevision
                 ? "Update the complete record—not only the requested fields—then return it to the queue."
-                : "Build a reviewable album record and back every proposal with reliable source evidence."}
+                : externalPrefill
+                  ? "Review this MusicBrainz record, complete any missing evidence, and send it to the community queue."
+                  : "Build a reviewable album record and back every proposal with reliable source evidence."}
             </p>
           </div>
         </header>
@@ -164,11 +192,16 @@ export function SuggestionEditor({ mode = "create" }) {
         {loadStatus === "loading" ? (
           <div className="community-loading" role="status" aria-live="polite">
             <span className="community-loading-index">Loading</span>
-            <p className="community-loading-message">Preparing the latest revision…</p>
+            <p className="community-loading-message">
+              {externalPrefill ? "Preparing MusicBrainz release group…" : "Preparing the latest revision…"}
+            </p>
           </div>
         ) : null}
         {loadStatus === "error" ? (
-          <EditorError error={loadError} onRetry={() => setRefreshIndex((current) => current + 1)} />
+          <EditorError
+            error={loadError}
+            onRetry={() => setRefreshIndex((current) => current + 1)}
+          />
         ) : null}
 
         {revisionBlocked ? (
