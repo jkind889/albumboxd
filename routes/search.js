@@ -1,6 +1,7 @@
 const express = require("express");
 const AlbumCatalog = require("../models/AlbumCatalog");
 const { normalizeCatalogAlbum, toSearchResult } = require("./utils/albumCatalog");
+const { buildCatalogSearchQuery, escapeRegex } = require("./utils/catalogSearch");
 const {
   MusicBrainzSearchError,
   getSuggestionDraft,
@@ -15,25 +16,9 @@ const router = express.Router();
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 24;
 
-function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function getLimit(value) {
   const parsed = Number.parseInt(value, 10);
   return Math.min(Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_LIMIT, MAX_LIMIT);
-}
-
-function buildQuery(query) {
-  const escaped = escapeRegex(query);
-  return {
-    $or: [
-      { title: { $regex: escaped, $options: "i" } },
-      { artistDisplayName: { $regex: escaped, $options: "i" } },
-      { "artistCredits.name": { $regex: escaped, $options: "i" } },
-      { label: { $regex: escaped, $options: "i" } },
-    ],
-  };
 }
 
 function queryResult(query) {
@@ -104,7 +89,7 @@ function externalSearchUnavailable(res) {
 }
 
 async function findLocal(query, { skip = 0, limit }) {
-  const searchQuery = buildQuery(query);
+  const searchQuery = buildCatalogSearchQuery(query);
   const [total, albums] = await Promise.all([
     AlbumCatalog.countDocuments(searchQuery),
     AlbumCatalog.find(searchQuery).sort({ artistDisplayName: 1, title: 1 }).skip(skip).limit(limit),

@@ -67,7 +67,7 @@ Discogs, Apple Music, TheAudioDB, and other providers remain deferred. MusicBrai
 
 | Area | Current behavior | Relevant implementation |
 | --- | --- | --- |
-| Local search | Escaped, case-insensitive catalog search with a maximum page size of 24. | `routes/search.js` |
+| Local search | Escaped, case-insensitive catalog search with straight and typographic apostrophes treated as equivalent, with a maximum page size of 24. | `routes/search.js` |
 | Public album identity | Every usable public album has a Rescened UUID v4; MongoDB IDs stay internal. | `models/AlbumCatalog.js`, `routes/utils/albumCatalog.js` |
 | Search UI | Suggestions and local catalog cards use Rescened `albumId` values; external candidates use provider identities and remain separate. | `frontend/src/Components/Searchbar.jsx`, `frontend/src/Pages/SearchResults.jsx` |
 | Community publication | A pending suggestion is not public. Moderator approval links or creates the catalog record. | `routes/suggestions.js`, `routes/utils/approval.js` |

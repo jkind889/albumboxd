@@ -6,6 +6,7 @@ const Follow = require("../models/Follow");
 const Like = require("../models/Like");
 const Review = require("../models/Reviews");
 const { findAlbumByPublicId, normalizeCatalogAlbum } = require("./utils/albumCatalog");
+const { buildCatalogSearchQuery } = require("./utils/catalogSearch");
 
 const router = express.Router();
 const PAGE_LIMIT = 24;
@@ -81,15 +82,7 @@ async function socialContext(album, viewerId) {
 }
 
 function catalogQuery(q) {
-  const query = String(q || "").trim();
-  if (!query) return {};
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return { $or: [
-    { title: { $regex: escaped, $options: "i" } },
-    { artistDisplayName: { $regex: escaped, $options: "i" } },
-    { "artistCredits.name": { $regex: escaped, $options: "i" } },
-    { label: { $regex: escaped, $options: "i" } },
-  ] };
+  return buildCatalogSearchQuery(q);
 }
 
 router.get("/catalog", async (req, res) => {

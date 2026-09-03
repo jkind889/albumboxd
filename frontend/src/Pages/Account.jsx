@@ -1246,6 +1246,7 @@ export function Account() {
               {canManageProfile && (
                 <div className="profile-hero-actions">
                   <Link className="profile-edit-link" to="/account/edit">Edit Profile</Link>
+                  <Link className="profile-edit-link" to="/moderation/album-suggestions">Moderation</Link>
                 </div>
               )}
             </header>

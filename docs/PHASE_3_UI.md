@@ -41,6 +41,8 @@ Moderator screens are below `/moderation/album-suggestions`:
 | `/moderation/album-suggestions` | Queue of submissions with status, submitter, evidence summary, revision/timestamps, and possible-duplicate signal. The visible form supports status, duplicate, submitter, cursor, and page-size filters. | `GET /moderation/album-suggestions`; the backend additionally accepts `submissionType`, though the visible form does not expose it yet. |
 | `/moderation/album-suggestions/:submissionId` | Full proposal/evidence/history detail and a decision panel. Corrections show baseline, current catalog value, proposal, and stale state per field group. | `GET /moderation/album-suggestions/:submissionId` plus one explicit command endpoint for the selected decision. |
 
+The signed-in user's profile action row includes a `Moderation` link to the queue. This is a navigation affordance only; the protected route and server-side moderator allowlist continue to enforce access.
+
 The decision panel presents the server-supported actions for a pending submission:
 
 - Request changes with a required reason: `POST /moderation/album-suggestions/:submissionId/request-changes`.

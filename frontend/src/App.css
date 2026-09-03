@@ -9,6 +9,8 @@
   --app-text: #efefef;
   --app-muted: #8c8c8c;
   --app-soft: #b9b9b9;
+  --app-skeleton-base: #101010;
+  --app-skeleton-highlight: #242424;
   --app-accent: #a978cf;
   --app-danger: #f87171;
   --app-success: #86efac;
@@ -26,6 +28,8 @@
   --app-text: #181818;
   --app-muted: #686862;
   --app-soft: #45453f;
+  --app-skeleton-base: #d0d0cb;
+  --app-skeleton-highlight: #e4e4e0;
   --app-accent: #744e96;
 }
 
@@ -2060,7 +2064,7 @@ html:has(.search-results-page) .search-submit {
 }
 
 .catalog-page .async-skeleton-row {
-  border-color: var(--catalog-line);
+  border-color: var(--app-line);
   border-radius: 0;
   background: transparent;
 }
@@ -2068,7 +2072,7 @@ html:has(.search-results-page) .search-submit {
 .catalog-page .async-skeleton-line,
 .catalog-page .async-skeleton-thumb {
   border-radius: 0;
-  background: linear-gradient(90deg, #101010 0%, #242424 45%, #101010 90%);
+  background: linear-gradient(90deg, var(--app-skeleton-base) 0%, var(--app-skeleton-highlight) 45%, var(--app-skeleton-base) 90%);
   background-size: 220% 100%;
 }
 
@@ -2740,13 +2744,13 @@ html:has(.search-results-page) .search-submit {
 .search-results-page .async-skeleton-card {
   border-color: var(--search-line);
   border-radius: 0;
-  background: #050505;
+  background: var(--app-bg);
 }
 
 .search-results-page .async-skeleton-line,
 .search-results-page .async-skeleton-cover {
   border-radius: 0;
-  background: linear-gradient(90deg, #101010 0%, #242424 45%, #101010 90%);
+  background: linear-gradient(90deg, var(--app-skeleton-base) 0%, var(--app-skeleton-highlight) 45%, var(--app-skeleton-base) 90%);
   background-size: 220% 100%;
 }
 
@@ -4713,6 +4717,8 @@ html:has(.search-results-page) .search-submit {
   grid-column: 2;
   grid-row: 2;
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
   justify-content: flex-end;
 }
 
@@ -6266,7 +6272,7 @@ html:has(.search-results-page) .search-submit {
 .async-skeleton-pill-row span {
   display: block;
   border-radius: 8px;
-  background: linear-gradient(90deg, #18181d 0%, #2a2a31 45%, #18181d 90%);
+  background: linear-gradient(90deg, var(--app-skeleton-base) 0%, var(--app-skeleton-highlight) 45%, var(--app-skeleton-base) 90%);
   background-size: 220% 100%;
   animation: async-skeleton-pulse 1.35s ease-in-out infinite;
 }
@@ -6326,7 +6332,7 @@ html:has(.search-results-page) .search-submit {
   gap: 1rem;
   min-height: 72px;
   padding: 0.8rem 1rem;
-  border-top: 1px solid #26262c;
+  border-top: 1px solid var(--app-line);
 }
 
 .async-skeleton-thumb {
@@ -6852,7 +6858,7 @@ html:has(.search-results-page) .search-submit {
 .async-skeleton-poster,
 .async-skeleton-pill-row span {
   border-radius: 0;
-  background: linear-gradient(90deg, #101010 0%, #242424 45%, #101010 90%);
+  background: linear-gradient(90deg, var(--app-skeleton-base) 0%, var(--app-skeleton-highlight) 45%, var(--app-skeleton-base) 90%);
   background-size: 220% 100%;
 }
 
