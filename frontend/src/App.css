@@ -8456,6 +8456,252 @@ html:has(.community-page) .site-header {
   margin: 0;
 }
 
+/* Approved community feed and catalog corrections */
+.approved-feed-page {
+  padding-inline: 0;
+}
+
+.approved-feed-list {
+  display: grid;
+  gap: 1px;
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--app-line);
+  border-bottom: 1px solid var(--app-line);
+  background: var(--app-line);
+}
+
+.approved-feed-card {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--app-bg);
+}
+
+.approved-feed-cover {
+  display: grid;
+  min-height: 132px;
+  place-items: center;
+  background: var(--app-surface);
+  color: var(--app-muted);
+  font-size: 0.62rem;
+  text-decoration: none;
+}
+
+.approved-feed-cover img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+.approved-feed-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.approved-feed-copy h2,
+.approved-feed-copy p,
+.approved-feed-copy time {
+  margin: 0;
+}
+
+.approved-feed-copy h2 {
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+.approved-feed-copy h2 a {
+  color: var(--app-text);
+  text-decoration: none;
+}
+
+.approved-feed-artist {
+  color: var(--app-soft);
+  font-size: 0.7rem;
+}
+
+.approved-feed-meta,
+.approved-feed-copy time {
+  color: var(--app-muted);
+  font-size: 0.6rem;
+}
+
+.correction-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.correction-fieldset,
+.moderation-correction-fields {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--app-line);
+}
+
+.correction-fieldset legend,
+.moderation-correction-fields legend {
+  padding-inline: 0.35rem;
+  color: var(--app-soft);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.correction-help {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 0.62rem;
+  line-height: 1.5;
+}
+
+.correction-field-toggle,
+.moderation-correction-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  color: var(--app-soft);
+  font-size: 0.65rem;
+  line-height: 1.4;
+}
+
+.correction-field-toggle input,
+.moderation-correction-field input {
+  margin-top: 0.1rem;
+  accent-color: var(--app-accent);
+}
+
+.correction-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.correction-reference-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.moderation-correction-fields {
+  margin-top: 1rem;
+}
+
+.moderation-correction-field {
+  justify-content: space-between;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--app-line);
+}
+
+.moderation-correction-field span {
+  display: grid;
+  flex: 1;
+  gap: 0.2rem;
+}
+
+.moderation-correction-field small {
+  color: var(--app-muted);
+  font-size: 0.56rem;
+}
+
+.suggestion-detail-note {
+  max-width: 72ch;
+  color: var(--app-muted);
+  font-size: 0.62rem;
+  line-height: 1.55;
+}
+
+.suggestion-correction-diff-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.suggestion-correction-diff-item {
+  padding: 0.8rem;
+  border: 1px solid var(--app-line);
+}
+
+.suggestion-correction-diff-stale {
+  border-color: #735a2e;
+}
+
+.suggestion-correction-diff-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.suggestion-correction-diff-heading h4 {
+  margin: 0;
+  color: var(--app-text);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.suggestion-correction-diff-status {
+  color: #83b58b;
+  font-size: 0.56rem;
+}
+
+.suggestion-correction-diff-status-stale {
+  color: #d2a85d;
+}
+
+.suggestion-correction-diff-values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0.75rem 0 0;
+}
+
+.suggestion-correction-diff-values > div {
+  min-width: 0;
+}
+
+.suggestion-correction-diff-values dt {
+  color: var(--app-muted);
+  font-size: 0.56rem;
+  text-transform: uppercase;
+}
+
+.suggestion-correction-diff-values dd {
+  margin: 0.3rem 0 0;
+}
+
+.suggestion-correction-diff-values pre {
+  max-height: 180px;
+  margin: 0;
+  overflow: auto;
+  padding: 0.55rem;
+  background: var(--app-surface);
+  color: var(--app-soft);
+  font: 0.58rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .approved-feed-card {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .approved-feed-cover {
+    min-height: 88px;
+  }
+
+  .correction-grid,
+  .correction-reference-grid,
+  .suggestion-correction-diff-values {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Moderator queue, detail, and decision desk */
 .moderation-page {
   padding-inline: 0;

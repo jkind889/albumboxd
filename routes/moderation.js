@@ -13,6 +13,7 @@ const {
   normalizeCommandBody,
   parseBooleanFilter,
   parseModeratorLimit,
+  parseSubmissionTypeFilter,
   parseStatusFilter,
 } = require("./utils/moderation");
 const { moderationMutationRateLimit } = require("./utils/rateLimit");
@@ -85,6 +86,7 @@ async function findDetail(submissionId) {
     query = query
       .populate("candidateAlbumCatalogId")
       .populate("approvedAlbumCatalogId")
+      .populate("targetAlbumCatalogId")
       .populate({ path: "duplicateOfSubmissionId", populate: { path: "approvedAlbumCatalogId" } })
       .populate("candidateSubmissionIds");
   }
@@ -168,7 +170,7 @@ function moderatorSummary(submission) {
 
 async function moderatorDetail(submission) {
   return {
-    suggestion: serializeSubmission(submission, { detail: true }),
+    suggestion: serializeSubmission(submission, { detail: true, moderator: true }),
     duplicateCandidates: await duplicateCandidates(submission),
   };
 }
@@ -229,12 +231,14 @@ async function transition(req, res, action) {
 router.get("/", authenticate, moderatorOnly, async (req, res) => {
   try {
     const statuses = parseStatusFilter(req.query?.status);
+    const submissionType = parseSubmissionTypeFilter(req.query?.submissionType);
     const hasPossibleDuplicate = parseBooleanFilter(req.query?.hasPossibleDuplicate, "hasPossibleDuplicate");
     const limit = parseModeratorLimit(req.query?.limit);
     const cursor = decodeModerationCursor(req.query?.cursor);
     const query = {
       status: statuses.length === 1 ? statuses[0] : { $in: statuses },
     };
+    if (submissionType) query.submissionType = submissionType;
     const additionalFilters = [];
     const cursorQuery = moderationCursorFilter(cursor);
     if (Object.keys(cursorQuery).length) additionalFilters.push(cursorQuery);
@@ -253,6 +257,7 @@ router.get("/", authenticate, moderatorOnly, async (req, res) => {
     if (hasPossibleDuplicate === false) additionalFilters.push({ $nor: duplicateConditions });
     if (additionalFilters.length) query.$and = additionalFilters;
     let result = AlbumSubmission.find(query);
+    if (result && typeof result.populate === "function") result = result.populate("targetAlbumCatalogId");
     if (result && typeof result.sort === "function") result = result.sort({ updatedAt: 1, _id: 1 });
     if (result && typeof result.limit === "function") result = result.limit(limit + 1);
     const rows = (await querySession(result)) || [];

@@ -4,14 +4,17 @@ const AlbumSubmission = require("../../models/AlbumSubmission");
 const {
   createCatalogAlbum,
   normalizeCatalogAlbum,
+  validateCatalogDocument,
 } = require("./albumCatalog");
 const {
+  CORRECTION_FIELD_GROUPS,
   findDuplicateSignals,
   serializeSubmission,
 } = require("./submissions");
 const {
   ApprovalUnavailableError,
   ModerationConflictError,
+  ModerationValidationError,
   isTransactionUnavailable,
 } = require("./moderation");
 
@@ -291,13 +294,262 @@ function mergeReferences(submission, resolution) {
   return references;
 }
 
+function clone(value) {
+  if (value === undefined || value === null) return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function referenceKey(reference) {
+  return [reference?.provider, reference?.entityType, reference?.externalId]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .join("|");
+}
+
+function catalogRevision(album) {
+  const value = Number(plain(album)?.catalogRevision);
+  return Number.isSafeInteger(value) && value > 0 ? value : 1;
+}
+
+function correctionFieldOrder(fields) {
+  const wanted = new Set(fields || []);
+  return CORRECTION_FIELD_GROUPS.filter((field) => wanted.has(field));
+}
+
+function correctionProposedFields(submission) {
+  return correctionFieldOrder(Object.keys(plain(submission)?.proposedChanges || {}));
+}
+
+function correctionProvenance(submission, actorUserId, approvedAt) {
+  return {
+    source: "community",
+    submissionId: submission.submissionId,
+    revision: submission.currentRevision,
+    approvedByUserId: actorUserId,
+    approvedAt,
+  };
+}
+
+function correctionPatch(submission, target, applyFields, actorUserId, approvedAt) {
+  const source = plain(submission);
+  const album = plain(target);
+  const changes = source.proposedChanges || {};
+  const patch = {};
+  const provenance = clone(album.fieldProvenance || {});
+  applyFields.forEach((field) => {
+    const value = changes[field];
+    const provenanceValue = correctionProvenance(source, actorUserId, approvedAt);
+    if (field === "title") {
+      patch.title = value;
+      provenance.title = provenanceValue;
+    } else if (field === "artists") {
+      patch.artistDisplayName = value.artistDisplayName;
+      patch.artistCredits = clone(value.artistCredits);
+      provenance.artistDisplayName = provenanceValue;
+      provenance.artistCredits = provenanceValue;
+    } else if (field === "releaseType") {
+      patch.releaseType = value;
+      provenance.releaseType = provenanceValue;
+    } else if (field === "releaseDate") {
+      patch.releaseDate = value.releaseDate;
+      patch.releaseDatePrecision = value.releaseDatePrecision;
+      patch.releaseYear = value.releaseYear;
+      provenance.releaseDate = provenanceValue;
+      provenance.releaseDatePrecision = provenanceValue;
+      provenance.releaseYear = provenanceValue;
+    } else if (field === "label") {
+      patch.label = value;
+      provenance.label = provenanceValue;
+    } else if (field === "cover") {
+      patch.cover = value;
+      provenance.cover = {
+        ...provenanceValue,
+        sourceUrl: value,
+        coverSourceUrl: value,
+      };
+    } else if (field === "tracks") {
+      patch.tracks = clone(value);
+      provenance.tracks = provenanceValue;
+    } else if (field === "externalReferences") {
+      const references = clone(album.externalReferences || []);
+      const seen = new Set(references.map(referenceKey));
+      (value.add || []).forEach((reference) => {
+        if (!seen.has(referenceKey(reference))) {
+          references.push(clone(reference));
+          seen.add(referenceKey(reference));
+        }
+      });
+      patch.externalReferences = references;
+      provenance.externalReferences = provenanceValue;
+    }
+  });
+  patch.fieldProvenance = provenance;
+  return patch;
+}
+
+async function correctionReferenceConflicts(target, references, session) {
+  const additions = (references || []).filter((reference) => reference && reference.externalId);
+  if (!additions.length || typeof AlbumCatalog.find !== "function") return [];
+  const conditions = additions.map((reference) => ({
+    externalReferences: {
+      $elemMatch: {
+        provider: reference.provider,
+        entityType: reference.entityType,
+        externalId: reference.externalId,
+      },
+    },
+  }));
+  const rows = await readQuery(withSession(AlbumCatalog.find({ $or: conditions }), session));
+  const targetId = String(plain(target)?._id || "");
+  const conflicts = [];
+  (rows || []).forEach((row) => {
+    const source = plain(row);
+    if (String(source._id || "") === targetId) return;
+    const matched = additions.some((reference) => (source.externalReferences || []).some((candidate) => (
+      referenceKey(candidate) === referenceKey(reference)
+    )));
+    if (matched && source.albumId) conflicts.push(source.albumId);
+  });
+  return [...new Set(conflicts)];
+}
+
+function correctionApprovalFields(submission, applyFields) {
+  const proposedFields = correctionProposedFields(submission);
+  if (!Array.isArray(applyFields) || !applyFields.length) {
+    throw new ModerationValidationError("applyFields must contain at least one proposed field group");
+  }
+  const selected = correctionFieldOrder(applyFields);
+  if (selected.length !== applyFields.length || selected.some((field, index) => field !== applyFields[index] && !applyFields.includes(field))) {
+    throw new ModerationValidationError("applyFields contains an invalid or duplicate field group");
+  }
+  if (selected.some((field) => !proposedFields.includes(field))) {
+    throw new ModerationValidationError("applyFields may only include proposed field groups");
+  }
+  return { proposedFields, appliedFields: selected, unappliedFields: proposedFields.filter((field) => !selected.includes(field)) };
+}
+
 function approvalResult(result) {
   return {
-    suggestion: serializeSubmission(result.submission, { detail: true }),
+    suggestion: serializeSubmission(result.submission, { detail: true, moderator: true }),
     album: normalizeCatalogAlbum(result.album),
     albumUrl: `/album/${plain(result.album).albumId}`,
     idempotent: result.idempotent,
   };
+}
+
+async function approveCatalogCorrection({ preliminary, submissionId, actorUserId, applyFields, reason }) {
+  const preliminaryRevision = preliminary.currentRevision;
+  const selectedFields = correctionApprovalFields(preliminary, applyFields);
+  let session;
+  let result = null;
+  try {
+    session = await mongoose.startSession();
+    if (typeof session.withTransaction !== "function") throw new ApprovalUnavailableError();
+    await session.withTransaction(async () => {
+      const submission = await readQuery(AlbumSubmission.findOne({ submissionId }), session);
+      if (!submission) throw new ModerationConflictError("Suggestion not found", "SUGGESTION_NOT_FOUND");
+      const current = plain(submission);
+      if (current.status === "approved") {
+        const approvedAlbum = await findCatalogByInternalId(current.approvedAlbumCatalogId, session);
+        if (!approvedAlbum) throw new ModerationConflictError("Approved suggestion has no usable catalog album", "APPROVAL_INCONSISTENT");
+        result = { submission: { ...current, approvedAlbumCatalogId: approvedAlbum }, album: approvedAlbum, idempotent: true };
+        return;
+      }
+      if (current.status !== "pending") {
+        throw new ModerationConflictError("Only pending corrections can be approved", "INVALID_SUBMISSION_STATE");
+      }
+      const target = await findCatalogByInternalId(current.targetAlbumCatalogId, session);
+      if (!target) throw new ModerationConflictError("Correction target album is missing", "CATALOG_TARGET_MISSING");
+      const baselineRevision = Number(current.baseCatalogRevision);
+      if (!Number.isSafeInteger(baselineRevision) || baselineRevision < 1) {
+        throw new ModerationConflictError("Correction has no usable catalog baseline", "CATALOG_BASELINE_INVALID");
+      }
+      if (catalogRevision(target) !== baselineRevision) {
+        throw new ModerationConflictError("Catalog album changed after this correction was submitted", "CATALOG_CHANGED");
+      }
+
+      const applied = correctionApprovalFields(current, applyFields);
+      if (appliedFieldsChanged(applied, selectedFields)) {
+        throw new ModerationConflictError("Correction changed while it was being approved", "STATE_CONFLICT");
+      }
+      const changes = current.proposedChanges || {};
+      const referenceConflicts = applied.appliedFields.includes("externalReferences")
+        ? await correctionReferenceConflicts(target, changes.externalReferences?.add, session)
+        : [];
+      if (referenceConflicts.length) {
+        throw new ModerationConflictError(
+          "A proposed external reference is already owned by another catalog album",
+          "CATALOG_REFERENCE_CONFLICT",
+          referenceConflicts,
+        );
+      }
+
+      const approvedAt = new Date();
+      const patch = correctionPatch(current, target, applied.appliedFields, actorUserId, approvedAt);
+      const candidate = {
+        ...plain(target),
+        ...patch,
+        catalogRevision: baselineRevision + 1,
+      };
+      validateCatalogDocument(candidate, { existingId: plain(target)._id });
+      const updatedAlbum = await AlbumCatalog.findOneAndUpdate(
+        { _id: plain(target)._id, albumId: plain(target).albumId, catalogRevision: baselineRevision },
+        { $set: patch, $inc: { catalogRevision: 1 } },
+        { returnDocument: "after", runValidators: true, session },
+      );
+      if (!updatedAlbum) throw new ModerationConflictError("Catalog album changed while the correction was being applied", "CATALOG_CHANGED");
+
+      const updated = await AlbumSubmission.findOneAndUpdate(
+        { _id: current._id, submissionId, status: "pending", currentRevision: preliminaryRevision },
+        {
+          $set: {
+            status: "approved",
+            approvedAlbumCatalogId: plain(updatedAlbum)._id,
+            duplicateOfSubmissionId: null,
+            approvedAt,
+            approvalPublicationType: "catalog_corrected",
+          },
+          $push: {
+            moderationHistory: {
+              actorUserId,
+              action: "approved",
+              reason,
+              createdAt: approvedAt,
+              application: {
+                targetAlbumId: plain(target).albumId,
+                proposedFields: applied.proposedFields,
+                appliedFields: applied.appliedFields,
+                unappliedFields: applied.unappliedFields,
+                baseCatalogRevision: baselineRevision,
+                resultCatalogRevision: baselineRevision + 1,
+              },
+            },
+          },
+        },
+        { returnDocument: "after", runValidators: true, session },
+      );
+      if (!updated) throw new ModerationConflictError("Suggestion changed while it was being approved", "STATE_CONFLICT");
+      result = {
+        submission: { ...plain(updated), targetAlbumCatalogId: target, approvedAlbumCatalogId: updatedAlbum },
+        album: updatedAlbum,
+        idempotent: false,
+      };
+    });
+    if (!result) throw new ModerationConflictError("Approval did not produce a result", "APPROVAL_CONFLICT");
+    return approvalResult(result);
+  } catch (error) {
+    if (error instanceof ApprovalUnavailableError) throw error;
+    if (isTransactionUnavailable(error)) throw new ApprovalUnavailableError();
+    if (error?.code === 11000) {
+      throw new ModerationConflictError("A proposed external reference is already owned by another catalog album", "CATALOG_REFERENCE_CONFLICT");
+    }
+    throw error;
+  } finally {
+    if (session && typeof session.endSession === "function") await session.endSession();
+  }
+}
+
+function appliedFieldsChanged(left, right) {
+  return JSON.stringify(left?.appliedFields || []) !== JSON.stringify(right?.appliedFields || []);
 }
 
 async function approveAlbumSubmission({
@@ -306,6 +558,8 @@ async function approveAlbumSubmission({
   albumId = "",
   confirmPossibleDuplicate = false,
   reason = "",
+  applyFields,
+  confirmPossibleDuplicateProvided = false,
   coverResolver,
 }) {
   if (typeof mongoose.startSession !== "function") throw new ApprovalUnavailableError();
@@ -331,6 +585,17 @@ async function approveAlbumSubmission({
   }
   if (preliminary.status !== "pending") {
     throw new ModerationConflictError("Only pending suggestions can be approved", "INVALID_SUBMISSION_STATE");
+  }
+
+  if (preliminary.submissionType === "catalog_correction") {
+    if (albumId || confirmPossibleDuplicateProvided || confirmPossibleDuplicate) {
+      throw new ModerationValidationError("Catalog correction approval cannot select an album or confirm duplicates");
+    }
+    return approveCatalogCorrection({ preliminary, submissionId, actorUserId, applyFields, reason });
+  }
+
+  if (applyFields !== undefined) {
+    throw new ModerationValidationError("applyFields is only valid for catalog correction approvals");
   }
 
   // Resolve before opening Mongo's transaction. The transaction re-reads the
@@ -424,6 +689,8 @@ async function approveAlbumSubmission({
             status: "approved",
             approvedAlbumCatalogId: album._id,
             duplicateOfSubmissionId: null,
+            approvedAt,
+            approvalPublicationType: albumId ? "catalog_linked" : "catalog_created",
           },
           $push: {
             moderationHistory: {

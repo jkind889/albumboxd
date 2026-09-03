@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import SuggestionForm from "../Components/Community/SuggestionForm";
+import CorrectionForm from "../Components/Community/CorrectionForm";
 import { API_BASE_URL } from "../config/api";
 import {
   communityErrorFrom,
@@ -34,14 +35,16 @@ function EditorError({ error, onRetry = null }) {
 }
 
 export function SuggestionEditor({ mode = "create" }) {
-  const { submissionId } = useParams();
+  const { albumId, submissionId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { getToken } = useAuth();
   const isRevision = mode === "revise";
+  const isCorrection = mode === "correction";
   const externalMbid = isRevision ? "" : (searchParams.get("mbid") || "").trim();
   const [submission, setSubmission] = useState(null);
-  const [loadStatus, setLoadStatus] = useState(isRevision || externalMbid ? "idle" : "ready");
+  const correctionFlow = isCorrection || (isRevision && submission?.submissionType === "catalog_correction");
+  const [loadStatus, setLoadStatus] = useState(isRevision || isCorrection || externalMbid ? "idle" : "ready");
   const [loadError, setLoadError] = useState(null);
   const [mutationStatus, setMutationStatus] = useState("idle");
   const [mutationError, setMutationError] = useState(null);
@@ -51,7 +54,7 @@ export function SuggestionEditor({ mode = "create" }) {
     const controller = new AbortController();
 
     async function loadEditorData() {
-      if (!isRevision && !externalMbid) {
+      if (!isRevision && !isCorrection && !externalMbid) {
         setSubmission(null);
         setLoadError(null);
         setLoadStatus("ready");
@@ -68,13 +71,30 @@ export function SuggestionEditor({ mode = "create" }) {
         return;
       }
 
+      if (isCorrection && !albumId) {
+        setLoadError({
+          message: "No catalog album ID was provided.",
+          code: "MISSING_ALBUM_ID",
+          details: [],
+        });
+        setLoadStatus("error");
+        return;
+      }
+
       setLoadStatus("loading");
       setLoadError(null);
       setSubmission(null);
 
       try {
         let data;
-        if (isRevision) {
+        if (isCorrection) {
+          data = await requestCommunityJson(
+            `${API_BASE_URL}/albums/album/${encodeURIComponent(albumId)}`,
+            { signal: controller.signal },
+            "Could not load this catalog album.",
+          );
+          data = { targetAlbum: data };
+        } else if (isRevision) {
           const token = await getToken();
           if (controller.signal.aborted) return;
           data = await requestCommunityJson(
@@ -108,7 +128,7 @@ export function SuggestionEditor({ mode = "create" }) {
         if (controller.signal.aborted) return;
         setLoadError(communityErrorFrom(
           error,
-          isRevision ? "Could not load this suggestion for revision." : "Could not load this MusicBrainz release group.",
+          isCorrection ? "Could not load this catalog album." : isRevision ? "Could not load this suggestion for revision." : "Could not load this MusicBrainz release group.",
         ));
         setLoadStatus("error");
       }
@@ -116,7 +136,7 @@ export function SuggestionEditor({ mode = "create" }) {
 
     loadEditorData();
     return () => controller.abort();
-  }, [externalMbid, getToken, isRevision, refreshIndex, submissionId]);
+  }, [albumId, externalMbid, getToken, isCorrection, isRevision, refreshIndex, submissionId]);
 
   async function submitSuggestion(payload) {
     setMutationStatus("loading");
@@ -124,7 +144,9 @@ export function SuggestionEditor({ mode = "create" }) {
 
     try {
       const token = await getToken();
-      const endpoint = isRevision
+      const endpoint = isCorrection
+        ? `${API_BASE_URL}/suggestions/corrections`
+        : isRevision
         ? `${API_BASE_URL}/suggestions/${encodeURIComponent(submissionId)}/revise`
         : `${API_BASE_URL}/suggestions`;
       const data = await requestCommunityJson(
@@ -134,7 +156,7 @@ export function SuggestionEditor({ mode = "create" }) {
           headers: { Authorization: `Bearer ${token}` },
           body: JSON.stringify(payload),
         },
-        isRevision ? "Could not submit this revision." : "Could not create this suggestion.",
+        isCorrection ? "Could not submit this correction." : isRevision ? "Could not submit this revision." : "Could not create this suggestion.",
       );
 
       setMutationStatus("success");
@@ -143,13 +165,13 @@ export function SuggestionEditor({ mode = "create" }) {
         state: {
           notice: isRevision
             ? "Revision submitted. The suggestion is back in the moderation queue."
-            : "Suggestion submitted for community review.",
+            : isCorrection ? "Correction submitted for community review." : "Suggestion submitted for community review.",
         },
       });
     } catch (error) {
       setMutationError(communityErrorFrom(
         error,
-        isRevision ? "Could not submit this revision." : "Could not create this suggestion.",
+        isCorrection ? "Could not submit this correction." : isRevision ? "Could not submit this revision." : "Could not create this suggestion.",
       ));
       setMutationStatus("error");
     }
@@ -161,7 +183,7 @@ export function SuggestionEditor({ mode = "create" }) {
       .find((event) => ["request_changes", "requested_changes"].includes(event.action))
     : null;
   const revisionBlocked = isRevision && submission && submission.status !== "needs_changes";
-  const externalPrefill = !isRevision && Boolean(externalMbid);
+  const externalPrefill = !isRevision && !isCorrection && Boolean(externalMbid);
 
   return (
     <section className="community-page community-editor-page">
@@ -169,7 +191,7 @@ export function SuggestionEditor({ mode = "create" }) {
         <nav className="community-breadcrumb" aria-label="Suggestions breadcrumb">
           <Link
             className="community-back-link"
-            to={submissionId ? `/suggestions/${submissionId}` : "/search"}
+            to={submissionId ? `/suggestions/${submissionId}` : albumId ? `/album/${albumId}` : "/search"}
           >
             ← {submissionId ? "Suggestion detail" : "Your suggestions"}
           </Link>
@@ -177,10 +199,12 @@ export function SuggestionEditor({ mode = "create" }) {
 
         <header className="community-page-header community-editor-header">
           <div className="community-page-heading-copy">
-            <p className="community-page-kicker">{isRevision ? "Contributor revision" : "New catalog proposal"}</p>
-            <h1 className="community-page-title">{isRevision ? "Revise an album suggestion" : "Suggest an album"}</h1>
+            <p className="community-page-kicker">{correctionFlow ? "Catalog correction" : isRevision ? "Contributor revision" : "New catalog proposal"}</p>
+            <h1 className="community-page-title">{correctionFlow ? "Suggest a catalog correction" : isRevision ? "Revise an album suggestion" : "Suggest an album"}</h1>
             <p className="community-page-description">
-              {isRevision
+              {correctionFlow
+                ? "Propose a precise, evidence-backed patch to one existing Rescened album."
+                : isRevision
                 ? "Update the complete record—not only the requested fields—then return it to the queue."
                 : externalPrefill
                   ? "Review this MusicBrainz record, complete any missing evidence, and send it to the community queue."
@@ -193,7 +217,7 @@ export function SuggestionEditor({ mode = "create" }) {
           <div className="community-loading" role="status" aria-live="polite">
             <span className="community-loading-index">Loading</span>
             <p className="community-loading-message">
-              {externalPrefill ? "Preparing MusicBrainz release group…" : "Preparing the latest revision…"}
+              {isCorrection ? "Preparing the catalog album…" : externalPrefill ? "Preparing MusicBrainz release group…" : "Preparing the latest revision…"}
             </p>
           </div>
         ) : null}
@@ -228,7 +252,18 @@ export function SuggestionEditor({ mode = "create" }) {
           </aside>
         ) : null}
 
-        {loadStatus === "ready" && !revisionBlocked ? (
+        {loadStatus === "ready" && !revisionBlocked ? (correctionFlow ? (
+          <CorrectionForm
+            key={`${submission?.submissionId || albumId || "correction"}-${submission?.currentRevision || 1}`}
+            initialValue={submission}
+            onSubmit={submitSuggestion}
+            submitLabel={isRevision ? "Submit corrected patch" : "Send correction for review"}
+            submittingLabel={isRevision ? "Submitting correction…" : "Sending correction…"}
+            isSubmitting={mutationStatus === "loading"}
+            error={mutationError}
+            formId={isRevision ? "community-correction-revision-form" : "community-correction-form"}
+          />
+        ) : (
           <SuggestionForm
             key={isRevision ? `${submission?.submissionId}-${submission?.currentRevision}` : "create"}
             initialValue={submission}
@@ -239,7 +274,7 @@ export function SuggestionEditor({ mode = "create" }) {
             error={mutationError}
             formId={isRevision ? "community-revision-form" : "community-create-form"}
           />
-        ) : null}
+        )) : null}
       </div>
     </section>
   );

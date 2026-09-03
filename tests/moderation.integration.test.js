@@ -10,7 +10,9 @@ const { createCoverArtResolver } = require("../lib/coverArtArchive");
 const { approveAlbumSubmission } = require("../routes/utils/approval");
 const {
   findDuplicateSignals,
+  normalizeCorrectionPayload,
   normalizeSubmissionPayload,
+  correctionSnapshot,
   snapshotForSubmission,
 } = require("../routes/utils/submissions");
 
@@ -50,6 +52,32 @@ async function createSubmission(title, customize = (payload) => payload) {
     moderationHistory: [{ actorUserId: "integration-user", action: "submitted", reason: "", createdAt: submittedAt }],
   });
   return submission;
+}
+
+async function createCorrection(target, proposedChanges) {
+  const payload = normalizeCorrectionPayload({
+    albumId: target.albumId,
+    proposedChanges,
+    supportingSources: [{ type: "official_label", url: "https://example.com/correction-evidence" }],
+  }, target);
+  const submittedAt = new Date();
+  return AlbumSubmission.create({
+    submissionId: crypto.randomUUID(),
+    submittedByUserId: "integration-correction-user",
+    submissionType: "catalog_correction",
+    targetAlbumCatalogId: payload.targetAlbumCatalogId,
+    baseCatalogRevision: payload.baseCatalogRevision,
+    baseValues: payload.baseValues,
+    baseProvenance: payload.baseProvenance,
+    proposedChanges: payload.proposedChanges,
+    supportingSources: payload.supportingSources,
+    externalReferences: [],
+    normalizedFingerprint: payload.normalizedFingerprint,
+    status: "pending",
+    currentRevision: 1,
+    revisions: [correctionSnapshot(payload, submittedAt, 1)],
+    moderationHistory: [{ actorUserId: "integration-correction-user", action: "submitted", reason: "", createdAt: submittedAt }],
+  });
 }
 
 function providerResponse(data, status = 200, headers = {}) {
@@ -210,6 +238,73 @@ async function modelInvariantTest() {
   );
 }
 
+async function correctionApprovalTest() {
+  const target = await AlbumCatalog.create({
+    albumId: crypto.randomUUID(),
+    title: "Correction Target",
+    artistDisplayName: "Correction Artist",
+    artistCredits: [{ name: "Correction Artist", role: "main" }],
+    releaseType: "album",
+    releaseDate: "2020",
+    releaseDatePrecision: "year",
+    releaseYear: 2020,
+    tracks: [{ trackId: crypto.randomUUID(), discNumber: 1, trackNumber: 1, title: "Original track", durationMs: 1000, artistDisplayName: "Correction Artist" }],
+    label: "Original label",
+    cover: "https://example.com/original.jpg",
+    externalReferences: [],
+    fieldProvenance: { title: { source: "import" }, label: { source: "import" } },
+    catalogSource: "import",
+    catalogRevision: 1,
+  });
+  const submission = await createCorrection(target, { title: "Corrected target", label: "Corrected label" });
+  const result = await approveAlbumSubmission({
+    submissionId: submission.submissionId,
+    actorUserId: "integration-moderator",
+    applyFields: ["title"],
+    reason: "Verified the title against the cited source",
+  });
+
+  const updatedTarget = await AlbumCatalog.findById(target._id).lean();
+  const updatedSubmission = await AlbumSubmission.findOne({ submissionId: submission.submissionId }).lean();
+  assert.equal(result.suggestion.publicationType, "catalog_corrected");
+  assert.equal(updatedTarget.title, "Corrected target");
+  assert.equal(updatedTarget.label, "Original label");
+  assert.equal(updatedTarget.catalogRevision, 2);
+  assert.equal(updatedTarget.fieldProvenance.title.source, "community");
+  assert.equal(updatedTarget.fieldProvenance.label.source, "import");
+  assert.equal(updatedSubmission.moderationHistory.filter((event) => event.action === "approved").length, 1);
+  assert.deepEqual(updatedSubmission.moderationHistory.at(-1).application.unappliedFields, ["label"]);
+}
+
+async function staleCorrectionTest() {
+  const target = await AlbumCatalog.create({
+    albumId: crypto.randomUUID(),
+    title: "Stale Target",
+    artistDisplayName: "Stale Artist",
+    artistCredits: [{ name: "Stale Artist", role: "main" }],
+    releaseType: "album",
+    releaseDate: "2021",
+    releaseDatePrecision: "year",
+    releaseYear: 2021,
+    tracks: [],
+    label: "Label",
+    cover: "",
+    externalReferences: [],
+    fieldProvenance: {},
+    catalogSource: "import",
+    catalogRevision: 1,
+  });
+  const submission = await createCorrection(target, { title: "Stale proposal" });
+  await AlbumCatalog.updateOne({ _id: target._id }, { $set: { label: "Intervening edit" }, $inc: { catalogRevision: 1 } });
+  await assert.rejects(
+    approveAlbumSubmission({ submissionId: submission.submissionId, actorUserId: "integration-moderator", applyFields: ["title"] }),
+    (error) => error.code === "CATALOG_CHANGED",
+  );
+  const persisted = await AlbumSubmission.findOne({ submissionId: submission.submissionId }).lean();
+  assert.equal(persisted.status, "pending");
+  assert.equal(await AlbumCatalog.countDocuments({ title: "Stale proposal" }), 0);
+}
+
 if (integrationEnabled) {
   test.before(setup);
   test.after(teardown);
@@ -218,10 +313,14 @@ if (integrationEnabled) {
   test("approval persists mocked Cover Art Archive resolution and exact references", automaticCoverApprovalTest);
   test("approval rollback leaves no public catalog row", rollbackTest);
   test("submission query updates preserve status and append-only invariants", modelInvariantTest);
+  test("catalog corrections apply selected fields and record the result revision", correctionApprovalTest);
+  test("stale catalog corrections are rejected without changing the submission", staleCorrectionTest);
 } else {
   test("transactional approval publishes a usable catalog album and keeps pending data private", { skip: "Set RUN_MONGO_INTEGRATION=true in an environment that permits local Mongo processes" }, () => {});
   test("concurrent approval retries are idempotent and create one album", { skip: "Set RUN_MONGO_INTEGRATION=true in an environment that permits local Mongo processes" }, () => {});
   test("approval persists mocked Cover Art Archive resolution and exact references", { skip: "Set RUN_MONGO_INTEGRATION=true in an environment that permits local Mongo processes" }, () => {});
   test("approval rollback leaves no public catalog row", { skip: "Set RUN_MONGO_INTEGRATION=true in an environment that permits local Mongo processes" }, () => {});
   test("submission query updates preserve status and append-only invariants", { skip: "Set RUN_MONGO_INTEGRATION=true in an environment that permits local Mongo processes" }, () => {});
+  test("catalog corrections apply selected fields and record the result revision", { skip: "Set RUN_MONGO_INTEGRATION=true in an environment that permits local Mongo processes" }, () => {});
+  test("stale catalog corrections are rejected without changing the submission", { skip: "Set RUN_MONGO_INTEGRATION=true in an environment that permits local Mongo processes" }, () => {});
 }

@@ -371,6 +371,7 @@ function guardedFilter(album) {
   const filter = { _id: source._id, ...missingCoverFilter() };
   if (source.updatedAt === undefined) filter.updatedAt = { $exists: false };
   else filter.updatedAt = source.updatedAt;
+  filter.catalogRevision = source.catalogRevision === undefined ? { $in: [null, 1] } : source.catalogRevision;
   return filter;
 }
 
@@ -488,6 +489,7 @@ async function processAlbum(album, { options, dependencies, Model, resolver, con
       cover: resolution.cover,
       "fieldProvenance.cover": resolution.provenance,
     },
+    $inc: { catalogRevision: 1 },
   };
   if (appendReference) update.$addToSet = { externalReferences: reference };
   let writeResult;

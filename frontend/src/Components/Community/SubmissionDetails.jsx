@@ -193,6 +193,64 @@ function EvidenceBlock({ supportingSources, externalReferences, compact = false,
   );
 }
 
+function diffValue(value) {
+  if (value === undefined || value === null || value === "") {
+    return "Not supplied";
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+function CorrectionDiffBlock({ submission, headingLevel = 3 }) {
+  const changes = values(submission.correctionDiff);
+  if (submission.submissionType !== "catalog_correction" || !changes.length) {
+    return null;
+  }
+
+  const HeadingTag = `h${Math.min(Math.max(headingLevel, 1), 6)}`;
+
+  return (
+    <section className="suggestion-detail-section suggestion-correction-diff">
+      <div className="suggestion-detail-section-heading">
+        <p className="suggestion-detail-kicker">Concurrency-safe review</p>
+        <HeadingTag className="suggestion-detail-section-title">Baseline, current, and proposed</HeadingTag>
+      </div>
+      <p className="suggestion-detail-note">
+        Approval is limited to selected groups. If the current catalog value differs from the captured baseline, the
+        server rejects the approval so the moderator can re-review the correction.
+      </p>
+      <div className="suggestion-correction-diff-list">
+        {changes.map((change) => (
+          <article className={`suggestion-correction-diff-item${change.stale ? " suggestion-correction-diff-stale" : ""}`} key={change.field}>
+            <div className="suggestion-correction-diff-heading">
+              <h4>{formatCommunityValue(change.field)}</h4>
+              <span className={`suggestion-correction-diff-status${change.stale ? " suggestion-correction-diff-status-stale" : ""}`}>
+                {change.stale ? "Changed since submission" : "Baseline matches"}
+              </span>
+            </div>
+            <dl className="suggestion-correction-diff-values">
+              <div>
+                <dt>Baseline</dt>
+                <dd><pre>{diffValue(change.baseline)}</pre></dd>
+              </div>
+              <div>
+                <dt>Current catalog</dt>
+                <dd><pre>{diffValue(change.current)}</pre></dd>
+              </div>
+              <div>
+                <dt>Proposed</dt>
+                <dd><pre>{diffValue(change.proposed)}</pre></dd>
+              </div>
+            </dl>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function DuplicateCandidates({ candidates, headingLevel = 3 }) {
   const catalogAlbums = values(candidates?.catalogAlbums);
   const submissions = values(candidates?.submissions);
@@ -364,7 +422,7 @@ export function SubmissionDetails({
   const sectionHeadingLevel = Math.min(level + 1, 6);
   const nestedHeadingLevel = Math.min(sectionHeadingLevel + 1, 6);
   const SectionHeadingTag = `h${sectionHeadingLevel}`;
-  const metadata = submission.proposedMetadata || {};
+  const metadata = submission.proposedMetadata || submission.targetAlbum || {};
 
   return (
     <article className="suggestion-detail">
@@ -398,6 +456,8 @@ export function SubmissionDetails({
           <p className="suggestion-detail-notice-copy">This is advisory and does not prevent moderator review.</p>
         </div>
       ) : null}
+
+      <CorrectionDiffBlock submission={submission} headingLevel={sectionHeadingLevel} />
 
       <section className="suggestion-detail-section">
         <div className="suggestion-detail-section-heading">

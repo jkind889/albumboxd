@@ -6,7 +6,7 @@ Rescened is a community-curated album catalog. Albums receive an immutable UUID 
 
 Set `MONGO_URI`, `CLERK_SECRET_KEY`, and either `CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY`. Spotify credentials are not used or required. Set `COMMUNITY_SUBMISSIONS_ENABLED=true` to enable contributor submission mutations and `COMMUNITY_MODERATION_ENABLED=true` to enable moderator commands; both are disabled by default. Set `MODERATOR_USER_IDS` to a comma-separated Clerk allowlist. Start the API with `npm run devStart` and the frontend from `frontend/` with `npm run dev`.
 
-The database is intentionally empty after the generation-2 cutover. Phase 2 now includes the contributor and moderator APIs: approval links or creates a usable local catalog album inside a Mongo transaction. Approval commands require a transaction-capable replica-set or sharded deployment; standalone Mongo remains safe for reads and non-publication moderation commands only.
+The database is intentionally empty after the generation-2 cutover. Phase 2 includes contributor and moderator APIs: approval creates, links, or applies an explicit field-level correction to a usable local catalog album inside a Mongo transaction. Approval commands require a transaction-capable replica-set or sharded deployment; standalone Mongo remains safe for reads and non-publication moderation commands only.
 
 ## Catalog contract
 
@@ -16,7 +16,7 @@ Saved albums are the deduplicated union of every board a user owns. Removing an 
 
 ## Community submissions
 
-See [Phase 2 community album submissions](./docs/PHASE_2_SUBMISSIONS.md) for the contributor and moderator APIs, data model, configuration, validation, duplicate handling, approval publication, and test contract. See [Phase 3 community-submission UI](./docs/PHASE_3_UI.md) for the authenticated contributor and moderator routes and workflows. The optional public approved-submission feed remains deferred.
+See [Phase 2 community album submissions](./docs/PHASE_2_SUBMISSIONS.md) for the contributor and moderator APIs, data model, configuration, validation, duplicate handling, approval publication, public feed, catalog corrections, and test contract. See the [moderator implementation guide](./docs/MODERATOR_IMPLEMENTATION_GUIDE.md) for a code-level walkthrough of the router, approval transactions, frontend workspace, errors, and tests. See [Phase 3 community-submission UI](./docs/PHASE_3_UI.md) for the authenticated contributor and moderator routes and workflows. The approved-feed and correction backends are present; historical reconciliation and their frontend presentation remain rollout work.
 
 ## Catalog bootstrap
 

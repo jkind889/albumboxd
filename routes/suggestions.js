@@ -1,16 +1,24 @@
 const express = require("express");
 const { getAuth } = require("@clerk/express");
+const AlbumCatalog = require("../models/AlbumCatalog");
 const AlbumSubmission = require("../models/AlbumSubmission");
 const {
+  approvedCursorFilter,
   SubmissionValidationError,
   cursorFilter,
+  decodeApprovedCursor,
   decodeCursor,
+  encodeApprovedCursor,
   encodeCursor,
   findDuplicateSignals,
   getPageLimit,
   isModerator,
   isSubmissionsEnabled,
+  normalizeCorrectionPayload,
   normalizeSubmissionPayload,
+  correctionSnapshot,
+  plain,
+  serializeApprovedFeedItem,
   serializeSubmission,
   snapshotForSubmission,
 } = require("./utils/submissions");
@@ -64,6 +72,7 @@ async function findSubmission(query) {
     result = result
       .populate("candidateAlbumCatalogId")
       .populate("approvedAlbumCatalogId")
+      .populate("targetAlbumCatalogId")
       .populate({ path: "duplicateOfSubmissionId", populate: { path: "approvedAlbumCatalogId" } });
   }
   return result;
@@ -83,6 +92,29 @@ function submissionUpdate(payload, duplicate, revision, status) {
   };
 }
 
+function correctionUpdate(payload, revision, status) {
+  return {
+    submissionType: "catalog_correction",
+    targetAlbumCatalogId: payload.targetAlbumCatalogId,
+    baseCatalogRevision: payload.baseCatalogRevision,
+    baseValues: payload.baseValues,
+    baseProvenance: payload.baseProvenance,
+    proposedChanges: payload.proposedChanges,
+    supportingSources: payload.supportingSources,
+    externalReferences: [],
+    normalizedFingerprint: payload.normalizedFingerprint,
+    candidateAlbumCatalogId: null,
+    candidateSubmissionIds: [],
+    duplicateSignals: [],
+    currentRevision: revision,
+    status,
+  };
+}
+
+async function queryResult(query) {
+  return query && typeof query.exec === "function" ? query.exec() : query;
+}
+
 router.post("/", auth, submissionsEnabled, submissionCreateRateLimit, async (req, res) => {
   try {
     const payload = normalizeSubmissionPayload(req.body);
@@ -91,6 +123,7 @@ router.post("/", auth, submissionsEnabled, submissionCreateRateLimit, async (req
     const snapshot = snapshotForSubmission(payload, duplicate, submittedAt, 1);
     const submission = await AlbumSubmission.create({
       submittedByUserId: req.userId,
+      submissionType: "new_album",
       ...submissionUpdate(payload, duplicate, 1, "pending"),
       revisions: [snapshot],
       moderationHistory: [{ actorUserId: req.userId, action: "submitted", reason: "", createdAt: submittedAt }],
@@ -101,13 +134,78 @@ router.post("/", auth, submissionsEnabled, submissionCreateRateLimit, async (req
   }
 });
 
+router.post("/corrections", auth, submissionsEnabled, submissionCreateRateLimit, async (req, res) => {
+  try {
+    const requestedAlbumId = typeof req.body?.albumId === "string" ? req.body.albumId.trim().toLowerCase() : "";
+    const album = requestedAlbumId ? await queryResult(AlbumCatalog.findOne({ albumId: requestedAlbumId })) : null;
+    if (!album) return res.status(404).json({ error: "Target catalog album not found", code: "CATALOG_TARGET_NOT_FOUND" });
+    const payload = normalizeCorrectionPayload(req.body, album);
+    const submittedAt = new Date();
+    const snapshot = correctionSnapshot(payload, submittedAt, 1);
+    const submission = await AlbumSubmission.create({
+      submittedByUserId: req.userId,
+      ...correctionUpdate(payload, 1, "pending"),
+      revisions: [snapshot],
+      moderationHistory: [{ actorUserId: req.userId, action: "submitted", reason: "", createdAt: submittedAt }],
+    });
+    return res.status(201).json(serializeSubmission({ ...plain(submission), targetAlbumCatalogId: album }, { detail: true }));
+  } catch (error) {
+    return sendRouteError(res, error, "Failed to create catalog correction");
+  }
+});
+
+router.get("/approved", async (req, res) => {
+  try {
+    const cursor = decodeApprovedCursor(req.query?.cursor);
+    const limit = getPageLimit(req.query?.limit);
+    const query = {
+      status: "approved",
+      approvedAlbumCatalogId: { $ne: null },
+      approvedAt: { $ne: null },
+      approvalPublicationType: { $in: ["catalog_created", "catalog_linked", "catalog_corrected"] },
+      ...approvedCursorFilter(cursor),
+    };
+    let result = AlbumSubmission.find(query);
+    if (result && typeof result.populate === "function") result = result.populate("approvedAlbumCatalogId");
+    if (result && typeof result.sort === "function") result = result.sort({ approvedAt: -1, _id: -1 });
+    if (result && typeof result.limit === "function") result = result.limit(limit + 1);
+    const rows = (await queryResult(result)) || [];
+    const hasNextPage = rows.length > limit;
+    const inspected = hasNextPage ? rows.slice(0, limit) : rows;
+    const suggestions = [];
+    inspected.forEach((submission) => {
+      const item = serializeApprovedFeedItem(submission);
+      if (item) {
+        suggestions.push(item);
+      } else {
+        const source = plain(submission) || {};
+        console.error("Approved suggestion feed integrity error", {
+          submissionId: source.submissionId || null,
+          reason: "approved submission has invalid publication metadata or catalog reference",
+        });
+      }
+    });
+    const lastInspected = inspected[inspected.length - 1];
+    return res.json({
+      suggestions,
+      nextCursor: hasNextPage && lastInspected
+        ? encodeApprovedCursor(lastInspected.approvedAt, lastInspected._id)
+        : null,
+    });
+  } catch (error) {
+    return sendRouteError(res, error, "Failed to fetch approved suggestions");
+  }
+});
+
 router.get("/mine", auth, async (req, res) => {
   try {
     const queryParams = req.query || {};
     const cursor = decodeCursor(queryParams.cursor);
     const limit = getPageLimit(queryParams.limit);
     const query = { submittedByUserId: req.userId, ...cursorFilter(cursor) };
-    const rows = await AlbumSubmission.find(query).sort({ createdAt: -1, _id: -1 }).limit(limit + 1);
+    let queryRows = AlbumSubmission.find(query);
+    if (queryRows && typeof queryRows.populate === "function") queryRows = queryRows.populate("targetAlbumCatalogId");
+    const rows = await queryRows.sort({ createdAt: -1, _id: -1 }).limit(limit + 1);
     const hasNextPage = rows.length > limit;
     const page = hasNextPage ? rows.slice(0, limit) : rows;
     const last = page[page.length - 1];
@@ -140,24 +238,44 @@ router.post("/:submissionId/revise", auth, submissionsEnabled, submissionMutatio
     if (current.status !== "needs_changes") {
       return res.status(409).json({ error: "Only suggestions needing changes can be revised", code: "INVALID_SUBMISSION_STATE" });
     }
-    const payload = normalizeSubmissionPayload(req.body);
-    const duplicate = await findDuplicateSignals(payload, { excludeSubmissionId: current._id });
     const revision = current.currentRevision + 1;
     const submittedAt = new Date();
-    const snapshot = snapshotForSubmission(payload, duplicate, submittedAt, revision);
-    const updated = await AlbumSubmission.findOneAndUpdate(
-      { submissionId: req.params.submissionId, submittedByUserId: req.userId, status: "needs_changes", currentRevision: current.currentRevision },
-      {
+    let update;
+    if ((current.submissionType || "new_album") === "catalog_correction") {
+      const targetId = plain(current.targetAlbumCatalogId)?._id || current.targetAlbumCatalogId;
+      const target = await queryResult(AlbumCatalog.findOne({ _id: targetId }));
+      if (!target) return res.status(409).json({ error: "The correction target album is no longer available", code: "CATALOG_TARGET_MISSING" });
+      const body = { ...(req.body || {}), albumId: req.body?.albumId || plain(target).albumId };
+      const payload = normalizeCorrectionPayload(body, target);
+      update = {
+        $set: correctionUpdate(payload, revision, "pending"),
+        $push: {
+          revisions: correctionSnapshot(payload, submittedAt, revision),
+          moderationHistory: { actorUserId: req.userId, action: "revised", reason: "", createdAt: submittedAt },
+        },
+      };
+    } else {
+      const payload = normalizeSubmissionPayload(req.body);
+      const duplicate = await findDuplicateSignals(payload, { excludeSubmissionId: current._id });
+      const snapshot = snapshotForSubmission(payload, duplicate, submittedAt, revision);
+      update = {
         $set: submissionUpdate(payload, duplicate, revision, "pending"),
         $push: {
           revisions: snapshot,
           moderationHistory: { actorUserId: req.userId, action: "revised", reason: "", createdAt: submittedAt },
         },
-      },
+      };
+    }
+    const updated = await AlbumSubmission.findOneAndUpdate(
+      { submissionId: req.params.submissionId, submittedByUserId: req.userId, status: "needs_changes", currentRevision: current.currentRevision },
+      update,
       { returnDocument: "after", runValidators: true },
     );
     if (!updated) return res.status(409).json({ error: "Suggestion changed while it was being revised", code: "REVISION_CONFLICT" });
-    return res.json(serializeSubmission(updated, { detail: true }));
+    const responseSubmission = (current.submissionType || "new_album") === "catalog_correction"
+      ? await findSubmission({ submissionId: req.params.submissionId })
+      : updated;
+    return res.json(serializeSubmission(responseSubmission || updated, { detail: true }));
   } catch (error) {
     return sendRouteError(res, error, "Failed to revise suggestion");
   }

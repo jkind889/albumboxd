@@ -19,6 +19,7 @@ import ProtectedRoute from "./Components/ProtectedRoute";
 
 const Suggestions = lazy(() => import("./Pages/Suggestions"));
 const SuggestionEditor = lazy(() => import("./Pages/SuggestionEditor"));
+const ApprovedSuggestions = lazy(() => import("./Pages/ApprovedSuggestions"));
 const ModerationSuggestions = lazy(() => import("./Pages/ModerationSuggestions"));
 
 export function App() {
@@ -44,6 +45,7 @@ export function App() {
             </ProtectedRoute>} />
             <Route path="/review-dispatches" element={<ReviewDispatches />} />
             <Route path="/popular-albums" element={<PopularAlbums />} />
+            <Route path="/community/approved" element={<ApprovedSuggestions />} />
             <Route path="/account" element={<Account />} />
             <Route path="/account/network" element={<ProfileNetwork />} />
             <Route path="/notifications" element={
@@ -57,6 +59,10 @@ export function App() {
             <Route path="/suggestions/new" element={
               <ProtectedRoute>
                 <SuggestionEditor />
+              </ProtectedRoute>} />
+            <Route path="/suggestions/corrections/:albumId" element={
+              <ProtectedRoute>
+                <SuggestionEditor mode="correction" />
               </ProtectedRoute>} />
             <Route path="/suggestions/:submissionId/revise" element={
               <ProtectedRoute>

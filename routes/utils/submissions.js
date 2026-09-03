@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 const mongoose = require("mongoose");
 const AlbumCatalog = require("../../models/AlbumCatalog");
+const { normalizeCatalogAlbum } = require("./albumCatalog");
 const AlbumSubmission = require("../../models/AlbumSubmission");
 
 const RELEASE_TYPES = new Set([
@@ -24,6 +25,10 @@ const SOURCE_TYPES = new Set([
   "other",
 ]);
 const ACTIVE_STATUSES = ["pending", "needs_changes"];
+const SUBMISSION_TYPES = ["new_album", "catalog_correction"];
+const CORRECTION_FIELD_GROUPS = ["title", "artists", "releaseType", "releaseDate", "label", "cover", "tracks", "externalReferences"];
+const APPROVAL_PUBLICATION_TYPES = ["catalog_created", "catalog_linked", "catalog_corrected"];
+const PUBLIC_UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEFAULT_PAGE_LIMIT = 20;
 const MAX_PAGE_LIMIT = 50;
 
@@ -85,55 +90,55 @@ function httpsUrl(value, path, { required = false } = {}) {
   }
 }
 
-function normalizeArtistCredits(value) {
-  if (!Array.isArray(value) || value.length < 1) fail("proposedMetadata.artistCredits must contain at least one artist");
-  if (value.length > 20) fail("proposedMetadata.artistCredits may contain at most twenty artists");
+function normalizeArtistCredits(value, path = "proposedMetadata.artistCredits") {
+  if (!Array.isArray(value) || value.length < 1) fail(`${path} must contain at least one artist`);
+  if (value.length > 20) fail(`${path} may contain at most twenty artists`);
   return value.map((credit, index) => {
-    const path = `proposedMetadata.artistCredits[${index}]`;
-    assertRecord(credit, path);
-    assertKeys(credit, new Set(["name", "role"]), path);
+    const creditPath = `${path}[${index}]`;
+    assertRecord(credit, creditPath);
+    assertKeys(credit, new Set(["name", "role"]), creditPath);
     return {
-      name: requiredString(credit.name, `${path}.name`, 200),
-      role: optionalString(credit.role, `${path}.role`, 80) || "main",
+      name: requiredString(credit.name, `${creditPath}.name`, 200),
+      role: optionalString(credit.role, `${creditPath}.role`, 80) || "main",
     };
   });
 }
 
-function normalizeReleaseDate(metadata) {
-  const suppliedDate = optionalString(metadata.releaseDate, "proposedMetadata.releaseDate", 10);
+function normalizeReleaseDate(metadata, path = "proposedMetadata") {
+  const suppliedDate = optionalString(metadata.releaseDate, `${path}.releaseDate`, 10);
   let releaseYear = metadata.releaseYear;
   if (releaseYear !== undefined) {
     if (!Number.isInteger(releaseYear) || releaseYear < 1 || releaseYear > 9999) {
-      fail("proposedMetadata.releaseYear must be an integer from 1 to 9999");
+      fail(`${path}.releaseYear must be an integer from 1 to 9999`);
     }
   }
 
   let releaseDate = suppliedDate;
   if (!releaseDate && releaseYear !== undefined) releaseDate = String(releaseYear).padStart(4, "0");
   if (!releaseDate || !/^\d{4}(?:-\d{2})?(?:-\d{2})?$/.test(releaseDate)) {
-    fail("proposedMetadata.releaseDate or releaseYear must be a YYYY, YYYY-MM, or YYYY-MM-DD value");
+    fail(`${path}.releaseDate or releaseYear must be a YYYY, YYYY-MM, or YYYY-MM-DD value`);
   }
   const precision = releaseDate.length === 4 ? "year" : releaseDate.length === 7 ? "month" : "day";
   const derivedYear = Number(releaseDate.slice(0, 4));
   if (releaseYear !== undefined && releaseYear !== derivedYear) {
-    fail("proposedMetadata.releaseYear must match releaseDate");
+    fail(`${path}.releaseYear must match releaseDate`);
   }
   if (metadata.releaseDatePrecision !== undefined && metadata.releaseDatePrecision !== precision) {
-    fail("proposedMetadata.releaseDatePrecision must match releaseDate");
+    fail(`${path}.releaseDatePrecision must match releaseDate`);
   }
   if (precision !== "year") {
     const month = Number(releaseDate.slice(5, 7));
-    if (month < 1 || month > 12) fail("proposedMetadata.releaseDate has an invalid month");
+    if (month < 1 || month > 12) fail(`${path}.releaseDate has an invalid month`);
   }
   if (precision === "day") {
     const day = Number(releaseDate.slice(8, 10));
-    if (day < 1 || day > 31) fail("proposedMetadata.releaseDate has an invalid day");
+    if (day < 1 || day > 31) fail(`${path}.releaseDate has an invalid day`);
     const parsedDate = new Date(`${releaseDate}T00:00:00.000Z`);
     if (Number.isNaN(parsedDate.getTime())
       || parsedDate.getUTCFullYear() !== derivedYear
       || parsedDate.getUTCMonth() + 1 !== Number(releaseDate.slice(5, 7))
       || parsedDate.getUTCDate() !== day) {
-      fail("proposedMetadata.releaseDate has an invalid day");
+      fail(`${path}.releaseDate has an invalid day`);
     }
   }
   return { releaseDate, releaseDatePrecision: precision, releaseYear: derivedYear };
@@ -220,26 +225,6 @@ function normalizeSources(value) {
   });
 }
 
-function normalizeExternalReferences(value) {
-  if (value === undefined) return [];
-  if (!Array.isArray(value)) fail("externalReferences must be an array");
-  if (value.length > 20) fail("externalReferences may contain at most twenty references");
-  const seen = new Set();
-  return value.map((reference, index) => {
-    const path = `externalReferences[${index}]`;
-    assertRecord(reference, path);
-    assertKeys(reference, new Set(["provider", "entityType", "externalId", "url"]), path);
-    const provider = requiredString(reference.provider, `${path}.provider`, 50).toLowerCase();
-    if (provider === "spotify") fail("Spotify references must be supplied as supporting evidence");
-    const entityType = requiredString(reference.entityType, `${path}.entityType`, 50).toLowerCase();
-    const externalId = requiredString(reference.externalId, `${path}.externalId`, 200);
-    const key = `${provider}|${entityType}|${externalId}`;
-    if (seen.has(key)) fail(`${path} duplicates another external reference`);
-    seen.add(key);
-    return { provider, entityType, externalId, url: httpsUrl(reference.url, `${path}.url`) };
-  });
-}
-
 function normalizeSubmissionPayload(body) {
   assertRecord(body, "request body");
   assertKeys(body, new Set(["proposedMetadata", "supportingSources", "externalReferences"]), "request body");
@@ -247,6 +232,235 @@ function normalizeSubmissionPayload(body) {
     proposedMetadata: normalizeMetadata(body.proposedMetadata),
     supportingSources: normalizeSources(body.supportingSources),
     externalReferences: normalizeExternalReferences(body.externalReferences),
+  };
+}
+
+function clone(value) {
+  if (value === undefined || value === null) return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function correctionAlbumRevision(album) {
+  const value = Number(album?.catalogRevision);
+  return Number.isSafeInteger(value) && value > 0 ? value : 1;
+}
+
+function correctionAlbumValue(album, field) {
+  const source = plain(album) || {};
+  if (field === "artists") {
+    return {
+      artistDisplayName: source.artistDisplayName || "",
+      artistCredits: clone(source.artistCredits || []),
+    };
+  }
+  if (field === "releaseDate") {
+    return {
+      releaseDate: source.releaseDate || "",
+      releaseDatePrecision: source.releaseDatePrecision || "",
+      releaseYear: source.releaseYear ?? null,
+    };
+  }
+  if (field === "externalReferences") return clone(source.externalReferences || []);
+  return clone(source[field]);
+}
+
+function correctionProvenanceValue(album, field) {
+  const source = plain(album) || {};
+  const provenance = source.fieldProvenance || {};
+  if (field === "artists") {
+    return {
+      artistDisplayName: clone(provenance.artistDisplayName),
+      artistCredits: clone(provenance.artistCredits),
+    };
+  }
+  if (field === "releaseDate") {
+    return {
+      releaseDate: clone(provenance.releaseDate),
+      releaseDatePrecision: clone(provenance.releaseDatePrecision),
+      releaseYear: clone(provenance.releaseYear),
+    };
+  }
+  return clone(provenance[field]);
+}
+
+function correctionReferenceKey(reference) {
+  return [reference?.provider, reference?.entityType, reference?.externalId]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .join("|");
+}
+
+function correctionFieldOrder(fields) {
+  const wanted = new Set(fields || []);
+  return CORRECTION_FIELD_GROUPS.filter((field) => wanted.has(field));
+}
+
+function sameValue(left, right) {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+function correctionCurrentValue(album, field) {
+  return correctionAlbumValue(album, field);
+}
+
+function correctionDiff(source) {
+  const proposed = source.proposedChanges || {};
+  const baseline = source.baseValues || {};
+  const target = source.targetAlbumCatalogId;
+  return correctionFieldOrder(Object.keys(proposed)).map((field) => ({
+    field,
+    baseline: clone(baseline[field]),
+    current: clone(correctionCurrentValue(target, field)),
+    proposed: clone(proposed[field]),
+    stale: !sameValue(correctionCurrentValue(target, field), baseline[field]),
+  }));
+}
+
+function normalizeCorrectionTracks(value, targetAlbum) {
+  if (!Array.isArray(value)) fail("proposedChanges.tracks must be an array");
+  if (value.length > 200) fail("proposedChanges.tracks may contain at most two hundred tracks");
+  const targetTrackIds = new Set((plain(targetAlbum)?.tracks || []).map((track) => String(track.trackId || "")));
+  const seenTrackIds = new Set();
+  return value.map((track, index) => {
+    const path = `proposedChanges.tracks[${index}]`;
+    assertRecord(track, path);
+    assertKeys(track, new Set(["trackId", "discNumber", "trackNumber", "title", "durationMs", "artistDisplayName"]), path);
+    let trackId = track.trackId;
+    if (trackId !== undefined) {
+      if (typeof trackId !== "string" || !PUBLIC_UUID_V4.test(trackId.trim())) fail(`${path}.trackId must be a UUID v4`);
+      trackId = trackId.trim().toLowerCase();
+      if (!targetTrackIds.has(trackId)) fail(`${path}.trackId must belong to the target album`);
+    } else {
+      trackId = crypto.randomUUID();
+    }
+    if (seenTrackIds.has(trackId)) fail(`${path}.trackId duplicates another track`);
+    seenTrackIds.add(trackId);
+    const discNumber = track.discNumber === undefined ? 1 : track.discNumber;
+    const trackNumber = track.trackNumber === undefined ? index + 1 : track.trackNumber;
+    const durationMs = track.durationMs === undefined ? 0 : track.durationMs;
+    if (!Number.isInteger(discNumber) || discNumber < 1 || discNumber > 999) fail(`${path}.discNumber is invalid`);
+    if (!Number.isInteger(trackNumber) || trackNumber < 1 || trackNumber > 999) fail(`${path}.trackNumber is invalid`);
+    if (!Number.isInteger(durationMs) || durationMs < 0 || durationMs > 86400000) fail(`${path}.durationMs is invalid`);
+    return {
+      trackId,
+      discNumber,
+      trackNumber,
+      title: requiredString(track.title, `${path}.title`, 200),
+      durationMs,
+      artistDisplayName: optionalString(track.artistDisplayName, `${path}.artistDisplayName`, 300),
+    };
+  });
+}
+
+function normalizeCorrectionChanges(value, targetAlbum) {
+  assertRecord(value, "proposedChanges");
+  assertKeys(value, new Set(CORRECTION_FIELD_GROUPS), "proposedChanges");
+  const changes = {};
+  if (value.title !== undefined) changes.title = requiredString(value.title, "proposedChanges.title", 200);
+  if (value.artists !== undefined) {
+    assertRecord(value.artists, "proposedChanges.artists");
+    assertKeys(value.artists, new Set(["artistDisplayName", "artistCredits"]), "proposedChanges.artists");
+    changes.artists = {
+      artistDisplayName: requiredString(value.artists.artistDisplayName, "proposedChanges.artists.artistDisplayName", 300),
+      artistCredits: normalizeArtistCredits(value.artists.artistCredits, "proposedChanges.artists.artistCredits"),
+    };
+  }
+  if (value.releaseType !== undefined) {
+    const releaseType = requiredString(value.releaseType, "proposedChanges.releaseType", 30).toLowerCase();
+    if (!RELEASE_TYPES.has(releaseType)) fail("proposedChanges.releaseType is invalid");
+    changes.releaseType = releaseType;
+  }
+  if (value.releaseDate !== undefined) {
+    assertRecord(value.releaseDate, "proposedChanges.releaseDate");
+    assertKeys(value.releaseDate, new Set(["releaseDate", "releaseDatePrecision", "releaseYear"]), "proposedChanges.releaseDate");
+    changes.releaseDate = normalizeReleaseDate(value.releaseDate, "proposedChanges.releaseDate");
+  }
+  if (value.label !== undefined) changes.label = optionalString(value.label, "proposedChanges.label", 200);
+  if (value.cover !== undefined) changes.cover = httpsUrl(value.cover, "proposedChanges.cover", { required: true });
+  if (value.tracks !== undefined) changes.tracks = normalizeCorrectionTracks(value.tracks, targetAlbum);
+  if (value.externalReferences !== undefined) {
+    assertRecord(value.externalReferences, "proposedChanges.externalReferences");
+    assertKeys(value.externalReferences, new Set(["add"]), "proposedChanges.externalReferences");
+    const added = normalizeExternalReferences(value.externalReferences.add, "proposedChanges.externalReferences.add");
+    if (!added.length) fail("proposedChanges.externalReferences.add must contain at least one reference");
+    changes.externalReferences = { add: added };
+  }
+  if (!Object.keys(changes).length) fail("proposedChanges must contain at least one field group");
+
+  const effective = Object.keys(changes).filter((field) => {
+    if (field === "externalReferences") {
+      const existing = new Set((plain(targetAlbum)?.externalReferences || []).map(correctionReferenceKey));
+      return changes.externalReferences.add.some((reference) => !existing.has(correctionReferenceKey(reference)));
+    }
+    return !sameValue(changes[field], correctionAlbumValue(targetAlbum, field));
+  });
+  if (!effective.length) fail("proposedChanges must contain at least one effective change");
+  return changes;
+}
+
+function normalizeExternalReferences(value, path = "externalReferences") {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) fail(`${path} must be an array`);
+  if (value.length > 20) fail(`${path} may contain at most twenty references`);
+  const seen = new Set();
+  return value.map((reference, index) => {
+    const referencePath = `${path}[${index}]`;
+    assertRecord(reference, referencePath);
+    assertKeys(reference, new Set(["provider", "entityType", "externalId", "url"]), referencePath);
+    const provider = requiredString(reference.provider, `${referencePath}.provider`, 50).toLowerCase();
+    if (provider === "spotify") fail("Spotify references must be supplied as supporting evidence");
+    const entityType = requiredString(reference.entityType, `${referencePath}.entityType`, 50).toLowerCase();
+    const externalId = requiredString(reference.externalId, `${referencePath}.externalId`, 200);
+    const key = `${provider}|${entityType}|${externalId}`;
+    if (seen.has(key)) fail(`${referencePath} duplicates another external reference`);
+    seen.add(key);
+    return { provider, entityType, externalId, url: httpsUrl(reference.url, `${referencePath}.url`) };
+  });
+}
+
+function correctionFingerprint(targetAlbum, changes) {
+  return crypto.createHash("sha256").update(JSON.stringify({
+    albumId: plain(targetAlbum)?.albumId || "",
+    catalogRevision: correctionAlbumRevision(targetAlbum),
+    changes,
+  })).digest("hex");
+}
+
+function normalizeCorrectionPayload(body, targetAlbum) {
+  assertRecord(body, "request body");
+  assertKeys(body, new Set(["albumId", "proposedChanges", "supportingSources"]), "request body");
+  if (!targetAlbum) fail("Target catalog album is required");
+  const albumId = requiredString(body.albumId, "albumId", 100).toLowerCase();
+  if (!PUBLIC_UUID_V4.test(albumId)) fail("albumId must be a UUID v4");
+  if (plain(targetAlbum).albumId !== albumId) fail("albumId does not match the target catalog album");
+  const proposedChanges = normalizeCorrectionChanges(body.proposedChanges, targetAlbum);
+  return {
+    albumId,
+    targetAlbumCatalogId: plain(targetAlbum)._id,
+    baseCatalogRevision: correctionAlbumRevision(targetAlbum),
+    baseValues: Object.fromEntries(Object.keys(proposedChanges).map((field) => [field, correctionAlbumValue(targetAlbum, field)])),
+    baseProvenance: Object.fromEntries(Object.keys(proposedChanges).map((field) => [field, correctionProvenanceValue(targetAlbum, field)])),
+    proposedChanges,
+    supportingSources: normalizeSources(body.supportingSources),
+    normalizedFingerprint: correctionFingerprint(targetAlbum, proposedChanges),
+  };
+}
+
+function correctionSnapshot(payload, submittedAt, revision) {
+  return {
+    revision,
+    submittedAt,
+    submissionType: "catalog_correction",
+    supportingSources: payload.supportingSources,
+    externalReferences: [],
+    normalizedFingerprint: payload.normalizedFingerprint,
+    candidateAlbumCatalogId: null,
+    candidateSubmissionIds: [],
+    duplicateSignals: [],
+    targetAlbumCatalogId: payload.targetAlbumCatalogId,
+    baseCatalogRevision: payload.baseCatalogRevision,
+    baseValues: payload.baseValues,
+    baseProvenance: payload.baseProvenance,
+    proposedChanges: payload.proposedChanges,
   };
 }
 
@@ -414,6 +628,7 @@ function snapshotForSubmission(payload, duplicate, submittedAt, revision) {
   return {
     revision,
     submittedAt,
+    submissionType: "new_album",
     proposedMetadata: payload.proposedMetadata,
     supportingSources: payload.supportingSources,
     externalReferences: payload.externalReferences,
@@ -438,20 +653,30 @@ function publicSnapshot(value) {
   const result = {
     revision: source.revision,
     submittedAt: source.submittedAt,
+    submissionType: source.submissionType || "new_album",
     proposedMetadata: source.proposedMetadata,
     supportingSources: source.supportingSources || [],
     externalReferences: source.externalReferences || [],
     candidateAlbumId: publicAlbumId(source.candidateAlbumCatalogId) || undefined,
   };
+  if (result.submissionType === "catalog_correction") {
+    result.targetAlbumId = publicAlbumId(source.targetAlbumCatalogId) || undefined;
+    result.baseCatalogRevision = source.baseCatalogRevision;
+    result.baseValues = source.baseValues || {};
+    result.proposedChanges = source.proposedChanges || {};
+  }
   if (!result.candidateAlbumId) delete result.candidateAlbumId;
+  if (!result.targetAlbumId) delete result.targetAlbumId;
   return result;
 }
 
-function serializeSubmission(value, { detail = false } = {}) {
+function serializeSubmission(value, { detail = false, moderator = false } = {}) {
   const source = plain(value) || {};
+  const submissionType = source.submissionType || "new_album";
   const result = {
     submissionId: source.submissionId,
     submittedByUserId: source.submittedByUserId,
+    submissionType,
     status: source.status,
     proposedMetadata: source.proposedMetadata,
     supportingSources: source.supportingSources || [],
@@ -465,25 +690,56 @@ function serializeSubmission(value, { detail = false } = {}) {
     candidateAlbumId: publicAlbumId(source.candidateAlbumCatalogId) || undefined,
     approvedAlbumId: publicAlbumId(source.approvedAlbumCatalogId) || undefined,
     duplicateAlbumId: publicAlbumId(source.duplicateOfSubmissionId?.approvedAlbumCatalogId) || undefined,
+    targetAlbumId: publicAlbumId(source.targetAlbumCatalogId) || undefined,
+    approvedAt: source.approvedAt,
+    publicationType: source.approvalPublicationType || undefined,
     createdAt: source.createdAt,
     updatedAt: source.updatedAt,
   };
+  if (submissionType === "catalog_correction") {
+    result.baseCatalogRevision = source.baseCatalogRevision;
+    result.baseValues = source.baseValues || {};
+    result.proposedChanges = source.proposedChanges || {};
+    if (detail) result.correctionDiff = correctionDiff(source);
+    if (source.targetAlbumCatalogId?.albumId) result.targetAlbum = normalizeCatalogAlbum(source.targetAlbumCatalogId);
+    if (moderator && source.baseProvenance) result.baseProvenance = clone(source.baseProvenance);
+  }
   if (detail) {
     result.revisions = (source.revisions || []).map(publicSnapshot);
     result.moderationHistory = (source.moderationHistory || []).map((event) => {
       const item = plain(event);
-      return {
+      const serializedEvent = {
         actorUserId: item.actorUserId,
         action: item.action,
         reason: item.reason || "",
         createdAt: item.createdAt,
       };
+      if (item.application) serializedEvent.application = clone(item.application);
+      return serializedEvent;
     });
   }
   Object.keys(result).forEach((key) => {
     if (result[key] === undefined) delete result[key];
   });
   return result;
+}
+
+function serializeApprovedFeedItem(value) {
+  const source = plain(value) || {};
+  const approvedAt = new Date(source.approvedAt);
+  const album = source.approvedAlbumCatalogId && plain(source.approvedAlbumCatalogId);
+  if (!PUBLIC_UUID_V4.test(String(source.submissionId || ""))
+    || source.status !== "approved"
+    || Number.isNaN(approvedAt.getTime())
+    || !APPROVAL_PUBLICATION_TYPES.includes(source.approvalPublicationType)
+    || !album?.albumId
+    || !PUBLIC_UUID_V4.test(String(album.albumId))) return null;
+  return {
+    submissionId: source.submissionId,
+    approvedAt,
+    publicationType: source.approvalPublicationType,
+    album: normalizeCatalogAlbum(album),
+  };
 }
 
 function encodeCursor(createdAt, id) {
@@ -519,6 +775,37 @@ function cursorFilter(cursor) {
   };
 }
 
+function encodeApprovedCursor(approvedAt, id) {
+  return Buffer.from(JSON.stringify({
+    approvedAt: new Date(approvedAt).toISOString(),
+    id: String(id),
+  })).toString("base64url");
+}
+
+function decodeApprovedCursor(cursor) {
+  if (!cursor || typeof cursor !== "string") return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    const approvedAt = new Date(decoded.approvedAt);
+    if (!decoded.id || !mongoose.isValidObjectId(decoded.id) || Number.isNaN(approvedAt.getTime())) throw new Error("invalid");
+    return { approvedAt, id: decoded.id };
+  } catch {
+    const error = new SubmissionValidationError("cursor is invalid");
+    error.code = "INVALID_CURSOR";
+    throw error;
+  }
+}
+
+function approvedCursorFilter(cursor) {
+  if (!cursor) return {};
+  return {
+    $or: [
+      { approvedAt: { $lt: cursor.approvedAt } },
+      { approvedAt: cursor.approvedAt, _id: { $lt: cursor.id } },
+    ],
+  };
+}
+
 function isSubmissionsEnabled(env = process.env) {
   return String(env.COMMUNITY_SUBMISSIONS_ENABLED || "").trim().toLowerCase() === "true";
 }
@@ -536,11 +823,17 @@ function isModerator(userId, env = process.env) {
 
 module.exports = {
   ACTIVE_STATUSES,
+  APPROVAL_PUBLICATION_TYPES,
+  CORRECTION_FIELD_GROUPS,
   DEFAULT_PAGE_LIMIT,
   MAX_PAGE_LIMIT,
+  SUBMISSION_TYPES,
   SubmissionValidationError,
+  approvedCursorFilter,
   cursorFilter,
+  decodeApprovedCursor,
   decodeCursor,
+  encodeApprovedCursor,
   encodeCursor,
   findDuplicateSignals,
   getModeratorUserIds,
@@ -548,7 +841,11 @@ module.exports = {
   isModerator,
   isSubmissionsEnabled,
   normalizedFingerprint,
+  normalizeCorrectionPayload,
   normalizeSubmissionPayload,
+  correctionSnapshot,
+  plain,
+  serializeApprovedFeedItem,
   serializeSubmission,
   snapshotForSubmission,
 };

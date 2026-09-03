@@ -80,6 +80,9 @@ function Navbar()
                                 <li className="nav-item">
                                     <Link to="/boards" className="nav-link active">Boards</Link>
                                 </li>
+                                <li className="nav-item">
+                                    <Link to="/community/approved" className={`nav-link${location.pathname === "/community/approved" ? " nav-link-current" : ""}`}>Community</Link>
+                                </li>
                                 <Show when="signed-in">
                                     <li className="nav-item">
                                         <Link

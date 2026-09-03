@@ -29,6 +29,7 @@ const COMMAND_ENDPOINTS = {
 };
 const INITIAL_FILTERS = {
   statuses: ["pending"],
+  submissionType: "",
   possibleDuplicate: "",
   submittedByUserId: "",
   limit: "20",
@@ -65,6 +66,9 @@ function buildQueueSearchParams(filters, cursor = "") {
   if (filters.possibleDuplicate) {
     params.set("hasPossibleDuplicate", filters.possibleDuplicate);
   }
+  if (filters.submissionType) {
+    params.set("submissionType", filters.submissionType);
+  }
   if (filters.submittedByUserId) {
     params.set("submittedByUserId", filters.submittedByUserId);
   }
@@ -75,11 +79,11 @@ function buildQueueSearchParams(filters, cursor = "") {
 }
 
 function queueTitle(suggestion) {
-  return suggestion.proposedMetadata?.title || "Untitled proposal";
+  return suggestion.proposedMetadata?.title || suggestion.targetAlbum?.title || "Untitled proposal";
 }
 
 function queueArtist(suggestion) {
-  return suggestion.proposedMetadata?.artistDisplayName || "Unknown artist";
+  return suggestion.proposedMetadata?.artistDisplayName || suggestion.targetAlbum?.artistDisplayName || "Unknown artist";
 }
 
 function commandSuccess(action, response) {
@@ -276,6 +280,7 @@ export function ModerationSuggestions() {
     setFilterError("");
     setAppliedFilters({
       statuses: [...filterDraft.statuses],
+      submissionType: filterDraft.submissionType,
       possibleDuplicate: filterDraft.possibleDuplicate,
       submittedByUserId: filterDraft.submittedByUserId.trim(),
       limit: filterDraft.limit,
@@ -554,6 +559,22 @@ export function ModerationSuggestions() {
                 ))}
               </div>
             </fieldset>
+
+            <div className="community-field moderation-filter-field">
+              <label htmlFor="moderation-submission-type-filter">Submission type</label>
+              <select
+                id="moderation-submission-type-filter"
+                onChange={(event) => setFilterDraft((currentFilters) => ({
+                  ...currentFilters,
+                  submissionType: event.target.value,
+                }))}
+                value={filterDraft.submissionType}
+              >
+                <option value="">All submission types</option>
+                <option value="new_album">New albums</option>
+                <option value="catalog_correction">Catalog corrections</option>
+              </select>
+            </div>
 
             <div className="community-field moderation-filter-field">
               <label htmlFor="moderation-duplicate-filter">Possible duplicate</label>

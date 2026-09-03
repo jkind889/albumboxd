@@ -816,6 +816,11 @@ export function AlbumDetail()
                                 Rate
                             </button>
                         ) : renderSignInAction("Rate", "★")}
+                        {canUseAuthenticatedActions ? (
+                            <Link className="album-side-action" to={`/suggestions/corrections/${album.albumId}`}>
+                                Suggest a correction
+                            </Link>
+                        ) : renderSignInAction("Suggest a correction")}
                         {boardSaveMessage && <p className="board-save-message">{boardSaveMessage}</p>}
                     </div>
 

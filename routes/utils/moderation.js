@@ -8,6 +8,8 @@ const SUBMISSION_STATUSES = new Set([
   "duplicate",
   "withdrawn",
 ]);
+const SUBMISSION_TYPES = new Set(["new_album", "catalog_correction"]);
+const CORRECTION_FIELDS = new Set(["title", "artists", "releaseType", "releaseDate", "label", "cover", "tracks", "externalReferences"]);
 const MODERATOR_DEFAULT_PAGE_LIMIT = 20;
 const MODERATOR_MAX_PAGE_LIMIT = 50;
 const PUBLIC_UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -91,16 +93,26 @@ function normalizeCommandBody(body, action) {
     };
   }
   if (action === "approve") {
-    assertKeys(body, new Set(["albumId", "confirmPossibleDuplicate", "reason"]));
+    assertKeys(body, new Set(["albumId", "confirmPossibleDuplicate", "reason", "applyFields"]));
     if (body.albumId !== undefined && body.albumId !== null && body.albumId !== "") {
       body.albumId = publicUuid(body.albumId, "albumId");
     }
     if (body.confirmPossibleDuplicate !== undefined && typeof body.confirmPossibleDuplicate !== "boolean") {
       fail("confirmPossibleDuplicate must be a boolean");
     }
+    if (body.applyFields !== undefined) {
+      if (!Array.isArray(body.applyFields) || body.applyFields.length < 1) fail("applyFields must contain at least one field group");
+      const fields = [...new Set(body.applyFields)];
+      if (fields.length !== body.applyFields.length || fields.some((field) => typeof field !== "string" || !CORRECTION_FIELDS.has(field))) {
+        fail("applyFields contains an invalid or duplicate field group");
+      }
+      body.applyFields = fields;
+    }
     return {
       albumId: body.albumId || "",
       confirmPossibleDuplicate: body.confirmPossibleDuplicate === true,
+      confirmPossibleDuplicateProvided: Object.prototype.hasOwnProperty.call(body, "confirmPossibleDuplicate"),
+      applyFields: body.applyFields,
       reason: optionalReason(body.reason),
     };
   }
@@ -115,6 +127,14 @@ function parseStatusFilter(value) {
     fail("status contains an invalid submission state");
   }
   return statuses;
+}
+
+function parseSubmissionTypeFilter(value) {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !SUBMISSION_TYPES.has(value.trim())) {
+    fail("submissionType must be new_album or catalog_correction");
+  }
+  return value.trim();
 }
 
 function parseBooleanFilter(value, path) {
@@ -180,6 +200,8 @@ module.exports = {
   MODERATOR_DEFAULT_PAGE_LIMIT,
   MODERATOR_MAX_PAGE_LIMIT,
   SUBMISSION_STATUSES,
+  SUBMISSION_TYPES,
+  parseSubmissionTypeFilter,
   decodeModerationCursor,
   encodeModerationCursor,
   isTransactionUnavailable,

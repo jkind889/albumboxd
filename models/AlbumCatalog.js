@@ -30,6 +30,13 @@ const externalReferenceSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const catalogRevisionSchema = {
+  type: Number,
+  required: true,
+  min: 1,
+  default: 1,
+};
+
 const albumCatalogSchema = new mongoose.Schema(
   {
     // Public, provider-neutral identity. Mongo's _id remains an internal relation key.
@@ -58,6 +65,10 @@ const albumCatalogSchema = new mongoose.Schema(
     externalReferences: { type: [externalReferenceSchema], default: [] },
     fieldProvenance: { type: mongoose.Schema.Types.Mixed, default: {} },
     catalogSource: { type: String, enum: ["community", "import", "manual"], default: "community" },
+    // Internal optimistic-concurrency token. It is deliberately omitted from
+    // public album representations and advances on every maintained catalog
+    // mutation.
+    catalogRevision: catalogRevisionSchema,
   },
   { timestamps: true },
 );

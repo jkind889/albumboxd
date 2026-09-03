@@ -90,6 +90,7 @@ function normalizeAlbumInput(input = {}, options = {}) {
     externalReferences,
     fieldProvenance: input.fieldProvenance && typeof input.fieldProvenance === "object" ? input.fieldProvenance : {},
     catalogSource: ["community", "import", "manual"].includes(input.catalogSource) ? input.catalogSource : "community",
+    catalogRevision: Number.isInteger(input.catalogRevision) && input.catalogRevision > 0 ? input.catalogRevision : 1,
   };
 }
 
@@ -115,6 +116,14 @@ function normalizeCatalogAlbum(album) {
 
 function toSearchResult(album) {
   return normalizeCatalogAlbum(album);
+}
+
+function validateCatalogDocument(input, options = {}) {
+  const value = options.existingId ? { ...input, _id: options.existingId } : input;
+  const document = new AlbumCatalog(value);
+  const error = document.validateSync();
+  if (error) throw error;
+  return document;
 }
 
 async function findAlbumByPublicId(albumId) {
@@ -143,6 +152,7 @@ module.exports = {
   requireAlbumId,
   normalizeAlbumInput,
   normalizeCatalogAlbum,
+  validateCatalogDocument,
   toSearchResult,
   findAlbumByPublicId,
   createCatalogAlbum,

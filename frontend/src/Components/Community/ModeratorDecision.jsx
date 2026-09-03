@@ -32,6 +32,34 @@ const EMPTY_REASONS = {
   reject: "",
 };
 
+const CORRECTION_FIELD_ORDER = [
+  "title",
+  "artists",
+  "releaseType",
+  "releaseDate",
+  "label",
+  "cover",
+  "tracks",
+  "externalReferences",
+];
+
+const CORRECTION_FIELD_LABELS = {
+  title: "Title",
+  artists: "Artists and credits",
+  releaseType: "Release type",
+  releaseDate: "Release date",
+  label: "Label",
+  cover: "Cover URL",
+  tracks: "Tracklist",
+  externalReferences: "External references",
+};
+
+function correctionFieldsFor(submission) {
+  return CORRECTION_FIELD_ORDER.filter((field) => (
+    submission?.proposedChanges && Object.prototype.hasOwnProperty.call(submission.proposedChanges, field)
+  ));
+}
+
 function errorDetailText(detail) {
   if (typeof detail === "string") {
     return detail;
@@ -77,6 +105,7 @@ export function ModeratorDecision({
   const [albumId, setAlbumId] = useState("");
   const [duplicateOfSubmissionId, setDuplicateOfSubmissionId] = useState("");
   const [confirmPossibleDuplicate, setConfirmPossibleDuplicate] = useState(false);
+  const [applyFields, setApplyFields] = useState(() => correctionFieldsFor(submission));
   const [clientError, setClientError] = useState("");
   const reasonId = useId();
   const albumIdInputId = useId();
@@ -115,6 +144,12 @@ export function ModeratorDecision({
   const requiresReason = action !== "approve";
   const isExactMatchError = error?.code === "EXACT_CATALOG_MATCH";
   const needsDuplicateConfirmation = error?.code === "POSSIBLE_DUPLICATE_CONFIRMATION_REQUIRED";
+  const isCorrection = submission?.submissionType === "catalog_correction";
+  const correctionFields = correctionFieldsFor(submission);
+  const correctionDiffByField = new Map(
+    (Array.isArray(submission?.correctionDiff) ? submission.correctionDiff : [])
+      .map((item) => [item.field, item]),
+  );
 
   function clearFeedback() {
     setClientError("");
@@ -155,6 +190,18 @@ export function ModeratorDecision({
     }
 
     if (action === "approve") {
+      if (isCorrection) {
+        if (!applyFields.length) {
+          setClientError("Select at least one proposed field before approving the correction.");
+          return;
+        }
+        onCommand("approve", {
+          applyFields,
+          ...(trimmedReason ? { reason: trimmedReason } : {}),
+        });
+        return;
+      }
+
       const body = {};
       const selectedAlbumId = albumId.trim();
 
@@ -226,7 +273,38 @@ export function ModeratorDecision({
 
           {action === "approve" ? (
             <div className="moderation-approval-fields">
-              {isExactMatchError ? (
+              {isCorrection ? (
+                <fieldset className="moderation-correction-fields">
+                  <legend>Fields to apply</legend>
+                  <p className="moderation-decision-note">
+                    Review the baseline, current catalog value, and proposal above. Only selected groups will be
+                    changed; a stale catalog revision will be rejected by the server.
+                  </p>
+                  {correctionFields.map((field) => (
+                    <label className="moderation-correction-field" key={field}>
+                      <input
+                        checked={applyFields.includes(field)}
+                        disabled={isSubmitting}
+                        onChange={(event) => {
+                          setApplyFields((currentFields) => (
+                            event.target.checked
+                              ? [...currentFields, field]
+                              : currentFields.filter((currentField) => currentField !== field)
+                          ));
+                          clearFeedback();
+                        }}
+                        type="checkbox"
+                      />
+                      <span>
+                        <strong>{CORRECTION_FIELD_LABELS[field] || field}</strong>
+                        <small>{correctionDiffByField.get(field)?.stale ? "Catalog changed since submission" : "Baseline matches current catalog"}</small>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+              ) : null}
+
+              {!isCorrection && isExactMatchError ? (
                 <div className="moderation-resolution moderation-resolution-required" role="alert">
                   <p className="community-eyebrow">Exact catalog match</p>
                   <h3>Choose the existing album before approving.</h3>
@@ -237,7 +315,7 @@ export function ModeratorDecision({
                 </div>
               ) : null}
 
-              {needsDuplicateConfirmation ? (
+              {!isCorrection && needsDuplicateConfirmation ? (
                 <div className="moderation-resolution moderation-resolution-warning" role="alert">
                   <p className="community-eyebrow">Duplicate check required</p>
                   <h3>Review the candidates, then confirm a new record is intentional.</h3>
@@ -248,7 +326,7 @@ export function ModeratorDecision({
                 </div>
               ) : null}
 
-              {displayedCatalogCandidates.length > 0 ? (
+              {!isCorrection && displayedCatalogCandidates.length > 0 ? (
                 <fieldset className="moderation-candidate-choices">
                   <legend>Catalog candidates</legend>
                   {displayedCatalogCandidates.map((candidate) => (
@@ -281,7 +359,7 @@ export function ModeratorDecision({
                 </fieldset>
               ) : null}
 
-              <div className="community-field">
+              {!isCorrection ? <div className="community-field">
                 <label htmlFor={albumIdInputId}>Existing catalog album ID <span>optional</span></label>
                 <input
                   autoComplete="off"
@@ -297,9 +375,9 @@ export function ModeratorDecision({
                   value={albumId}
                 />
                 <small>Use this for an existing catalog match. It links without overwriting that album.</small>
-              </div>
+              </div> : null}
 
-              <label className={`moderation-confirmation${needsDuplicateConfirmation ? " moderation-confirmation-required" : ""}`} htmlFor={confirmationId}>
+              {!isCorrection ? <label className={`moderation-confirmation${needsDuplicateConfirmation ? " moderation-confirmation-required" : ""}`} htmlFor={confirmationId}>
                 <input
                   checked={confirmPossibleDuplicate}
                   disabled={isSubmitting || Boolean(albumId.trim())}
@@ -314,7 +392,7 @@ export function ModeratorDecision({
                   I reviewed the duplicate candidates and intend to create a new catalog album.
                   <small>This acknowledgement is sent only when no existing album ID is selected.</small>
                 </span>
-              </label>
+              </label> : null}
             </div>
           ) : null}
 
