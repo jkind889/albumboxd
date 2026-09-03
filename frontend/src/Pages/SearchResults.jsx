@@ -109,7 +109,7 @@ export function SearchResults() {
         setHasNextPage(Boolean(data?.hasNextPage));
         setLoading(false);
 
-        if (page === 1 && localResults.length === 0) {
+        if (page === 1) {
           await fetchExternalResults();
         }
       } catch (searchError) {
@@ -172,7 +172,31 @@ export function SearchResults() {
     );
   }
 
+  const localAlbumIds = new Set(
+    searchresults
+      .map((result) => result?.albumId)
+      .filter(Boolean),
+  );
+  const visibleCatalogMatches = [];
+  const seenCatalogMatchIds = new Set();
+  catalogMatches.forEach((match) => {
+    const albumId = match?.albumId;
+    if (albumId && (localAlbumIds.has(albumId) || seenCatalogMatchIds.has(albumId))) return;
+    if (albumId) seenCatalogMatchIds.add(albumId);
+    visibleCatalogMatches.push(match);
+  });
+
   function renderExternalResults() {
+    if (externalState === "loading") {
+      return (
+        <section className="external-search-message" role="status" aria-live="polite">
+          <p className="external-search-message-kicker">External discovery</p>
+          <h3>Searching MusicBrainz...</h3>
+          <p>Looking for additional album matches.</p>
+        </section>
+      );
+    }
+
     if (externalState === "error") {
       return (
         <section className="external-search-message" role="alert">
@@ -193,25 +217,30 @@ export function SearchResults() {
       );
     }
 
+    const hasAdditionalCatalogMatches = visibleCatalogMatches.length > 0;
+    const hasCandidates = externalCandidates.length > 0;
+
     return (
       <div className="external-search-results">
-        <section className="external-search-intro" aria-labelledby="external-search-heading">
-          <p className="external-search-kicker">External discovery</p>
-          <h3 id="external-search-heading">No albums in Rescened matched this search.</h3>
-          <p>These MusicBrainz results are not in the catalog yet. You can suggest one for community review.</p>
-        </section>
+        {searchresults.length === 0 ? (
+          <section className="external-search-intro" aria-labelledby="external-search-heading">
+            <p className="external-search-kicker">External discovery</p>
+            <h3 id="external-search-heading">No albums in Rescened matched this search.</h3>
+            <p>These MusicBrainz results are not in the catalog yet. You can suggest one for community review.</p>
+          </section>
+        ) : null}
 
-        {catalogMatches.length > 0 ? (
+        {hasAdditionalCatalogMatches ? (
           <section className="external-catalog-matches" aria-labelledby="catalog-matches-heading">
             <div className="external-section-heading">
               <p className="external-search-kicker">Known identities</p>
               <h3 id="catalog-matches-heading">Already in Rescened</h3>
             </div>
-            {renderResults(catalogMatches)}
+            {renderResults(visibleCatalogMatches)}
           </section>
         ) : null}
 
-        {externalCandidates.length > 0 ? (
+        {hasCandidates ? (
           <section className="external-candidates" aria-labelledby="external-candidates-heading">
             <div className="external-section-heading">
               <p className="external-search-kicker">MusicBrainz release groups</p>
@@ -225,8 +254,12 @@ export function SearchResults() {
           </section>
         ) : null}
 
-        {catalogMatches.length === 0 && externalCandidates.length === 0 ? (
-          <p className="external-search-no-results">MusicBrainz did not return any usable release groups for this query.</p>
+        {!hasAdditionalCatalogMatches && !hasCandidates ? (
+          <p className="external-search-no-results">
+            {catalogMatches.length > 0
+              ? "MusicBrainz did not find any additional albums beyond the Rescened results above."
+              : "MusicBrainz did not return any usable release groups for this query."}
+          </p>
         ) : null}
       </div>
     );
@@ -235,9 +268,11 @@ export function SearchResults() {
   const isExternalMiss = Boolean(
     query && page === 1 && !loading && !error && searchresults.length === 0,
   );
-  const hasExternalResults = catalogMatches.length > 0 || externalCandidates.length > 0;
+  const isExternalPage = Boolean(
+    query && page === 1 && !loading && !error && externalState !== "idle",
+  );
+  const hasExternalResults = visibleCatalogMatches.length > 0 || externalCandidates.length > 0;
   const hasVisibleResults = searchresults.length > 0 || hasExternalResults;
-  const isLoading = loading || externalLoading;
 
   return (
     <section className="search-results-page">
@@ -246,10 +281,12 @@ export function SearchResults() {
           <h2>{query || "Search"}</h2>
           <div className="search-results-toolbar">
             <p className="search-results-summary">
-              {isLoading
-                ? externalLoading ? "Searching MusicBrainz..." : "Loading albums..."
+              {loading
+                ? "Loading albums..."
+                : externalLoading && searchresults.length === 0
+                  ? "Searching MusicBrainz..."
                 : isExternalMiss && hasExternalResults
-                  ? `${catalogMatches.length + externalCandidates.length} discovery result${catalogMatches.length + externalCandidates.length === 1 ? "" : "s"}`
+                  ? `${visibleCatalogMatches.length + externalCandidates.length} discovery result${visibleCatalogMatches.length + externalCandidates.length === 1 ? "" : "s"}`
                   : `${searchresults.length} album${searchresults.length === 1 ? "" : "s"} on page ${page}`}
             </p>
             <div className="profile-view-toggle search-view-toggle" aria-label="Search results view">
@@ -272,15 +309,16 @@ export function SearchResults() {
         </div>
 
         <AsyncState
-          isLoading={isLoading && Boolean(query)}
+          isLoading={loading && Boolean(query)}
           error={error}
-          isEmpty={!isLoading && !error && Boolean(query) && !hasVisibleResults && !isExternalMiss}
+          isEmpty={!loading && !error && Boolean(query) && !hasVisibleResults && !isExternalMiss}
           loadingVariant="grid"
           loadingMessage={externalLoading ? "Searching MusicBrainz" : "Loading search results"}
           errorTitle="Search unavailable"
           emptyTitle="No albums matched that search."
         >
-          {searchresults.length > 0 ? renderResults() : isExternalMiss ? renderExternalResults() : null}
+          {searchresults.length > 0 ? renderResults() : null}
+          {isExternalPage ? renderExternalResults() : null}
         </AsyncState>
 
         {query && (page > 1 || hasNextPage) && (

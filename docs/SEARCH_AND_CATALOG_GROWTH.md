@@ -4,14 +4,14 @@ Status: Proposed implementation scope
 
 Last reviewed: 2026-08-31
 
-This document defines the smallest useful search fallback and recurring catalog-growth plan for Rescened. The local `AlbumCatalog` remains the authoritative public catalog. MusicBrainz supplies read-only discovery candidates when local search has no matches, while the existing community-approval and dataset-import workflows remain the only ways an album becomes public.
+This document defines the smallest useful search fallback and recurring catalog-growth plan for Rescened. The local `AlbumCatalog` remains the authoritative public catalog. MusicBrainz supplies read-only discovery candidates alongside page-one local search results, while the existing community-approval and dataset-import workflows remain the only ways an album becomes public.
 
 The design deliberately favors a few explicit modules over a general provider platform. A second external provider, distributed job system, or fully automated production importer should be justified by observed usage before it is added.
 
 ## Decision summary
 
 - Search the local catalog first.
-- Use MusicBrainz release-group search only when the full search-results page has no local matches.
+- Use MusicBrainz release-group search for every valid page-one full-results query.
 - Keep navbar suggestions and profile album pickers local-only.
 - Return MusicBrainz matches as external candidates without a Rescened `albumId`.
 - Let a candidate prefill the existing community-suggestion form; search itself never writes catalog data.
@@ -23,9 +23,9 @@ The resulting flow is:
 
 ```text
 local search
-  -> local matches: render normal catalog albums
-  -> no matches: query MusicBrainz
-       -> existing MBID: render the matching local album
+  -> render normal catalog albums
+  -> page 1: query MusicBrainz and append discovery results
+       -> existing MBID: render the matching local album when it is not already shown
        -> new MBID: render an external candidate
             -> contributor suggestion
                  -> moderator approval
@@ -69,7 +69,7 @@ Discogs, Apple Music, TheAudioDB, and other providers remain deferred. MusicBrai
 | --- | --- | --- |
 | Local search | Escaped, case-insensitive catalog search with a maximum page size of 24. | `routes/search.js` |
 | Public album identity | Every usable public album has a Rescened UUID v4; MongoDB IDs stay internal. | `models/AlbumCatalog.js`, `routes/utils/albumCatalog.js` |
-| Search UI | Suggestions and full results assume every result has an `albumId` and can open `/album/:albumId`. | `frontend/src/Components/Searchbar.jsx`, `frontend/src/Pages/SearchResults.jsx` |
+| Search UI | Suggestions and local catalog cards use Rescened `albumId` values; external candidates use provider identities and remain separate. | `frontend/src/Components/Searchbar.jsx`, `frontend/src/Pages/SearchResults.jsx` |
 | Community publication | A pending suggestion is not public. Moderator approval links or creates the catalog record. | `routes/suggestions.js`, `routes/utils/approval.js` |
 | Broad catalog import | A dated ListenBrainz selection is hydrated from MusicBrainz, validated, and imported transactionally. | `lib/catalogImport/`, `scripts/fetchListenBrainzCatalog.js`, `scripts/importCatalogDataset.js` |
 | Cover art | Exact MusicBrainz identities can resolve to hotlinked Cover Art Archive images. | `lib/coverArtArchive.js` |
@@ -90,7 +90,7 @@ Keep local query behavior unchanged for the initial fallback. Capture catalog si
 
 - Navbar autocomplete continues to return up to five local albums.
 - The profile editor continues to offer only albums that can be saved by Rescened `albumId`.
-- The full results page requests external candidates only on page 1 and only after receiving zero local results.
+- The full results page requests up to 12 external candidates for every valid page-one query, after the local page has loaded.
 - Later pages never trigger external search.
 
 Keeping the existing route local-only avoids adding result-type branches to every current search consumer.
@@ -112,6 +112,8 @@ Each candidate may show:
 - A `Suggest this album` action.
 
 An external candidate must not link to `/album/:albumId`, appear saveable or reviewable, or use an upstream identifier in the `albumId` field.
+
+When local results exist, the same external sections append below the local catalog cards. The empty-local introduction is omitted in that case. Catalog identities already displayed in the local results are deduplicated from the appended known-identity section. A provider empty or unavailable message remains visible below usable local results.
 
 ### Candidate selection
 
@@ -392,7 +394,7 @@ Only after launch data exists, decide whether to add:
 | `lib/musicBrainzSearch.js` | Provider requests, mapping, caching, and upstream request pacing. |
 | `routes/search.js` | External endpoints, catalog reconciliation, flag, and response boundary. |
 | `routes/utils/rateLimit.js` | External-search request limit. |
-| `frontend/src/Pages/SearchResults.jsx` | Local-miss orchestration and external results state. |
+| `frontend/src/Pages/SearchResults.jsx` | Page-one local orchestration and appended external results state. |
 | `frontend/src/Components/ExternalAlbumCard.jsx` | Optional candidate-only presentation and suggestion link. |
 | `frontend/src/Pages/SuggestionEditor.jsx` | MBID draft loading and existing form initialization. |
 | `tests/musicBrainzSearch.test.js` | Captured-response mapping, cache, rate, timeout, and invalid-response tests. |
@@ -404,15 +406,16 @@ The first two slices should not require a new production dependency, schema migr
 
 ### Search
 
-- A local hit returns without calling MusicBrainz.
-- A page-1 local miss can return bounded MusicBrainz release-group candidates.
+- Every valid page-one full-results query can return bounded MusicBrainz release-group candidates, whether or not local albums match.
 - Navbar suggestions, profile album selection, and later result pages never call external search.
+- Local catalog cards render before appended MusicBrainz sections and remain usable while optional external search loads or fails.
 - External results use `externalId`, never a fabricated Rescened `albumId`.
+- A catalog identity already displayed in the local page is not rendered a second time in the appended known-identity section.
 - A returned MBID already present in the catalog becomes a normal catalog match rather than a duplicate candidate.
 - Repeated normalized queries use the bounded cache.
 - Simultaneous identical queries share one upstream request.
 - Upstream requests respect the application pacing rule.
-- An upstream failure leaves local search usable.
+- An upstream failure leaves local search usable and reports the optional external failure beneath it.
 - Disabling the feature requires no frontend rollback.
 - No search request creates or updates `AlbumCatalog` or `AlbumSubmission`.
 
