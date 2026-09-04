@@ -6,6 +6,8 @@ Last reviewed: 2026-09-02
 
 This guide explains how the Rescened moderator code fits together and what happens during each request. It is a companion to the [Phase 2 submission contract](./PHASE_2_SUBMISSIONS.md), not a second API specification. When this guide and the contract differ, verify the current code and update both documents in the same change.
 
+The [central error and status code reference](./ERROR_CODES.md) is the maintained cross-workflow index for API codes, rate limits, provider diagnostics, operator reports, and process exits.
+
 The backend now recognizes two submission types. A `new_album` approval either creates a catalog album or links without overwriting an existing album. A `catalog_correction` approval applies an explicit subset of proposed field groups to one existing album. The anonymous approved-submission feed is implemented on the contributor router, not the moderator router.
 
 The React workflow now includes a contributor correction form, baseline/current/proposed moderator diff, `applyFields` selection, a visible submission-type queue filter, and a public approved-feed page. Historical approval/catalog-revision reconciliation is implemented as a dry-run-first operator command, and dedicated replica-set correction coverage is included in the integration suite. Final rollout still requires running the reviewed reconciliation artifact in the target environment and completing a signed-in smoke pass.

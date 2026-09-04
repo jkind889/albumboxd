@@ -69,7 +69,10 @@ function install({ searchResults = [], draft = null, catalogs = [], searchError 
     id: rateLimitPath,
     filename: rateLimitPath,
     loaded: true,
-    exports: { externalSearchRateLimit: (req, res, next) => next() },
+    exports: {
+      externalSearchRateLimit: (req, res, next) => next(),
+      searchRateLimit: (req, res, next) => next(),
+    },
   };
   require.cache[adapterPath] = {
     id: adapterPath,

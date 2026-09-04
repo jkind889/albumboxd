@@ -9,7 +9,10 @@ const {
   normalizeSearchQuery,
   searchReleaseGroups,
 } = require("../lib/musicBrainzSearch");
-const { externalSearchRateLimit } = require("./utils/rateLimit");
+const {
+  externalSearchRateLimit,
+  searchRateLimit,
+} = require("./utils/rateLimit");
 const { isExternalAlbumSearchEnabled } = require("./utils/serverConfig");
 
 const router = express.Router();
@@ -97,7 +100,7 @@ async function findLocal(query, { skip = 0, limit }) {
   return { total, albums };
 }
 
-router.get("/search", async (req, res) => {
+router.get("/search", searchRateLimit, async (req, res) => {
   const query = String(req.query.q || "").trim();
   if (!query) return res.json([]);
 

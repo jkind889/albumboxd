@@ -3,6 +3,7 @@ const { getAuth } = require("@clerk/express");
 const Board = require("../models/Board");
 const BoardItem = require("../models/BoardItem");
 const { findAlbumByPublicId, normalizeCatalogAlbum } = require("./utils/albumCatalog");
+const { albumSaveRateLimit } = require("./utils/rateLimit");
 
 const router = express.Router();
 const DEFAULT_TITLE = "Saved albums";
@@ -97,7 +98,7 @@ router.delete("/:boardId", auth, async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Failed to delete board" }); }
 });
 
-router.post("/:boardId/albums", auth, async (req, res) => {
+router.post("/:boardId/albums", auth, albumSaveRateLimit, async (req, res) => {
   try {
     const board = await ownedBoard(req.userId, req.params.boardId);
     if (!board) return res.status(404).json({ error: "Board not found" });

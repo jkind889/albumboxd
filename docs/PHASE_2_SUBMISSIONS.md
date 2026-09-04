@@ -475,6 +475,8 @@ Moderator correction detail may additionally expose `baseProvenance`; ordinary c
 
 ## Error contract
 
+This table covers the community API surface. The [central error and status code reference](./ERROR_CODES.md) also documents rate-limit budgets, provider diagnostics, operator workflows, and client-only codes.
+
 | Status | Code or shape | Meaning |
 | --- | --- | --- |
 | `400` | `INVALID_SUBMISSION` | Request shape, field value, date, count, URL, or Mongoose validation failed. Normalizer errors also include `details`. |

@@ -5,6 +5,10 @@ const AlbumCatalog = require("../models/AlbumCatalog");
 const Like = require("../models/Like");
 const UserProfile = require("../models/UserProfile");
 const { findAlbumByPublicId, normalizeCatalogAlbum } = require("./utils/albumCatalog");
+const {
+  reviewCreateRateLimit,
+  reviewMutationRateLimit,
+} = require("./utils/rateLimit");
 
 const router = express.Router();
 const DEFAULT_AUTHOR = "rescened user";
@@ -63,7 +67,7 @@ async function access(userId, viewerId) {
   return true;
 }
 
-router.post("/review", auth, async (req, res) => {
+router.post("/review", auth, reviewCreateRateLimit, async (req, res) => {
   try {
     const album = await findAlbumByPublicId(req.body.albumId);
     const parsedRating = rating(req.body);
@@ -88,7 +92,7 @@ router.get("/review/user/:userId", async (req, res) => {
   } catch { res.status(500).json({ error: "Failed to fetch reviews" }); }
 });
 
-router.patch("/review/user/:id", auth, async (req, res) => {
+router.patch("/review/user/:id", auth, reviewMutationRateLimit, async (req, res) => {
   try {
     const parsedRating = rating(req.body);
     const reviewText = String(req.body.reviewText || "").trim();
@@ -99,7 +103,7 @@ router.patch("/review/user/:id", auth, async (req, res) => {
   } catch { res.status(500).json({ error: "Failed to update review" }); }
 });
 
-router.delete("/review/user/:id", auth, async (req, res) => {
+router.delete("/review/user/:id", auth, reviewMutationRateLimit, async (req, res) => {
   try { await Review.findOneAndDelete({ _id: req.params.id, userId: req.userId }); res.json({ message: "Review deleted" }); }
   catch { res.status(500).json({ error: "Failed to delete review" }); }
 });

@@ -4,6 +4,7 @@ const Like = require("../models/Like");
 const Review = require("../models/Reviews");
 const Notification = require("../models/Notification");
 const { findAlbumByPublicId } = require("./utils/albumCatalog");
+const { likeMutationRateLimit } = require("./utils/rateLimit");
 
 const router = express.Router();
 function viewer(req) { try { return getAuth(req).userId || ""; } catch { return ""; } }
@@ -22,7 +23,7 @@ router.get("/album/:albumId", async (req, res) => {
   } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to fetch album likes" }); }
 });
 
-router.put("/album/:albumId", auth, async (req, res) => {
+router.put("/album/:albumId", auth, likeMutationRateLimit, async (req, res) => {
   try {
     const liked = likedValue(req.body.liked);
     if (liked === null) return res.status(400).json({ error: "liked must be true or false" });
@@ -36,7 +37,7 @@ router.put("/album/:albumId", auth, async (req, res) => {
   } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to update album like" }); }
 });
 
-router.put("/review/:reviewId", auth, async (req, res) => {
+router.put("/review/:reviewId", auth, likeMutationRateLimit, async (req, res) => {
   try {
     const reviewId = String(req.params.reviewId || "").trim();
     const liked = likedValue(req.body.liked);

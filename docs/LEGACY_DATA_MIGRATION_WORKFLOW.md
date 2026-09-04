@@ -1,5 +1,7 @@
 # Legacy MongoDB to generation-2 migration workflow
 
+See the [central error and status code reference](./ERROR_CODES.md) for migration, reconciliation, provider, validation, and process-exit meanings.
+
 Status: planning draft. The transferred legacy archive was verified read-only on August 23, 2026; it has not been restored.
 
 ## Objective

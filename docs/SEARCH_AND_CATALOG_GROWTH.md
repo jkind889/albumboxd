@@ -213,6 +213,8 @@ This endpoint avoids putting a full metadata payload into query parameters or tr
 
 ### Errors and feature flag
 
+See the [central error and status code reference](./ERROR_CODES.md) for the complete public and internal provider-code vocabulary.
+
 Add a server-only flag:
 
 ```dotenv

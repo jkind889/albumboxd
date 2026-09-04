@@ -2,6 +2,8 @@
 
 Rescened's catalog bootstrap is an offline, two-stage process. It selects ranked release groups from ListenBrainz, hydrates their core metadata from MusicBrainz, writes a versioned JSON artifact, and then imports only rows that satisfy the catalog-import contract.
 
+See the [central error and status code reference](./ERROR_CODES.md) for validation, fetch, import, report, and exit-code meanings.
+
 The importer writes `AlbumCatalog` records only. It never creates community submissions, moderation history, reviews, likes, boards, profiles, or approved-feed entries.
 
 ## Checked-in artifacts
