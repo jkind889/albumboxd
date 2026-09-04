@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../config/api";
-import {Link, useLocation, useParams} from "react-router-dom";
-import {useState, useEffect } from "react";
+import {Link, useLocation, useNavigate, useParams} from "react-router-dom";
+import {useState, useEffect, useRef } from "react";
 import ReviewForm from "./ReviewForm";
 import AlbumReviewFeed from "./AlbumReviewFeed";
 import LikeButton from "./LikeButton";
@@ -65,10 +65,18 @@ const getDefaultAlbumSocial = () => ({
 export function AlbumDetail()
 {
     const {albumId} = useParams();
+    const navigate = useNavigate();
     const [album, setAlbum] = useState(null);
     const [isAlbumLoading, setIsAlbumLoading] = useState(true);
     const [albumError, setAlbumError] = useState("");
     const [reviews, setReviews] = useState([]);
+    const [nextReviewCursor, setNextReviewCursor] = useState(null);
+    const [recentReviewPreviews, setRecentReviewPreviews] = useState([]);
+    const [popularReviewPreviews, setPopularReviewPreviews] = useState([]);
+    const [recentPreviewHasMore, setRecentPreviewHasMore] = useState(false);
+    const [popularPreviewHasMore, setPopularPreviewHasMore] = useState(false);
+    const [isReviewsLoading, setIsReviewsLoading] = useState(false);
+    const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
     const [isSaved, setIsSaved] = useState(false);
     const [isBoardStateLoading, setIsBoardStateLoading] = useState(false);
     const [savedBoardIds, setSavedBoardIds] = useState([]);
@@ -84,42 +92,70 @@ export function AlbumDetail()
     const [expandedSocialSections, setExpandedSocialSections] = useState({});
     const [likeMessage, setLikeMessage] = useState("");
     const [reviewActionMessage, setReviewActionMessage] = useState("");
+    const [deletingReviewId, setDeletingReviewId] = useState("");
+    const [deleteErrors, setDeleteErrors] = useState({});
     const { getToken, isSignedIn, userId } = useAuth();
     const location = useLocation();
     const canUseAuthenticatedActions = Boolean(isSignedIn && userId);
+    const activeAlbumIdRef = useRef(albumId);
 
     useEffect(() => {
+        activeAlbumIdRef.current = albumId;
+        const controller = new AbortController();
+        const isReviewsRoute = location.pathname.endsWith("/reviews");
+        const reviewSort = new URLSearchParams(location.search).get("sort") === "popular" ? "popular" : "recent";
+
         async function fetchReviews() {
+            setIsReviewsLoading(true);
+            setReviews([]);
+            setNextReviewCursor(null);
             try {
                 const token = userId ? await getToken() : null;
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await fetch(`${API_BASE_URL}/reviews/review/album/${albumId}`, { headers });
-
-                if (!res.ok) {
-                    console.error("Failed to fetch reviews");
-                    setReviews([]);
+                const baseUrl = `${API_BASE_URL}/reviews/review/album/${albumId}`;
+                if (isReviewsRoute) {
+                    const response = await fetch(`${baseUrl}?sort=${reviewSort}`, { headers, signal: controller.signal });
+                    if (!response.ok) throw new Error("Failed to fetch reviews");
+                    const data = await response.json();
+                    if (!controller.signal.aborted) {
+                        setReviews(Array.isArray(data.reviews) ? data.reviews : []);
+                        setNextReviewCursor(data.nextCursor || null);
+                    }
                     return;
                 }
-
-                const data = await res.json();
-                setReviews(Array.isArray(data) ? data : []);
-            } catch (error) {
-                console.error("Failed to fetch reviews", error);
-                setReviews([]);
+                const [recentResponse, popularResponse] = await Promise.all([
+                    fetch(`${baseUrl}?sort=recent&limit=3`, { headers, signal: controller.signal }),
+                    fetch(`${baseUrl}?sort=popular&limit=3`, { headers, signal: controller.signal }),
+                ]);
+                if (!recentResponse.ok || !popularResponse.ok) throw new Error("Failed to fetch review previews");
+                const [recentData, popularData] = await Promise.all([recentResponse.json(), popularResponse.json()]);
+                if (!controller.signal.aborted) {
+                    setRecentReviewPreviews(Array.isArray(recentData.reviews) ? recentData.reviews : []);
+                    setPopularReviewPreviews(Array.isArray(popularData.reviews) ? popularData.reviews : []);
+                    setRecentPreviewHasMore(Boolean(recentData.nextCursor));
+                    setPopularPreviewHasMore(Boolean(popularData.nextCursor));
+                }
+            } catch {
+                if (!controller.signal.aborted) {
+                    setReviews([]);
+                    setRecentReviewPreviews([]);
+                    setPopularReviewPreviews([]);
+                }
+            } finally {
+                if (!controller.signal.aborted) setIsReviewsLoading(false);
             }
         }
-
-        if (albumId) {
-            fetchReviews();
-        }
-    }, [getToken, albumId, userId])
+        if (albumId) void fetchReviews();
+        return () => controller.abort();
+    }, [getToken, albumId, location.pathname, location.search, userId]);
 
     useEffect(() => {
+        const controller = new AbortController();
         async function fetchAlbumLike() {
             try {
                 const token = userId ? await getToken() : null;
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await fetch(`${API_BASE_URL}/likes/album/${albumId}`, { headers });
+                const res = await fetch(`${API_BASE_URL}/likes/album/${albumId}`, { headers, signal: controller.signal });
 
                 if (!res.ok) {
                     setAlbumLike({ likeCount: 0, likedByViewer: false });
@@ -131,25 +167,24 @@ export function AlbumDetail()
                     likeCount: Number(data.likeCount) || 0,
                     likedByViewer: Boolean(data.likedByViewer),
                 });
-            } catch (error) {
-                console.error("Failed to fetch album likes", error);
+            } catch {
+                if (controller.signal.aborted) return;
                 setAlbumLike({ likeCount: 0, likedByViewer: false });
             }
         }
 
-        if (albumId) {
-            fetchAlbumLike();
-        }
+        if (albumId) void fetchAlbumLike();
+        return () => controller.abort();
     }, [getToken, albumId, userId]);
 
     useEffect(() => {
-        let shouldIgnore = false;
+        const controller = new AbortController();
 
         async function fetchAlbumSocial() {
             try {
                 const token = userId ? await getToken() : null;
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                const res = await fetch(`${API_BASE_URL}/albums/album/${albumId}/social`, { headers });
+                const res = await fetch(`${API_BASE_URL}/albums/album/${albumId}/social`, { headers, signal: controller.signal });
 
                 if (!res.ok) {
                     throw new Error("Failed to fetch album social context");
@@ -157,7 +192,7 @@ export function AlbumDetail()
 
                 const data = await res.json();
 
-                if (!shouldIgnore) {
+                if (!controller.signal.aborted) {
                     setAlbumSocial({
                         savedCount: Number(data.savedCount) || 0,
                         reviewCount: Number(data.reviewCount) || 0,
@@ -167,22 +202,15 @@ export function AlbumDetail()
                         followedAlbumLikers: Array.isArray(data.followedAlbumLikers) ? data.followedAlbumLikers : [],
                     });
                 }
-            } catch (error) {
-                console.error("Failed to fetch album social context", error);
-
-                if (!shouldIgnore) {
+            } catch {
+                if (!controller.signal.aborted) {
                     setAlbumSocial(getDefaultAlbumSocial());
                 }
             }
         }
 
-        if (albumId) {
-            fetchAlbumSocial();
-        }
-
-        return () => {
-            shouldIgnore = true;
-        };
+        if (albumId) void fetchAlbumSocial();
+        return () => controller.abort();
     }, [getToken, albumId, userId]);
 
     useEffect(() => {
@@ -290,77 +318,93 @@ export function AlbumDetail()
         };
     }, [albumId])
 
-    async function addReview(review) {
+    async function addReview(review, idempotencyKey) {
         if (!canUseAuthenticatedActions) {
             return false;
         }
 
         setReviewActionMessage("");
-        const token = await getToken();
-        const res = await fetch(`${API_BASE_URL}/reviews/review`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`
-            },
-            body: JSON.stringify(review)  
-          });
-        if (!res.ok) {
-            const message = await getApiErrorMessage(res, "Failed to submit review");
-            console.error("Failed to submit review");
-            setReviewActionMessage(message);
-            return false;
+        try {
+            const token = await getToken();
+            const res = await fetch(`${API_BASE_URL}/reviews/review`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "Idempotency-Key": idempotencyKey },
+                body: JSON.stringify(review),
+            });
+            if (!res.ok) throw new Error(await getApiErrorMessage(res, "Failed to submit review"));
+            const newReview = await res.json();
+            if (activeAlbumIdRef.current !== review.albumId) return true;
+            setReviews((current) => current.some((item) => item._id === newReview._id) ? current : [newReview, ...current]);
+            setRecentReviewPreviews((current) => [newReview, ...current.filter((item) => item._id !== newReview._id)].slice(0, 3));
+            setPopularReviewPreviews((current) => current.some((item) => item._id === newReview._id) ? current : current);
+            if (res.status === 201) {
+                setAlbumSocial((currentSocial) => {
+                    const ratingDistribution = adjustRatingDistribution(currentSocial.ratingDistribution, newReview.rating, 1);
+                    return { ...currentSocial, reviewCount: (Number(currentSocial.reviewCount) || 0) + 1, averageRating: getAverageRatingFromDistribution(ratingDistribution), ratingDistribution };
+                });
+            }
+            return true;
+        } catch (error) {
+            setReviewActionMessage(error.message || "Could not submit your review.");
+            throw error;
         }
-
-        const newReview = await res.json();
-        console.log("Review saved to server:", newReview);
-        setReviews((prev) => [newReview, ...prev]);
-        setAlbumSocial((currentSocial) => {
-            const ratingDistribution = adjustRatingDistribution(currentSocial.ratingDistribution, newReview.rating, 1);
-
-            return {
-                ...currentSocial,
-                reviewCount: (Number(currentSocial.reviewCount) || 0) + 1,
-                averageRating: getAverageRatingFromDistribution(ratingDistribution),
-                ratingDistribution,
-            };
-        });
-        return true;
 
     };
 
     async function removeReview(id) {
-        if (!canUseAuthenticatedActions) {
-            return;
+        if (!canUseAuthenticatedActions || deletingReviewId) {
+            return false;
         }
-
-        setReviewActionMessage("");
-        const token = await getToken();
-        const res = await fetch(`${API_BASE_URL}/reviews/review/user/${id}`, {
-            method: "DELETE",
-            headers: {
-                "Authorization": `Bearer ${token}`
+        setDeletingReviewId(id);
+        setDeleteErrors((current) => ({ ...current, [id]: "" }));
+        try {
+            const token = await getToken();
+            const res = await fetch(`${API_BASE_URL}/reviews/review/user/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+            if (!res.ok) throw new Error(await getApiErrorMessage(res, "Failed to delete review"));
+            if (activeAlbumIdRef.current !== albumId) return true;
+            let removedReview = null;
+            setReviews((current) => {
+                removedReview = current.find((review) => review._id === id) || null;
+                return current.filter((review) => review._id !== id);
+            });
+            setRecentReviewPreviews((current) => current.filter((review) => review._id !== id));
+            setPopularReviewPreviews((current) => current.filter((review) => review._id !== id));
+            if (removedReview) {
+                setAlbumSocial((currentSocial) => {
+                    const ratingDistribution = adjustRatingDistribution(currentSocial.ratingDistribution, removedReview.rating, -1);
+                    return { ...currentSocial, reviewCount: Math.max(0, (Number(currentSocial.reviewCount) || 0) - 1), averageRating: getAverageRatingFromDistribution(ratingDistribution), ratingDistribution };
+                });
             }
-        });
-        if (!res.ok) {
-            const message = await getApiErrorMessage(res, "Failed to delete review");
-            console.error("Failed to delete review");
-            setReviewActionMessage(message);
-            return;
+            return true;
+        } catch (error) {
+            setDeleteErrors((current) => ({ ...current, [id]: error.message || "Could not delete that review." }));
+            return false;
+        } finally {
+            setDeletingReviewId("");
         }
-        const removedReview = reviews.find((review) => review._id === id);
-        setReviews((prev) => prev.filter((review) => review._id !== id));
-        setAlbumSocial((currentSocial) => {
-            const ratingDistribution = adjustRatingDistribution(currentSocial.ratingDistribution, removedReview?.rating, -1);
-
-            return {
-                ...currentSocial,
-                reviewCount: Math.max(0, (Number(currentSocial.reviewCount) || 0) - 1),
-                averageRating: getAverageRatingFromDistribution(ratingDistribution),
-                ratingDistribution,
-            };
-        });
     };
+
+    async function loadMoreReviews() {
+        if (!nextReviewCursor || isLoadingMoreReviews) return;
+        setIsLoadingMoreReviews(true);
+        try {
+            const token = userId ? await getToken() : null;
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            const response = await fetch(`${API_BASE_URL}/reviews/review/album/${albumId}?sort=${reviewSort}&cursor=${encodeURIComponent(nextReviewCursor)}`, { headers });
+            if (!response.ok) throw new Error(await getApiErrorMessage(response, "Could not load more reviews."));
+            const data = await response.json();
+            if (activeAlbumIdRef.current !== albumId) return;
+            setReviews((current) => {
+                const ids = new Set(current.map((review) => review._id));
+                return [...current, ...(Array.isArray(data.reviews) ? data.reviews.filter((review) => !ids.has(review._id)) : [])];
+            });
+            setNextReviewCursor(data.nextCursor || null);
+        } catch (error) {
+            setReviewActionMessage(error.message || "Could not load more reviews.");
+        } finally {
+            setIsLoadingMoreReviews(false);
+        }
+    }
 
     function updateReviewLikeState(reviewId, nextState) {
         setReviews((currentReviews) => (
@@ -509,15 +553,7 @@ export function AlbumDetail()
     const hasMultipleDiscs = sortedTracks.some((track) => Number(track.discNumber) > 1);
     const previewTracks = sortedTracks.slice(0, 14);
     const hasMoreTracks = sortedTracks.length > 14;
-    const recentReviews = [...userReviews].sort((first, second) => {
-        return new Date(second.date || 0).getTime() - new Date(first.date || 0).getTime();
-    });
-    const popularReviews = [...userReviews].sort((first, second) => {
-        return (Number(second.likeCount) || 0) - (Number(first.likeCount) || 0)
-            || (Number(second.rating) || 0) - (Number(first.rating) || 0)
-            || new Date(second.date || 0).getTime() - new Date(first.date || 0).getTime();
-    });
-    const selectedReviews = reviewSort === "popular" ? popularReviews : recentReviews;
+    const selectedReviews = reviews;
     const formatTrackDuration = (durationMs) => {
         const totalSeconds = Math.floor((Number(durationMs) || 0) / 1000);
 
@@ -979,6 +1015,10 @@ export function AlbumDetail()
                         <section className="album-reviews-section">
                             <div className="album-section-heading">
                                 <h2>{reviewSort === "popular" ? "Popular Reviews" : "Recent Reviews"}</h2>
+                                <select aria-label="Review order" value={reviewSort} onChange={(event) => navigate(`/album/${albumId}/reviews?sort=${event.target.value}`)} disabled={isReviewsLoading}>
+                                    <option value="recent">Latest first</option>
+                                    <option value="popular">Most liked</option>
+                                </select>
                                 <Link className="album-more-link" to={`/album/${albumId}`}>Back to album</Link>
                             </div>
                             <AlbumReviewFeed
@@ -987,34 +1027,42 @@ export function AlbumDetail()
                                 onRemoveReview={removeReview}
                                 onToggleReviewLike={toggleReviewLike}
                                 likeMessage={likeMessage}
+                                deletingReviewId={deletingReviewId}
+                                deleteErrors={deleteErrors}
                             />
+                            {nextReviewCursor && <button className="album-more-link" type="button" onClick={loadMoreReviews} disabled={isLoadingMoreReviews}>{isLoadingMoreReviews ? "Loading…" : "Load more reviews"}</button>}
+                            {!isReviewsLoading && !nextReviewCursor && selectedReviews.length > 0 && <p className="review-list-empty">You’re all caught up.</p>}
                         </section>
                     ) : (
                         <section className="album-review-previews">
                             <div className="album-review-column">
                                 <div className="album-section-heading">
                                     <h2>Popular Reviews</h2>
-                                    {popularReviews.length > 2 && <Link className="album-more-link" to={`/album/${albumId}/reviews?sort=popular`}>More</Link>}
+                                    {popularPreviewHasMore && <Link className="album-more-link" to={`/album/${albumId}/reviews?sort=popular`}>More</Link>}
                                 </div>
                                 <AlbumReviewFeed
-                                    reviews={popularReviews.slice(0, 2)}
+                                    reviews={popularReviewPreviews.slice(0, 2)}
                                     currentUserId={userId}
                                     onRemoveReview={removeReview}
                                     onToggleReviewLike={toggleReviewLike}
                                     likeMessage={likeMessage}
+                                    deletingReviewId={deletingReviewId}
+                                    deleteErrors={deleteErrors}
                                 />
                             </div>
                             <div className="album-review-column">
                                 <div className="album-section-heading">
                                     <h2>Recent Reviews</h2>
-                                    {recentReviews.length > 2 && <Link className="album-more-link" to={`/album/${albumId}/reviews?sort=recent`}>More</Link>}
+                                    {recentPreviewHasMore && <Link className="album-more-link" to={`/album/${albumId}/reviews?sort=recent`}>More</Link>}
                                 </div>
                                 <AlbumReviewFeed
-                                    reviews={recentReviews.slice(0, 2)}
+                                    reviews={recentReviewPreviews.slice(0, 2)}
                                     currentUserId={userId}
                                     onRemoveReview={removeReview}
                                     onToggleReviewLike={toggleReviewLike}
                                     likeMessage={likeMessage}
+                                    deletingReviewId={deletingReviewId}
+                                    deleteErrors={deleteErrors}
                                 />
                             </div>
                         </section>

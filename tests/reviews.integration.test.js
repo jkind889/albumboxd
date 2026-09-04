@@ -57,7 +57,6 @@ test.before(async () => {
     UserProfile.syncIndexes(),
   ]);
 });
-
 test.after(async () => {
   if (!enabled) return;
   await mongoose.connection.dropDatabase();
@@ -143,6 +142,23 @@ test("review likes and notifications commit together, while unlike preserves not
   const unliked = await mutateReviewLike(review._id, "actor", false);
   assert.equal(unliked.likeCount, 0);
   assert.equal(await Notification.countDocuments({ type: "review_like", reviewId: review._id }), 1);
+});
+
+test("review creation keys permit one durable review across concurrent retries", { skip: !enabled }, async () => {
+  const album = await createAlbum("Idempotent");
+  const creationKey = crypto.randomUUID();
+  const create = () => Review.create({
+    userId: "idempotent-owner",
+    albumCatalogId: album._id,
+    rating: 4,
+    reviewText: "One review despite a retry",
+    creationKey,
+  });
+  const attempts = await Promise.allSettled([create(), create()]);
+  assert.equal(attempts.filter((attempt) => attempt.status === "fulfilled").length, 1);
+  assert.equal(await Review.countDocuments({ userId: "idempotent-owner", creationKey }), 1);
+  const stored = await Review.findOne({ userId: "idempotent-owner", creationKey }).select("+creationKey");
+  assert.equal(stored.creationKey, creationKey);
 });
 
 test("review IDs are validated and unsupported transactions get action-specific errors", { skip: !enabled }, async () => {

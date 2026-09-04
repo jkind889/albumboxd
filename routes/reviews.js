@@ -11,6 +11,12 @@ const {
   buildPopularReviewsPipeline,
   getListLimit,
 } = require("./utils/reviewFeeds");
+const {
+  buildPopularReviewPagePipeline,
+  nextCursorFor,
+  parseReviewFeedQuery,
+  recentCursorFilter,
+} = require("./utils/reviewPagination");
 const { deleteOwnedReview, assertReviewId } = require("./utils/reviewInteractions");
 const {
   reviewCreateRateLimit,
@@ -32,20 +38,24 @@ async function authorMap(ids) {
   } catch { /* optional */ }
   return map;
 }
-async function likeStats(reviews, viewerId) {
+async function likeStats(reviews, viewerId, asOf) {
   const ids = reviews.map((review) => String(review._id)).filter(Boolean);
-  const rows = ids.length ? await Like.find({ targetType: "review", reviewId: { $in: ids } }) : [];
+  const rows = ids.length ? await Like.find({
+    targetType: "review",
+    reviewId: { $in: ids },
+    ...(asOf ? { createdAt: { $lte: asOf } } : {}),
+  }) : [];
   const stats = new Map(ids.map((id) => [id, { likeCount: 0, likedByViewer: false }]));
   rows.forEach((row) => { const item = stats.get(String(row.reviewId)); if (item) { item.likeCount += 1; item.likedByViewer ||= Boolean(viewerId && row.userId === viewerId); } });
   return stats;
 }
-async function serializeReviews(reviews, viewerId) {
+async function serializeReviews(reviews, viewerId, { likeStatsAsOf } = {}) {
   const sources = reviews.map(plain);
   const albumIds = [...new Set(sources.map((review) => String(review.albumCatalogId?._id || review.albumCatalogId || "")).filter(Boolean))];
   const albums = albumIds.length ? await AlbumCatalog.find({ _id: { $in: albumIds } }) : [];
   const albumMap = new Map(albums.map((album) => [String(album._id), normalizeCatalogAlbum(album)]));
   const authors = await authorMap(sources.map((review) => review.userId));
-  const stats = await likeStats(sources, viewerId);
+  const stats = await likeStats(sources, viewerId, likeStatsAsOf);
   return sources.map((review) => ({
     _id: review._id,
     userId: review.userId,
@@ -67,28 +77,75 @@ function rating(body) {
   if (!Number.isFinite(value) || value < 1 || value > 5 || !Number.isInteger(value * 2)) return null;
   return value;
 }
+
+function creationKey(req) {
+  const value = String(req.get("Idempotency-Key") || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    const error = new Error("Idempotency-Key must be a UUID v4");
+    error.status = 400;
+    error.code = "INVALID_IDEMPOTENCY_KEY";
+    throw error;
+  }
+  return value.toLowerCase();
+}
+
+async function serializeExistingCreation(res, userId, key) {
+  const existing = await Review.findOne({ userId, creationKey: key });
+  if (!existing) return false;
+  res.status(200).json((await serializeReviews([existing], userId))[0]);
+  return true;
+}
+
 router.post("/review", auth, reviewCreateRateLimit, async (req, res) => {
   try {
+    const key = creationKey(req);
+    if (await serializeExistingCreation(res, req.userId, key)) return;
     const album = await findAlbumByPublicId(req.body.albumId);
     const parsedRating = rating(req.body);
     const reviewText = String(req.body.reviewText || "").trim();
     if (!parsedRating) return res.status(400).json({ error: "Rating must be a whole or half number between 1 and 5" });
     if (!reviewText) return res.status(400).json({ error: "Review text is required" });
-    const review = await Review.create({ userId: req.userId, albumCatalogId: album._id, rating: parsedRating, reviewText });
+    const review = await Review.create({ userId: req.userId, albumCatalogId: album._id, rating: parsedRating, reviewText, creationKey: key });
     res.status(201).json((await serializeReviews([review], req.userId))[0]);
-  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to create review" }); }
+  } catch (error) {
+    if (error?.code === 11000) {
+      try {
+        const key = creationKey(req);
+        if (await serializeExistingCreation(res, req.userId, key)) return;
+      } catch { /* fall through to the stable error response */ }
+    }
+    res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to create review", ...(error.code ? { code: error.code } : {}) });
+  }
 });
 
+async function sendReviewPage(req, res, { match, scope, viewerId }) {
+  const feed = parseReviewFeedQuery(req.query, scope);
+  let rows;
+  if (feed.sort === "popular") {
+    rows = await Review.aggregate(buildPopularReviewPagePipeline(match, feed));
+  } else {
+    rows = await Review.find({ ...match, ...recentCursorFilter(feed.cursor) })
+      .sort({ date: -1, _id: -1 })
+      .limit(feed.limit + 1);
+  }
+  const hasNextPage = rows.length > feed.limit;
+  const page = rows.slice(0, feed.limit);
+  res.json({
+    reviews: await serializeReviews(page, viewerId, { likeStatsAsOf: feed.sort === "popular" ? feed.asOf : null }),
+    nextCursor: hasNextPage ? nextCursorFor(page.at(-1), feed) : null,
+  });
+}
+
 router.get("/review/user/", auth, async (req, res) => {
-  try { res.json(await serializeReviews(await Review.find({ userId: req.userId }).sort({ date: -1 }), req.userId)); }
-  catch { res.status(500).json({ error: "Failed to fetch reviews" }); }
+  try { await sendReviewPage(req, res, { match: { userId: req.userId }, scope: `user:${req.userId}`, viewerId: req.userId }); }
+  catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to fetch reviews", ...(error.code ? { code: error.code } : {}) }); }
 });
 
 router.get("/review/user/:userId", async (req, res) => {
   try {
     const target = String(req.params.userId || "").trim();
-    res.json(await serializeReviews(await Review.find({ userId: target }).sort({ date: -1 }), viewer(req)));
-  } catch { res.status(500).json({ error: "Failed to fetch reviews" }); }
+    await sendReviewPage(req, res, { match: { userId: target }, scope: `user:${target}`, viewerId: viewer(req) });
+  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to fetch reviews", ...(error.code ? { code: error.code } : {}) }); }
 });
 
 router.patch("/review/user/:id", auth, reviewMutationRateLimit, async (req, res) => {
@@ -116,8 +173,8 @@ router.delete("/review/user/:id", auth, reviewMutationRateLimit, async (req, res
 router.get("/review/album/:albumId", async (req, res) => {
   try {
     const album = await findAlbumByPublicId(req.params.albumId);
-    res.json(await serializeReviews(await Review.find({ albumCatalogId: album._id }).sort({ date: -1 }), viewer(req)));
-  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to fetch reviews" }); }
+    await sendReviewPage(req, res, { match: { albumCatalogId: album._id }, scope: `album:${album.albumId}`, viewerId: viewer(req) });
+  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to fetch reviews", ...(error.code ? { code: error.code } : {}) }); }
 });
 
 router.get("/popular", async (req, res) => {

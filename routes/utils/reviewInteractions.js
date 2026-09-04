@@ -11,7 +11,6 @@ const ACTION_CODES = {
   like: "REVIEW_LIKE_UNAVAILABLE",
   pin: "REVIEW_PIN_UNAVAILABLE",
 };
-
 class ReviewTransactionUnavailableError extends Error {
   constructor(action) {
     super("Review interaction is unavailable until MongoDB transactions are enabled");

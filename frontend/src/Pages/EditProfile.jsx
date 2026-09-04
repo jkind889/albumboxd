@@ -80,6 +80,8 @@ export function EditProfile() {
   const [pinnedReviewId, setPinnedReviewId] = useState("");
   const [pinnedBoardId, setPinnedBoardId] = useState("");
   const [reviews, setReviews] = useState([]);
+  const [nextReviewCursor, setNextReviewCursor] = useState(null);
+  const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
   const [boards, setBoards] = useState([]);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [profileStatus, setProfileStatus] = useState("");
@@ -110,6 +112,7 @@ export function EditProfile() {
 // isCurrent is our safe guard incase a user exits the page before the fetch finishes or signs out 
   useEffect(() => {
     let isCurrent = true;
+    const controller = new AbortController();
 
     async function fetchProfile() {
       if (!isSignedIn) {
@@ -126,9 +129,9 @@ export function EditProfile() {
           Authorization: `Bearer ${token}`,
         };
         const [profileResponse, reviewsResponse, boardsResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/profile/me`, { headers }),
-          fetch(`${API_BASE_URL}/reviews/review/user/`, { headers }),
-          fetch(`${API_BASE_URL}/boards`, { headers }),
+          fetch(`${API_BASE_URL}/profile/me`, { headers, signal: controller.signal }),
+          fetch(`${API_BASE_URL}/reviews/review/user/?sort=recent`, { headers, signal: controller.signal }),
+          fetch(`${API_BASE_URL}/boards`, { headers, signal: controller.signal }),
         ]);
 
         if (!profileResponse.ok || !reviewsResponse.ok || !boardsResponse.ok) {
@@ -152,10 +155,15 @@ export function EditProfile() {
         setListeningNextAlbum(data.listeningNextAlbum || null);
         setPinnedReviewId(data.pinnedReview?._id || "");
         setPinnedBoardId(data.pinnedBoard?._id || "");
-        setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+        const initialReviews = Array.isArray(reviewsData.reviews) ? reviewsData.reviews : [];
+        const currentPinnedReview = data.pinnedReview || null;
+        setReviews(currentPinnedReview && !initialReviews.some((review) => review._id === currentPinnedReview._id)
+          ? [currentPinnedReview, ...initialReviews]
+          : initialReviews);
+        setNextReviewCursor(reviewsData.nextCursor || null);
         setBoards(Array.isArray(boardsData) ? boardsData : []);
       } catch (error) {
-        if (isCurrent) {
+        if (isCurrent && !controller.signal.aborted) {
           setProfileError(getErrorMessage(error, "Could not load profile settings."));
         }
       } finally {
@@ -169,8 +177,31 @@ export function EditProfile() {
 
     return () => {
       isCurrent = false;
+      controller.abort();
     };
   }, [getToken, isSignedIn]);
+
+  async function loadMoreReviews() {
+    if (!nextReviewCursor || isLoadingMoreReviews) return;
+    setIsLoadingMoreReviews(true);
+    try {
+      const token = await getToken();
+      const response = await fetch(`${API_BASE_URL}/reviews/review/user/?sort=recent&cursor=${encodeURIComponent(nextReviewCursor)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(await getApiErrorMessage(response, "Could not load more reviews."));
+      const data = await response.json();
+      setReviews((current) => {
+        const ids = new Set(current.map((review) => review._id));
+        return [...current, ...(Array.isArray(data.reviews) ? data.reviews.filter((review) => !ids.has(review._id)) : [])];
+      });
+      setNextReviewCursor(data.nextCursor || null);
+    } catch (error) {
+      setProfileError(error.message || "Could not load more reviews.");
+    } finally {
+      setIsLoadingMoreReviews(false);
+    }
+  }
 
   async function handleUsernameSubmit(event) {
     event.preventDefault();
@@ -618,6 +649,11 @@ export function EditProfile() {
                       ))}
                     </select>
                   </label>
+                  {nextReviewCursor && (
+                    <button className="profile-secondary-button" type="button" onClick={loadMoreReviews} disabled={isLoadingMoreReviews}>
+                      {isLoadingMoreReviews ? "Loading reviews..." : "Load older reviews"}
+                    </button>
+                  )}
 
                   <label className="edit-profile-field">
                     <span>Pinned Board</span>

@@ -94,6 +94,8 @@ function ReviewListCard({
     onToggleReviewLike,
     likeMessage,
     editMessage,
+    deletingReviewId,
+    deleteError,
     formatReviewDate,
     formatRatingStars,
 }) {
@@ -143,9 +145,12 @@ function ReviewListCard({
                                 </button>
                             )}
                             {canRemoveReviews && (
-                                <button className="review-delete-button" type="button" onClick={() => onRemoveReview(review._id)}>Delete Review</button>
+                                <button className="review-delete-button" type="button" disabled={deletingReviewId === review._id} onClick={() => onRemoveReview(review._id)}>
+                                    {deletingReviewId === review._id ? "Deleting..." : "Delete Review"}
+                                </button>
                             )}
                         </div>
+                        {deleteError && <p className="review-edit-error" role="alert">{deleteError}</p>}
                     </>
                 )}
             </div>
@@ -164,6 +169,8 @@ export function ReviewList({
     onToggleReviewLike,
     likeMessage,
     editMessage,
+    deletingReviewId,
+    deleteErrors = {},
 })
 {
     const canRemoveReviews = typeof onRemoveReview === "function";
@@ -213,6 +220,8 @@ export function ReviewList({
                     onToggleReviewLike={onToggleReviewLike}
                     likeMessage={likeMessage}
                     editMessage={editMessage}
+                    deletingReviewId={deletingReviewId}
+                    deleteError={deleteErrors[review._id]}
                     formatReviewDate={formatReviewDate}
                     formatRatingStars={formatRatingStars}
                 />

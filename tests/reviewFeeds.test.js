@@ -29,7 +29,6 @@ test("popular feed parses windows and clamps limits", () => {
   assert.equal(getListLimit(undefined, 6), 6);
   assert.equal(getListLimit(100, 6), 12);
 });
-
 test("popular album aggregation contains Bayesian score and deterministic tie ordering", () => {
   const pipeline = buildPopularAlbumsPipeline({ limit: 8, window: "all" });
   assert.equal(pipeline.some((stage) => stage.$match), false);

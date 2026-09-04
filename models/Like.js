@@ -20,5 +20,6 @@ likeSchema.index(
 );
 likeSchema.index({ targetType: 1, albumCatalogId: 1 });
 likeSchema.index({ targetType: 1, reviewId: 1 });
+likeSchema.index({ targetType: 1, reviewId: 1, createdAt: 1 });
 
 module.exports = mongoose.model("Like", likeSchema);

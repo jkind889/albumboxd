@@ -4,6 +4,9 @@ export function ReviewForm({album, onAddReview, onSubmitted})
 {
     const [reviewText, setReviewText] = useState("");
     const [rating, setRating] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState("");
+    const [idempotencyKey, setIdempotencyKey] = useState("");
 
 
     const handleSubmit = async (e) => {
@@ -19,17 +22,27 @@ export function ReviewForm({album, onAddReview, onSubmitted})
             albumId: album.albumId,
             rating: numericRating,
             reviewText: reviewText.trim(),
-            date: Date.now()
         };
+        const requestKey = idempotencyKey || crypto.randomUUID();
 
-        const wasAdded = await onAddReview(newReview)
-        if (wasAdded === false) {
-            return;
+        setIsSubmitting(true);
+        setSubmitError("");
+        setIdempotencyKey(requestKey);
+
+        try {
+            const wasAdded = await onAddReview(newReview, requestKey);
+            if (wasAdded === false) {
+                return;
+            }
+            setReviewText("");
+            setRating("");
+            setIdempotencyKey("");
+            onSubmitted?.();
+        } catch (error) {
+            setSubmitError(error?.message || "Could not submit your review. Try again.");
+        } finally {
+            setIsSubmitting(false);
         }
-        setReviewText("");
-        setRating("");
-        onSubmitted?.();
-        console.log("Review submitted:", newReview);
 
     };
 
@@ -53,6 +66,7 @@ export function ReviewForm({album, onAddReview, onSubmitted})
                     value={rating}
                     onChange={(e) => setRating(e.target.value)}
                     placeholder="1-5"
+                    disabled={isSubmitting}
                 />
             </label>
 
@@ -64,10 +78,14 @@ export function ReviewForm({album, onAddReview, onSubmitted})
                     placeholder="Write your review here..."
                     rows="5"
                     required
+                    disabled={isSubmitting}
                 />
             </label>
 
-            <button className="review-submit-button" type="submit">Submit Review</button>
+            {submitError && <p className="review-action-message" role="alert">{submitError}</p>}
+            <button className="review-submit-button" type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Submitting..." : "Submit Review"}
+            </button>
         </form>
     );
 }

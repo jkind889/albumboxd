@@ -8,6 +8,7 @@ const files = [
   "tests/catalogImport.integration.test.js",
   "tests/legacyMigration.integration.test.js",
   "tests/reviews.integration.test.js",
+  "tests/profileNetwork.integration.test.js",
 ];
 const result = spawnSync(process.execPath, ["--test", ...files], {
   stdio: "inherit",

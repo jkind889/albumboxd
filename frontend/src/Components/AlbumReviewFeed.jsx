@@ -29,6 +29,8 @@ function AlbumReviewCard({
     onRemoveReview,
     onToggleReviewLike,
     likeMessage,
+    deletingReviewId,
+    deleteError,
 }) {
     const username = getReviewUsername(review);
     const imageUrl = review.author?.imageUrl;
@@ -83,10 +85,12 @@ function AlbumReviewCard({
                         className="review-delete-button album-review-delete"
                         type="button"
                         onClick={() => onRemoveReview(review._id)}
+                        disabled={deletingReviewId === review._id}
                     >
-                        Delete Review
+                        {deletingReviewId === review._id ? "Deleting..." : "Delete Review"}
                     </button>
                 )}
+                {deleteError && <p className="review-edit-error" role="alert">{deleteError}</p>}
             </div>
         </article>
     );
@@ -98,6 +102,8 @@ export function AlbumReviewFeed({
     onRemoveReview,
     onToggleReviewLike,
     likeMessage,
+    deletingReviewId,
+    deleteErrors = {},
 })
 {
     if (reviews.length === 0) {
@@ -118,6 +124,8 @@ export function AlbumReviewFeed({
                     onRemoveReview={onRemoveReview}
                     onToggleReviewLike={onToggleReviewLike}
                     likeMessage={likeMessage}
+                    deletingReviewId={deletingReviewId}
+                    deleteError={deleteErrors[review._id]}
                 />
             ))}
         </div>

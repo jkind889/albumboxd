@@ -10,6 +10,7 @@ const Like = require("../models/Like");
 const Notification = require("../models/Notification");
 const { findAlbumByPublicId, normalizeCatalogAlbum } = require("./utils/albumCatalog");
 const { runReviewTransaction, assertPinnedReview } = require("./utils/reviewInteractions");
+const { NETWORK_ACTIVITY_LIMIT, getNetworkActivity } = require("./utils/networkActivity");
 
 const router = express.Router();
 const MAX_FAVORITES = 5;
@@ -21,9 +22,9 @@ function plain(value) { return typeof value?.toObject === "function" ? value.toO
 function viewer(req) { try { return getAuth(req).userId || ""; } catch { return ""; } }
 function auth(req, res, next) { const userId = viewer(req); if (!userId) return res.status(401).json({ error: "Unauthorized" }); req.userId = userId; next(); }
 function author(userId, user) { return { userId, username: user?.username || DEFAULT_AUTHOR, imageUrl: user?.imageUrl || "" }; }
-async function authors(ids) {
+async function authors(ids, options = {}) {
   const map = new Map([...new Set(ids.filter(Boolean))].map((id) => [id, author(id)]));
-  try { const listed = await clerkClient.users.getUserList({ userId: [...map.keys()] }); const users = Array.isArray(listed) ? listed : listed.data || []; users.forEach((user) => map.set(user.id, author(user.id, user))); } catch { /* optional */ }
+  try { const listed = await clerkClient.users.getUserList({ ...options, userId: [...map.keys()] }); const users = Array.isArray(listed) ? listed : listed.data || []; users.forEach((user) => map.set(user.id, author(user.id, user))); } catch { /* optional */ }
   return map;
 }
 function spotifyProfile(value) {
@@ -115,7 +116,13 @@ async function activity(userId, includePrivate = false, viewerId = "") {
 router.get("/me", auth, async (req, res) => { try { const profile = await ensureProfile(req.userId); res.json({ ...(await formatProfile(profile)), ...(await socialStats(req.userId, req.userId)) }); } catch { res.status(500).json({ error: "Failed to fetch profile" }); } });
 router.get("/me/saved", auth, async (req, res) => { try { res.json(await getSavedAlbums(req.userId)); } catch { res.status(500).json({ error: "Failed to fetch saved albums" }); } });
 router.get("/me/activity", auth, async (req, res) => { try { res.json(await activity(req.userId, true, req.userId)); } catch { res.status(500).json({ error: "Failed to fetch activity" }); } });
-router.get("/me/network", auth, async (req, res) => { try { const rows = await Follow.find({ followerId: req.userId }); const map = await authors(rows.map((row) => plain(row).followingId)); res.json(rows.map((row) => map.get(plain(row).followingId)).filter(Boolean)); } catch { res.status(500).json({ error: "Failed to fetch network activity" }); } });
+router.get("/me/network", auth, async (req, res) => {
+  try {
+    res.json(await getNetworkActivity(req.userId, (ids) => authors(ids, { limit: NETWORK_ACTIVITY_LIMIT })));
+  } catch {
+    res.status(500).json({ error: "Failed to fetch network activity" });
+  }
+});
 router.get("/me/social", auth, async (req, res) => { try { const [followers, following] = await Promise.all([Follow.find({ followingId: req.userId }), Follow.find({ followerId: req.userId })]); const [followerMap, followingMap] = await Promise.all([authors(followers.map((row) => plain(row).followerId)), authors(following.map((row) => plain(row).followingId))]); res.json({ userId: req.userId, followers: followers.map((row) => followerMap.get(plain(row).followerId)), following: following.map((row) => followingMap.get(plain(row).followingId)), followerCount: followers.length, followingCount: following.length }); } catch { res.status(500).json({ error: "Failed to fetch network" }); } });
 
 router.put("/me", auth, async (req, res) => {

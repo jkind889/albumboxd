@@ -58,6 +58,9 @@ Some older catalog and social endpoints still return only `{ "error": "..." }`. 
 | `INVALID_SUBMISSION` | `400` | A suggestion or correction payload, value, URL, date, count, or persisted submission fails validation. |
 | `INVALID_MODERATION_REQUEST` | `400` | A moderation body, filter, limit, public ID, reason, or `applyFields` selection is invalid. |
 | `INVALID_REVIEW_ID` | `400` | A review mutation received a malformed MongoDB review identifier. |
+| `INVALID_REVIEW_CURSOR` | `400` | A review-list pagination cursor could not be decrypted or does not match its list and sort. |
+| `INVALID_REVIEW_SORT` | `400` | A review list requested a sort other than `recent` or `popular`. |
+| `INVALID_IDEMPOTENCY_KEY` | `400` | A review creation request omitted or supplied a malformed UUID-v4 `Idempotency-Key`. |
 | `INVALID_PINNED_REVIEW` | `400` | A requested pinned review is malformed or is not owned by the profile being updated. |
 | `REVIEW_NOT_FOUND` | `404` | A review-like request targeted a review that no longer exists. |
 | `SUGGESTION_NOT_FOUND` | `404` | A moderator-visible submission does not exist. Contributor detail and mutation routes currently preserve a code-less `404` to conceal ownership. |
