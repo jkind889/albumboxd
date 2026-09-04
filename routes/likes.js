@@ -1,9 +1,8 @@
 const express = require("express");
 const { getAuth } = require("@clerk/express");
 const Like = require("../models/Like");
-const Review = require("../models/Reviews");
-const Notification = require("../models/Notification");
 const { findAlbumByPublicId } = require("./utils/albumCatalog");
+const { mutateReviewLike } = require("./utils/reviewInteractions");
 const { likeMutationRateLimit } = require("./utils/rateLimit");
 
 const router = express.Router();
@@ -41,22 +40,12 @@ router.put("/review/:reviewId", auth, likeMutationRateLimit, async (req, res) =>
   try {
     const reviewId = String(req.params.reviewId || "").trim();
     const liked = likedValue(req.body.liked);
-    if (!reviewId) return res.status(400).json({ error: "Review id is required" });
+    if (!reviewId) return res.status(400).json({ error: "Review id is required", code: "INVALID_REVIEW_ID" });
     if (liked === null) return res.status(400).json({ error: "liked must be true or false" });
-    const review = await Review.findById(reviewId).populate("albumCatalogId");
-    if (!review) return res.status(404).json({ error: "Review not found" });
-    if (liked) {
-      await Like.updateOne({ userId: req.userId, targetType: "review", reviewId }, { $setOnInsert: { userId: req.userId, targetType: "review", reviewId } }, { upsert: true });
-      if (review.userId && review.userId !== req.userId) {
-        await Notification.updateOne(
-          { recipientUserId: review.userId, actorUserId: req.userId, type: "review_like", reviewId },
-          { $setOnInsert: { recipientUserId: review.userId, actorUserId: req.userId, type: "review_like", reviewId } },
-          { upsert: true },
-        );
-      }
-    } else await Like.deleteOne({ userId: req.userId, targetType: "review", reviewId });
-    res.json({ reviewId, albumId: review.albumCatalogId?.albumId || "", likeCount: await Like.countDocuments({ targetType: "review", reviewId }), likedByViewer: liked });
-  } catch (error) { res.status(500).json({ error: "Failed to update review like" }); }
+    res.json(await mutateReviewLike(reviewId, req.userId, liked));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to update review like", ...(error.code ? { code: error.code } : {}) });
+  }
 });
 
 module.exports = router;

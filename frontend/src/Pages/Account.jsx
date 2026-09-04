@@ -141,7 +141,7 @@ export function Account() {
   const canManageProfile = !isPublicProfile;
   const isPrivateProfile = isPublicProfile && profile.isPrivate && !profile.isCurrentUser;
   const availableTabs = useMemo(
-    () => tabs.filter((tab) => tab.id !== "settings" && (!isPrivateProfile || tab.id === "overview")),
+    () => tabs.filter((tab) => tab.id !== "settings" && (!isPrivateProfile || ["overview", "reviews"].includes(tab.id))),
     [isPrivateProfile],
   );
 
@@ -190,7 +190,10 @@ export function Account() {
 
         if (isPublicProfile) {
           const encodedPublicUserId = encodeURIComponent(publicUserId);
-          const profileResponse = await fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}`, { headers });
+          const [profileResponse, reviewsResponse] = await Promise.all([
+            fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}`, { headers }),
+            fetch(`${API_BASE_URL}/reviews/review/user/${encodedPublicUserId}`, { headers }),
+          ]);
 
           if (!profileResponse.ok) {
             throw new Error("Failed to load profile data");
@@ -198,26 +201,28 @@ export function Account() {
 
           profileData = await profileResponse.json();
 
+          if (!reviewsResponse.ok) {
+            throw new Error("Failed to load profile reviews");
+          }
+          reviewsData = await reviewsResponse.json();
+
           if (!(profileData.isPrivate && !profileData.isCurrentUser)) {
-            const [savedResponse, reviewsResponse, activityResponse, boardsResponse] = await Promise.all([
+            const [savedResponse, activityResponse, boardsResponse] = await Promise.all([
               fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/saved`, { headers }),
-              fetch(`${API_BASE_URL}/reviews/review/user/${encodedPublicUserId}`, { headers }),
               fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/activity`, { headers }),
               fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/boards`, { headers }),
             ]);
 
             if (
               !savedResponse.ok
-              || !reviewsResponse.ok
               || !activityResponse.ok
               || !boardsResponse.ok
             ) {
               throw new Error("Failed to load profile data");
             }
 
-            [savedData, reviewsData, activityData, boardsData] = await Promise.all([
+            [savedData, activityData, boardsData] = await Promise.all([
               savedResponse.json(),
-              reviewsResponse.json(),
               activityResponse.json(),
               boardsResponse.json(),
             ]);
@@ -1009,7 +1014,7 @@ export function Account() {
           title="No reviews yet"
           body={canManageProfile
             ? "Your album reviews will live here once you write them."
-            : "Reviews are not available on public profiles yet."}
+            : "Reviews are not available on this profile yet."}
         />
       );
     }
@@ -1099,11 +1104,11 @@ export function Account() {
       return <AsyncState error={error} errorTitle="Profile unavailable" />;
     }
 
-    if (isPrivateProfile) {
+    if (isPrivateProfile && !["overview", "reviews"].includes(activeTab)) {
       return (
         <ProfileEmptyState
           title={`${displayName} account is private`}
-          body="This listener is keeping their albums, reviews, activity, and boards private."
+          body="This listener is keeping their saved albums, favorites, activity, boards, and network private."
         />
       );
     }
@@ -1207,6 +1212,10 @@ export function Account() {
               <div className="profile-hero-links" aria-label="Profile links">
                 {isPrivateProfile ? (
                   <>
+                    <button type="button" onClick={() => setActiveTab("reviews")}>
+                      <span>Reviews</span>
+                      <strong>{reviews.length}</strong>
+                    </button>
                     <div className="profile-hero-stat">
                       <span>Followers</span>
                       <strong>{profile.followerCount}</strong>

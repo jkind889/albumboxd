@@ -3,8 +3,15 @@ const { clerkClient, getAuth } = require("@clerk/express");
 const Review = require("../models/Reviews");
 const AlbumCatalog = require("../models/AlbumCatalog");
 const Like = require("../models/Like");
-const UserProfile = require("../models/UserProfile");
 const { findAlbumByPublicId, normalizeCatalogAlbum } = require("./utils/albumCatalog");
+const {
+  rankedAlbums,
+  recentlyReviewedAlbums,
+  featuredAlbums,
+  buildPopularReviewsPipeline,
+  getListLimit,
+} = require("./utils/reviewFeeds");
+const { deleteOwnedReview, assertReviewId } = require("./utils/reviewInteractions");
 const {
   reviewCreateRateLimit,
   reviewMutationRateLimit,
@@ -12,7 +19,6 @@ const {
 
 const router = express.Router();
 const DEFAULT_AUTHOR = "rescened user";
-const PRIVATE_PROFILE_ERROR = { error: "Profile is private", isPrivate: true };
 
 function plain(value) { return typeof value?.toObject === "function" ? value.toObject() : value; }
 function viewer(req) { try { return getAuth(req).userId || ""; } catch { return ""; } }
@@ -61,12 +67,6 @@ function rating(body) {
   if (!Number.isFinite(value) || value < 1 || value > 5 || !Number.isInteger(value * 2)) return null;
   return value;
 }
-async function access(userId, viewerId) {
-  const profile = await UserProfile.findOne({ userId });
-  if (profile?.isPrivate && profile.userId !== viewerId) return false;
-  return true;
-}
-
 router.post("/review", auth, reviewCreateRateLimit, async (req, res) => {
   try {
     const album = await findAlbumByPublicId(req.body.albumId);
@@ -87,25 +87,30 @@ router.get("/review/user/", auth, async (req, res) => {
 router.get("/review/user/:userId", async (req, res) => {
   try {
     const target = String(req.params.userId || "").trim();
-    if (!(await access(target, viewer(req)))) return res.status(403).json(PRIVATE_PROFILE_ERROR);
     res.json(await serializeReviews(await Review.find({ userId: target }).sort({ date: -1 }), viewer(req)));
   } catch { res.status(500).json({ error: "Failed to fetch reviews" }); }
 });
 
 router.patch("/review/user/:id", auth, reviewMutationRateLimit, async (req, res) => {
   try {
+    assertReviewId(req.params.id);
     const parsedRating = rating(req.body);
     const reviewText = String(req.body.reviewText || "").trim();
     if (!parsedRating || !reviewText) return res.status(400).json({ error: "Valid rating and review text are required" });
     const review = await Review.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, { $set: { rating: parsedRating, reviewText } }, { returnDocument: "after", runValidators: true });
     if (!review) return res.status(404).json({ error: "Review not found" });
     res.json((await serializeReviews([review], req.userId))[0]);
-  } catch { res.status(500).json({ error: "Failed to update review" }); }
+  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to update review", ...(error.code ? { code: error.code } : {}) }); }
 });
 
 router.delete("/review/user/:id", auth, reviewMutationRateLimit, async (req, res) => {
-  try { await Review.findOneAndDelete({ _id: req.params.id, userId: req.userId }); res.json({ message: "Review deleted" }); }
-  catch { res.status(500).json({ error: "Failed to delete review" }); }
+  try {
+    assertReviewId(req.params.id);
+    await deleteOwnedReview(req.params.id, req.userId);
+    res.json({ message: "Review deleted" });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to delete review", ...(error.code ? { code: error.code } : {}) });
+  }
 });
 
 router.get("/review/album/:albumId", async (req, res) => {
@@ -115,22 +120,28 @@ router.get("/review/album/:albumId", async (req, res) => {
   } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to fetch reviews" }); }
 });
 
-async function albumReviewRows({ since } = {}) {
-  const query = since ? { date: { $gte: since } } : {};
-  const rows = await Review.find(query).sort({ date: -1 });
-  const counts = new Map();
-  rows.forEach((row) => { const key = String(row.albumCatalogId); const item = counts.get(key) || { albumCatalogId: row.albumCatalogId, reviewCount: 0, ratingTotal: 0, latestReviewDate: row.date }; item.reviewCount += 1; item.ratingTotal += row.rating; item.latestReviewDate = item.latestReviewDate > row.date ? item.latestReviewDate : row.date; counts.set(key, item); });
-  return [...counts.values()].sort((a, b) => (b.reviewCount - a.reviewCount) || (b.ratingTotal / b.reviewCount - a.ratingTotal / a.reviewCount) || (new Date(b.latestReviewDate) - new Date(a.latestReviewDate)));
-}
-async function featured(limit = 5) {
-  const rows = await albumReviewRows();
-  const ids = rows.slice(0, limit).map((row) => row.albumCatalogId);
-  return (ids.length ? await AlbumCatalog.find({ _id: { $in: ids } }) : []).map(normalizeCatalogAlbum);
-}
+router.get("/popular", async (req, res) => {
+  try {
+    res.json(await rankedAlbums({ limit: req.query.limit, window: req.query.window }));
+  } catch { res.status(500).json({ error: "Failed to fetch reviews" }); }
+});
 
-router.get("/popular", async (req, res) => { try { res.json(await featured(Math.min(Number(req.query.limit) || 5, 10))); } catch { res.status(500).json({ error: "Failed to fetch reviews" }); } });
-router.get("/recent-albums", async (req, res) => { try { const rows = await Review.find().sort({ date: -1 }); const ids = [...new Set(rows.map((row) => String(row.albumCatalogId)))].slice(0, 6); res.json((await AlbumCatalog.find({ _id: { $in: ids } })).map(normalizeCatalogAlbum)); } catch { res.status(500).json({ error: "Failed to fetch recent albums" }); } });
-router.get("/popular-reviews", async (req, res) => { try { res.json(await serializeReviews(await Review.find().sort({ date: -1 }).limit(4), viewer(req))); } catch { res.status(500).json({ error: "Failed to fetch popular reviews" }); } });
-router.get("/featured", async (req, res) => { try { res.json(await featured(Math.min(Number(req.query.limit) || 5, 10))); } catch { res.status(500).json({ error: "Failed to fetch featured albums" }); } });
+router.get("/recent-albums", async (req, res) => {
+  try { res.json(await recentlyReviewedAlbums(getListLimit(req.query.limit, 6))); }
+  catch { res.status(500).json({ error: "Failed to fetch recent albums" }); }
+});
+
+router.get("/popular-reviews", async (req, res) => {
+  try {
+    const limit = getListLimit(req.query.limit, 4);
+    const reviews = await Review.aggregate(buildPopularReviewsPipeline(limit));
+    res.json(await serializeReviews(reviews, viewer(req)));
+  } catch { res.status(500).json({ error: "Failed to fetch popular reviews" }); }
+});
+
+router.get("/featured", async (req, res) => {
+  try { res.json(await featuredAlbums(getListLimit(req.query.limit, 5))); }
+  catch { res.status(500).json({ error: "Failed to fetch featured albums" }); }
+});
 
 module.exports = router;

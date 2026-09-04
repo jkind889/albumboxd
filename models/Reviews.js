@@ -12,6 +12,9 @@ const reviewSchema = new mongoose.Schema({
     validate: { validator: (value) => Number.isInteger(value * 2), message: "Rating must be a whole or half number" },
   },
   date: { type: Date, default: Date.now },
+  // Internal serialization token for review deletion, likes, and pinning.
+  // This is intentionally excluded from every public representation.
+  interactionRevision: { type: Number, default: 0, select: false },
 });
 
 reviewSchema.index({ albumCatalogId: 1, date: -1 });

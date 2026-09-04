@@ -46,6 +46,9 @@ Some older catalog and social endpoints still return only `{ "error": "..." }`. 
 | `SUBMISSIONS_DISABLED` | `503` | Contributor submission mutations are disabled by `COMMUNITY_SUBMISSIONS_ENABLED`. |
 | `MODERATION_DISABLED` | `503` | Moderator mutations are disabled by `COMMUNITY_MODERATION_ENABLED`. |
 | `APPROVAL_UNAVAILABLE` | `503` | Approval cannot run because transaction-capable MongoDB is unavailable. No publication fallback is attempted. |
+| `REVIEW_DELETION_UNAVAILABLE` | `503` | Review deletion cannot run because transaction-capable MongoDB is unavailable. No cascade write is attempted. |
+| `REVIEW_LIKE_UNAVAILABLE` | `503` | Review-like and notification mutation cannot run because transaction-capable MongoDB is unavailable. |
+| `REVIEW_PIN_UNAVAILABLE` | `503` | Pinning a review cannot run because transaction-capable MongoDB is unavailable. |
 
 ### Request validation and lookup
 
@@ -54,6 +57,9 @@ Some older catalog and social endpoints still return only `{ "error": "..." }`. 
 | `INVALID_CURSOR` | `400` | An opaque contributor, approved-feed, or moderator pagination cursor could not be decoded or validated. |
 | `INVALID_SUBMISSION` | `400` | A suggestion or correction payload, value, URL, date, count, or persisted submission fails validation. |
 | `INVALID_MODERATION_REQUEST` | `400` | A moderation body, filter, limit, public ID, reason, or `applyFields` selection is invalid. |
+| `INVALID_REVIEW_ID` | `400` | A review mutation received a malformed MongoDB review identifier. |
+| `INVALID_PINNED_REVIEW` | `400` | A requested pinned review is malformed or is not owned by the profile being updated. |
+| `REVIEW_NOT_FOUND` | `404` | A review-like request targeted a review that no longer exists. |
 | `SUGGESTION_NOT_FOUND` | `404` | A moderator-visible submission does not exist. Contributor detail and mutation routes currently preserve a code-less `404` to conceal ownership. |
 | `CATALOG_TARGET_NOT_FOUND` | `404` | A new correction references a public catalog album that does not exist. |
 | `CATALOG_ALBUM_NOT_FOUND` | `409` | An approval command supplies an `albumId` that does not resolve to a usable catalog album. |
