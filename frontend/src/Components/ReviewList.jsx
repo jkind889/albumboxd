@@ -61,6 +61,7 @@ function ReviewEditForm({
                 <span>Review</span>
                 <textarea
                     rows="4"
+                    maxLength="300"
                     required
                     value={editText}
                     onChange={(event) => setEditText(event.target.value)}

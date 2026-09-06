@@ -77,6 +77,7 @@ export function ReviewForm({album, onAddReview, onSubmitted})
                     onChange={(e) => setReviewText(e.target.value)}
                     placeholder="Write your review here..."
                     rows="5"
+                    maxLength="300"
                     required
                     disabled={isSubmitting}
                 />

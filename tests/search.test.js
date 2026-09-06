@@ -5,6 +5,7 @@ const adapterPath = require.resolve("../lib/musicBrainzSearch");
 const rateLimitPath = require.resolve("../routes/utils/rateLimit");
 const searchPath = require.resolve("../routes/search");
 const AlbumCatalog = require("../models/AlbumCatalog");
+const realAdapter = require("../lib/musicBrainzSearch");
 
 const ORIGINAL_FIND = AlbumCatalog.find;
 
@@ -61,7 +62,7 @@ function query(rows) {
   };
 }
 
-function install({ searchResults = [], draft = null, catalogs = [], searchError = null } = {}) {
+function install({ searchResults = [], draft = null, catalogs = [], searchError = null, providerSearch = null } = {}) {
   let searchCalls = 0;
   let draftCalls = 0;
   AlbumCatalog.find = () => query(catalogs);
@@ -79,12 +80,13 @@ function install({ searchResults = [], draft = null, catalogs = [], searchError 
     filename: adapterPath,
     loaded: true,
     exports: {
-      MusicBrainzSearchError: class MusicBrainzSearchError extends Error {},
-      normalizeLimit: (value) => value === undefined ? 12 : Math.min(Number(value), 12),
-      normalizeSearchQuery: (value) => String(value || "").trim().replace(/\s+/gu, " ") || (() => { throw new Error("query required"); })(),
+      MusicBrainzSearchError: realAdapter.MusicBrainzSearchError,
+      normalizeLimit: realAdapter.normalizeLimit,
+      normalizeSearchQuery: realAdapter.normalizeSearchQuery,
       searchReleaseGroups: async (queryValue, limit) => {
         searchCalls += 1;
         if (searchError) throw searchError;
+        if (providerSearch) return providerSearch(queryValue, limit);
         assert.equal(queryValue, "imaginal disk");
         assert.equal(limit, 12);
         return searchResults;
@@ -175,4 +177,52 @@ test("exact lookup returns the suggestion draft and never creates catalog data",
   assert.equal(result.status, 200);
   assert.deepEqual(result.body, draft);
   assert.equal(installed.draftCalls, 1);
+});
+
+test("ranked provider pool shares the public limit across catalog matches and external candidates", async () => {
+  process.env.EXTERNAL_ALBUM_SEARCH_ENABLED = "true";
+  const mbid = (index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+  const rows = Array.from({ length: 50 }, (_, index) => ({
+    id: mbid(index), title: index === 49 ? "Imaginal Disk" : `Broad Match ${index}`,
+    "artist-credit": [{ name: "An Artist" }], "primary-type": "Album", score: 100 - index,
+  }));
+  let networkCalls = 0;
+  const client = realAdapter.createMusicBrainzSearch({
+    intervalMs: 0,
+    fetchFn: async (url) => {
+      networkCalls += 1;
+      assert.equal(new URL(url).searchParams.get("limit"), "50");
+      return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ "release-groups": rows }) };
+    },
+  });
+  const known = {
+    _id: "507f1f77bcf86cd799439011", albumId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    title: "Current Catalog Title", artistDisplayName: "An Artist",
+    externalReferences: [{ provider: "musicbrainz", entityType: "release-group", externalId: mbid(49) }],
+  };
+  const installed = install({ providerSearch: client.searchReleaseGroups, catalogs: [known] });
+  for (const [limit, expected] of [[undefined, 12], [100, 12], [2, 2], [1, 1]]) {
+    const result = await callRoute(installed.router, "get", "/external", { query: { q: "imaginal disk", limit } });
+    assert.equal(result.status, 200);
+    assert.deepEqual(Object.keys(result.body).sort(), ["candidates", "catalogMatches", "provider", "query"]);
+    assert.equal(result.body.provider, "musicbrainz");
+    assert.equal(result.body.catalogMatches.length + result.body.candidates.length, expected);
+    assert.equal(result.body.catalogMatches[0].albumId, known.albumId);
+    assert.equal(result.body.catalogMatches[0].title, known.title);
+    assert.deepEqual(result.body.candidates.map((item) => item.externalId), rows.slice(0, expected - 1).map((row) => row.id));
+    assert.equal(result.body.candidates.some((item) => "albumId" in item || "score" in item || "tier" in item), false);
+    assert.equal(JSON.stringify(result.body).includes(known._id), false);
+  }
+  assert.equal(networkCalls, 1);
+});
+
+test("invalid external queries and limits retain the 400 contract without provider calls", async () => {
+  process.env.EXTERNAL_ALBUM_SEARCH_ENABLED = "true";
+  const installed = install();
+  for (const query of [{ q: "" }, { q: "a".repeat(201) }, { q: ["x"] }, { q: "x", limit: 0 }, { q: "x", limit: "invalid" }]) {
+    const result = await callRoute(installed.router, "get", "/external", { query });
+    assert.equal(result.status, 400);
+    assert.equal(result.body.code, "INVALID_EXTERNAL_SEARCH");
+  }
+  assert.equal(installed.searchCalls, 0);
 });

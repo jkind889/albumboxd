@@ -25,6 +25,7 @@ const {
 
 const router = express.Router();
 const DEFAULT_AUTHOR = "rescened user";
+const MAX_REVIEW_TEXT_LENGTH = 300;
 
 function plain(value) { return typeof value?.toObject === "function" ? value.toObject() : value; }
 function viewer(req) { try { return getAuth(req).userId || ""; } catch { return ""; } }
@@ -105,6 +106,7 @@ router.post("/review", auth, reviewCreateRateLimit, async (req, res) => {
     const reviewText = String(req.body.reviewText || "").trim();
     if (!parsedRating) return res.status(400).json({ error: "Rating must be a whole or half number between 1 and 5" });
     if (!reviewText) return res.status(400).json({ error: "Review text is required" });
+    if (reviewText.length > MAX_REVIEW_TEXT_LENGTH) return res.status(400).json({ error: "Review text must be 300 characters or fewer" });
     const review = await Review.create({ userId: req.userId, albumCatalogId: album._id, rating: parsedRating, reviewText, creationKey: key });
     res.status(201).json((await serializeReviews([review], req.userId))[0]);
   } catch (error) {
@@ -154,6 +156,7 @@ router.patch("/review/user/:id", auth, reviewMutationRateLimit, async (req, res)
     const parsedRating = rating(req.body);
     const reviewText = String(req.body.reviewText || "").trim();
     if (!parsedRating || !reviewText) return res.status(400).json({ error: "Valid rating and review text are required" });
+    if (reviewText.length > MAX_REVIEW_TEXT_LENGTH) return res.status(400).json({ error: "Review text must be 300 characters or fewer" });
     const review = await Review.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, { $set: { rating: parsedRating, reviewText } }, { returnDocument: "after", runValidators: true });
     if (!review) return res.status(404).json({ error: "Review not found" });
     res.json((await serializeReviews([review], req.userId))[0]);

@@ -2,7 +2,7 @@
 
 Status: Proposed implementation scope
 
-Last reviewed: 2026-08-31
+Last reviewed: 2026-09-06
 
 This document defines the smallest useful search fallback and recurring catalog-growth plan for Rescened. The local `AlbumCatalog` remains the authoritative public catalog. MusicBrainz supplies read-only discovery candidates alongside page-one local search results, while the existing community-approval and dataset-import workflows remain the only ways an album becomes public.
 
@@ -151,10 +151,10 @@ Rules:
 
 - Trim and normalize whitespace before cache lookup.
 - Require a small non-empty query and enforce the same bounded string length used by the server adapter.
-- Default to 12 candidates and cap the requested limit at 12.
+- Default to 12 results and cap the requested limit at 12, shared across `catalogMatches` and `candidates`. Retrieve an internal pool of 50 MusicBrainz candidates before applying this public limit.
 - Search MusicBrainz release groups, not individual releases.
 - Use core MusicBrainz fields only: identity, title, artist credits, first release date, and release-group types.
-- Rank using the upstream score, then apply only minimal deterministic filtering and deduplication.
+- Rank by title/artist relevance, then upstream score and provider position; deduplicate by release-group MBID before applying the public limit. See the relevance rules below.
 - Query `AlbumCatalog.externalReferences` for returned MBIDs. Move known identities into `catalogMatches` and remove them from `candidates`.
 - Never mutate MongoDB.
 
@@ -191,6 +191,25 @@ Example response:
 ```
 
 `catalogMatches` uses the existing normalized catalog-album representation and therefore contains valid Rescened `albumId` values. The response does not expose provider scores; ranking is an implementation detail.
+
+### External search relevance
+
+Each uncached query generates one structured MusicBrainz release-group search, requesting 50 rows. Full-query phrases search `releasegroup`, `artistname`, `artist`, and `alias` with boosts of 8, 4, 4, and 2 respectively. An additional clause requires every normalized query token to occur in at least one of those fields. This lets artist and title terms occur together in either order without guessing a split, for example `Magdalena Bay Imaginal Disk`.
+
+All user-derived phrases and tokens are individually escaped and quoted; only application-generated syntax controls fields, operators, and boosts. The 200-character input limit remains unchanged. There are no fuzzy queries, artist-resolution calls, or type/status filters.
+
+Valid candidates are ordered by these tiers:
+
+1. Exact normalized album title.
+2. Exact normalized combined artist display name or individual credited/canonical artist name.
+3. Every query token occurs across title and artist fields as a whole token.
+4. Remaining provider matches, including alias-only matches.
+
+Within a tier, descending MusicBrainz score wins, then original provider position. Missing or invalid scores are zero; valid scores are finite numbers or decimal numeric strings between 0 and 100. Matching normalizes Unicode decomposition/diacritics, case, punctuation (including apostrophe variants), and whitespace consistently. Empty normalized text cannot qualify for an exact or token-coverage tier. Display metadata is preserved, and canonical artist names used for comparison remain internal.
+
+The complete ranked pool is deduplicated by release-group MBID, cached independently of the requested display limit, and sliced to at most 12 results before catalog reconciliation. Known identities move into `catalogMatches`; reconciliation does not fetch replacement candidates. Existing request coalescing, cache bounds/TTL, timeout, zero retries, shared request gate, and external-search flag remain in effect. Local catalog search, frontend contracts, and catalog persistence are unchanged.
+
+Deterministic regressions cover these rules in this release. Broad empirical relevance improvements remain unmeasured until the post-deployment evaluation described below.
 
 ### Suggestion draft lookup
 
@@ -443,7 +462,7 @@ Do not build these as part of the initial feature:
 
 - Spotify-compatible write-through caching.
 - Multi-provider aggregation or fallback chains.
-- Provider confidence scoring beyond MusicBrainz's result order and basic deduplication.
+- Popularity enrichment and systematic relevance evaluation, scoped below for post-deployment work.
 - A permanent external-candidate database.
 - One-click submission or approval.
 - Tracklist hydration for every search card.
@@ -453,3 +472,15 @@ Do not build these as part of the initial feature:
 - Search personalization or recommendation logic.
 
 These constraints are part of the design, not missing work. They keep external discovery replaceable, catalog publication auditable, and the first release small enough to verify thoroughly.
+
+### Post-deployment follow-up 3: ListenBrainz popularity enrichment
+
+**Not implemented in this release.** Batch candidate release-group MBIDs through [ListenBrainz's release-group popularity endpoint](https://listenbrainz.readthedocs.io/en/latest/users/api/popularity.html). Evaluate unique-listener counts as the primary popularity signal and play counts as secondary. Popularity must have bounded influence within comparable relevance groups, so it cannot displace a stronger title/artist match.
+
+The follow-up requires server-side caching, a disabled-by-default feature flag, bounded requests, and unchanged text ranking when counts are missing or enrichment fails. It excludes MusicBrainz ratings, public popularity badges, and catalog persistence. Choose weights using the evaluation below; none are specified or applied by this release.
+
+### Post-deployment follow-up 4: Relevance evaluation
+
+**Not implemented in this release.** Build a reviewed query set with expected release-group MBIDs covering titles, artists, mixed input, ambiguous names, punctuation, non-Latin text, obscure releases, and specifically requested singles/live releases. Compare the previous plain-title search and 12-row retrieval, the current 50-row structured search and reranking, and later popularity enrichment.
+
+Measure top-result accuracy, top-12 coverage, reciprocal rank, latency, and provider request count. Retain sufficiently broad captured responses for each retrieval strategy so offline comparisons do not mistake absent baseline candidates for ranking failures; record source, capture date, and fixture licensing. Live captures require explicit authorization. Use the results to set improvement thresholds and tune ranking. Search-query history collection and personalized ranking remain outside scope. This evaluation does not replace the deterministic adapter and route regression tests required for this release.

@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const reviewSchema = new mongoose.Schema({
   userId: { type: String, required: true },
   albumCatalogId: { type: mongoose.Schema.Types.ObjectId, ref: "AlbumCatalog", required: true },
-  reviewText: { type: String, required: true, trim: true },
+  reviewText: { type: String, required: true, trim: true, maxlength: 300 },
   rating: {
     type: Number,
     required: true,
