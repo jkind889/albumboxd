@@ -17,7 +17,7 @@ const {
   parseReviewFeedQuery,
   recentCursorFilter,
 } = require("./utils/reviewPagination");
-const { deleteOwnedReview, assertReviewId } = require("./utils/reviewInteractions");
+const { deleteOwnedReview, assertReviewId, persistedReviewId } = require("./utils/reviewInteractions");
 const {
   reviewCreateRateLimit,
   reviewMutationRateLimit,
@@ -58,7 +58,7 @@ async function serializeReviews(reviews, viewerId, { likeStatsAsOf } = {}) {
   const authors = await authorMap(sources.map((review) => review.userId));
   const stats = await likeStats(sources, viewerId, likeStatsAsOf);
   return sources.map((review) => ({
-    _id: review._id,
+    reviewId: persistedReviewId(review),
     userId: review.userId,
     albumId: albumMap.get(String(review.albumCatalogId?._id || review.albumCatalogId))?.albumId || "",
     album: albumMap.get(String(review.albumCatalogId?._id || review.albumCatalogId)) || null,
@@ -90,6 +90,16 @@ function creationKey(req) {
   return value.toLowerCase();
 }
 
+function rejectClientOwnedReviewId(body) {
+  if (!body || typeof body !== "object") return;
+  if (Object.hasOwn(body, "reviewId") || Object.hasOwn(body, "_id")) {
+    const error = new Error("reviewId is server-generated");
+    error.status = 400;
+    error.code = "INVALID_REVIEW_ID";
+    throw error;
+  }
+}
+
 async function serializeExistingCreation(res, userId, key) {
   const existing = await Review.findOne({ userId, creationKey: key });
   if (!existing) return false;
@@ -99,6 +109,7 @@ async function serializeExistingCreation(res, userId, key) {
 
 router.post("/review", auth, reviewCreateRateLimit, async (req, res) => {
   try {
+    rejectClientOwnedReviewId(req.body);
     const key = creationKey(req);
     if (await serializeExistingCreation(res, req.userId, key)) return;
     const album = await findAlbumByPublicId(req.body.albumId);
@@ -152,12 +163,13 @@ router.get("/review/user/:userId", async (req, res) => {
 
 router.patch("/review/user/:id", auth, reviewMutationRateLimit, async (req, res) => {
   try {
-    assertReviewId(req.params.id);
+    const reviewId = assertReviewId(req.params.id);
+    rejectClientOwnedReviewId(req.body);
     const parsedRating = rating(req.body);
     const reviewText = String(req.body.reviewText || "").trim();
     if (!parsedRating || !reviewText) return res.status(400).json({ error: "Valid rating and review text are required" });
     if (reviewText.length > MAX_REVIEW_TEXT_LENGTH) return res.status(400).json({ error: "Review text must be 300 characters or fewer" });
-    const review = await Review.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, { $set: { rating: parsedRating, reviewText } }, { returnDocument: "after", runValidators: true });
+    const review = await Review.findOneAndUpdate({ reviewId, userId: req.userId }, { $set: { rating: parsedRating, reviewText } }, { returnDocument: "after", runValidators: true });
     if (!review) return res.status(404).json({ error: "Review not found" });
     res.json((await serializeReviews([review], req.userId))[0]);
   } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to update review", ...(error.code ? { code: error.code } : {}) }); }

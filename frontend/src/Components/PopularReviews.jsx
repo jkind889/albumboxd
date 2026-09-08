@@ -76,7 +76,7 @@ export function PopularReviews({ limit = 4 }) {
                 const username = review.author?.username || DEFAULT_USERNAME;
 
                 return (
-                    <article className="front-review-card" key={review._id}>
+                    <article className="front-review-card" key={review.reviewId}>
                         <Link className="front-review-cover-link" to={`/album/${review.albumId}`}>
                             {review.album?.cover ? (
                                 <img src={review.album.cover} alt={`${review.album.title} cover`} />

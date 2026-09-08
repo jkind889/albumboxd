@@ -434,8 +434,8 @@ export function Account() {
     try {
       const data = await requestReviewPage(reviewSort, nextReviewCursor);
       setReviews((current) => {
-        const ids = new Set(current.map((review) => review._id));
-        return [...current, ...(Array.isArray(data.reviews) ? data.reviews.filter((review) => !ids.has(review._id)) : [])];
+        const ids = new Set(current.map((review) => review.reviewId));
+        return [...current, ...(Array.isArray(data.reviews) ? data.reviews.filter((review) => !ids.has(review.reviewId)) : [])];
       });
       setNextReviewCursor(data.nextCursor || null);
     } catch (reviewError) {
@@ -453,7 +453,7 @@ export function Account() {
       const token = await getToken();
       const response = await fetch(`${API_BASE_URL}/reviews/review/user/${reviewId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new Error(await getApiErrorMessage(response, "Failed to delete review"));
-      const withoutReview = (currentReviews) => currentReviews.filter((review) => review._id !== reviewId);
+      const withoutReview = (currentReviews) => currentReviews.filter((review) => review.reviewId !== reviewId);
       setReviews(withoutReview);
       setRecentReviewPreviews(withoutReview);
       setPopularReviewPreviews(withoutReview);
@@ -467,18 +467,18 @@ export function Account() {
   }
 
   function updateReviewLikeState(reviewId, nextState) {
-    const update = (currentReviews) => currentReviews.map((review) => review._id === reviewId ? { ...review, ...nextState } : review);
+    const update = (currentReviews) => currentReviews.map((review) => review.reviewId === reviewId ? { ...review, ...nextState } : review);
     setReviews(update);
     setRecentReviewPreviews(update);
     setPopularReviewPreviews(update);
     setActivityItems((currentItems) => (
       currentItems.map((activity) => (
-        activity.type === "review" && activity.id === reviewId ? { ...activity, ...nextState } : activity
+        activity.type === "review" && activity.reviewId === reviewId ? { ...activity, ...nextState } : activity
       ))
     ));
     setNetworkItems((currentItems) => (
       currentItems.map((activity) => (
-        activity.type === "review" && activity.id === reviewId ? { ...activity, ...nextState } : activity
+        activity.type === "review" && activity.reviewId === reviewId ? { ...activity, ...nextState } : activity
       ))
     ));
   }
@@ -489,7 +489,7 @@ export function Account() {
       return;
     }
 
-    const reviewId = review._id || review.id;
+    const reviewId = review.reviewId;
 
     if (!reviewId) {
       return;
@@ -752,7 +752,7 @@ export function Account() {
             <div className="profile-review-list">
               {latestReviews.map((review) => (
                 <ProfileReviewCard
-                  key={review._id}
+                  key={review.reviewId}
                   review={review}
                   likeMessage={likeMessage}
                   onToggleLike={toggleReviewLike}
@@ -776,7 +776,7 @@ export function Account() {
             <div className="profile-review-list">
               {previewPopularReviews.map((review) => (
                 <ProfileReviewCard
-                  key={review._id}
+                  key={review.reviewId}
                   review={review}
                   likeMessage={likeMessage}
                   onToggleLike={toggleReviewLike}
@@ -1070,7 +1070,7 @@ export function Account() {
     }
 
     const renderReviewCard = (review) => (
-      <article className="profile-review-card" key={review._id}>
+      <article className="profile-review-card" key={review.reviewId}>
         <Link className="profile-review-album" to={`/album/${review.albumId}`}>
           <AlbumCover src={review.cover} title={review.title} />
           <div>
@@ -1096,13 +1096,13 @@ export function Account() {
           <button
             className="profile-secondary-button"
             type="button"
-            onClick={() => removeReview(review._id)}
-            disabled={deletingReviewId === review._id}
+            onClick={() => removeReview(review.reviewId)}
+            disabled={deletingReviewId === review.reviewId}
           >
-            {deletingReviewId === review._id ? "Deleting..." : "Delete Review"}
+            {deletingReviewId === review.reviewId ? "Deleting..." : "Delete Review"}
           </button>
         )}
-        {deleteErrors[review._id] && <p className="review-edit-error" role="alert">{deleteErrors[review._id]}</p>}
+        {deleteErrors[review.reviewId] && <p className="review-edit-error" role="alert">{deleteErrors[review.reviewId]}</p>}
       </article>
     );
 

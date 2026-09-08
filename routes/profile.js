@@ -1,6 +1,5 @@
 const express = require("express");
 const { clerkClient, getAuth } = require("@clerk/express");
-const mongoose = require("mongoose");
 const UserProfile = require("../models/UserProfile");
 const Follow = require("../models/Follow");
 const Review = require("../models/Reviews");
@@ -9,7 +8,7 @@ const BoardItem = require("../models/BoardItem");
 const Like = require("../models/Like");
 const Notification = require("../models/Notification");
 const { findAlbumByPublicId, normalizeCatalogAlbum } = require("./utils/albumCatalog");
-const { runReviewTransaction, assertPinnedReview } = require("./utils/reviewInteractions");
+const { runReviewTransaction, assertPinnedReview, isReviewId, persistedReviewId } = require("./utils/reviewInteractions");
 const { NETWORK_ACTIVITY_LIMIT, getNetworkActivity } = require("./utils/networkActivity");
 
 const router = express.Router();
@@ -75,7 +74,7 @@ async function getSavedAlbums(userId) {
 async function formatReview(review) {
   const source = plain(review);
   const album = source.albumCatalogId && typeof source.albumCatalogId === "object" ? normalizeCatalogAlbum(source.albumCatalogId) : null;
-  return { _id: source._id, userId: source.userId, albumId: album?.albumId || "", album, rating: source.rating, reviewText: source.reviewText, date: source.date };
+  return { reviewId: persistedReviewId(source), userId: source.userId, albumId: album?.albumId || "", album, rating: source.rating, reviewText: source.reviewText, date: source.date };
 }
 async function formatProfile(profile) {
   const source = plain(profile); const userMap = await authors([source.userId]);
@@ -108,7 +107,7 @@ async function profileAccess(target, viewerId) { if (!(await followable(target))
 async function activity(userId, includePrivate = false, viewerId = "") {
   const profileAuthors = await authors([userId]); const actor = profileAuthors.get(userId) || author(userId);
   const [reviews, saved] = await Promise.all([Review.find({ userId }).populate("albumCatalogId").sort({ date: -1 }).limit(MAX_ACTIVITY), getSavedAlbums(userId)]);
-  const reviewActivities = reviews.map((review) => { const source = plain(review); const album = source.albumCatalogId ? normalizeCatalogAlbum(source.albumCatalogId) : null; return { id: String(source._id), type: "review", actor, userId, createdAt: source.date, album, rating: source.rating, reviewText: source.reviewText }; });
+  const reviewActivities = reviews.map((review) => { const source = plain(review); const reviewId = persistedReviewId(source); const album = source.albumCatalogId ? normalizeCatalogAlbum(source.albumCatalogId) : null; return { id: reviewId, reviewId, type: "review", actor, userId, createdAt: source.date, album, rating: source.rating, reviewText: source.reviewText }; });
   const savedActivities = saved.map((album) => ({ id: `saved-${userId}-${album.albumId}`, type: "saved_album", actor, userId, createdAt: album.savedAt, album }));
   return [...reviewActivities, ...(includePrivate ? savedActivities : [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, MAX_ACTIVITY);
 }
@@ -136,14 +135,14 @@ router.put("/me", auth, async (req, res) => {
     const favorites = await Promise.all(favoriteIds.map(async (albumId, rank) => ({ albumCatalogId: (await findAlbumByPublicId(albumId))._id, rank })));
     const nextAlbum = req.body.listeningNextAlbumId ? { albumCatalogId: (await findAlbumByPublicId(req.body.listeningNextAlbumId))._id } : null;
     const pinnedReviewId = String(req.body.pinnedReviewId || "").trim(); const pinnedBoardId = String(req.body.pinnedBoardId || "").trim();
-    if (pinnedReviewId && !mongoose.isValidObjectId(pinnedReviewId)) return res.status(400).json({ error: "Pinned review must belong to your profile", code: "INVALID_PINNED_REVIEW" });
+    if (pinnedReviewId && !isReviewId(pinnedReviewId)) return res.status(400).json({ error: "Pinned review must belong to your profile", code: "INVALID_PINNED_REVIEW" });
     if (pinnedBoardId && !(await Board.exists({ _id: pinnedBoardId, userId: req.userId }))) return res.status(400).json({ error: "Pinned board must belong to your profile" });
-    const update = { bio, spotifyProfileUrl: profileUrl, favoriteAlbums: favorites, listeningNextAlbum: nextAlbum, pinnedReviewId: pinnedReviewId || null, pinnedBoardId: pinnedBoardId || null };
+    const update = { bio, spotifyProfileUrl: profileUrl, favoriteAlbums: favorites, listeningNextAlbum: nextAlbum, pinnedReviewId: null, pinnedBoardId: pinnedBoardId || null };
     let profile;
     if (pinnedReviewId) {
       await runReviewTransaction("pin", async (session) => {
-        await assertPinnedReview(pinnedReviewId, req.userId, session);
-        profile = await updateProfile(req.userId, update, session);
+        const pinnedReview = await assertPinnedReview(pinnedReviewId, req.userId, session);
+        profile = await updateProfile(req.userId, { ...update, pinnedReviewId: pinnedReview._id }, session);
       });
     } else {
       await updateProfile(req.userId, update);

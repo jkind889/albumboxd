@@ -20,6 +20,7 @@ const {
   deleteOwnedReview,
   mutateReviewLike,
   assertReviewId,
+  REVIEW_ID_V4,
   runReviewTransaction,
   ReviewTransactionUnavailableError,
   assertPinnedReview,
@@ -123,23 +124,24 @@ test("review deletion cascades likes, notifications, and every matching pin", { 
   await Notification.create({ recipientUserId: "owner", actorUserId: "actor", type: "review_like", reviewId: review._id });
   await UserProfile.create([{ userId: "owner", pinnedReviewId: review._id }, { userId: "other", pinnedReviewId: review._id }]);
 
-  const result = await deleteOwnedReview(review._id, "owner");
+  const result = await deleteOwnedReview(review.reviewId, "owner");
   assert.equal(result.deleted, true);
   assert.equal(await Review.exists({ _id: review._id }), null);
   assert.equal(await Like.countDocuments({ targetType: "review", reviewId: review._id }), 0);
   assert.equal(await Notification.countDocuments({ type: "review_like", reviewId: review._id }), 0);
   assert.equal(await UserProfile.countDocuments({ pinnedReviewId: review._id }), 0);
   assert.equal(await Like.countDocuments({ targetType: "album", albumCatalogId: unrelated._id }), 1);
-  assert.equal((await deleteOwnedReview(review._id, "owner")).deleted, false);
+  assert.equal((await deleteOwnedReview(review.reviewId, "owner")).deleted, false);
 });
 
 test("review likes and notifications commit together, while unlike preserves notification", { skip: !enabled }, async () => {
   const album = await createAlbum("Likes");
   const review = await createReview(album, "owner", 4, new Date());
-  const liked = await mutateReviewLike(review._id, "actor", true);
+  const liked = await mutateReviewLike(review.reviewId, "actor", true);
+  assert.equal(liked.reviewId, review.reviewId);
   assert.equal(liked.likeCount, 1);
   assert.equal(await Notification.countDocuments({ type: "review_like", reviewId: review._id }), 1);
-  const unliked = await mutateReviewLike(review._id, "actor", false);
+  const unliked = await mutateReviewLike(review.reviewId, "actor", false);
   assert.equal(unliked.likeCount, 0);
   assert.equal(await Notification.countDocuments({ type: "review_like", reviewId: review._id }), 1);
 });
@@ -159,10 +161,13 @@ test("review creation keys permit one durable review across concurrent retries",
   assert.equal(await Review.countDocuments({ userId: "idempotent-owner", creationKey }), 1);
   const stored = await Review.findOne({ userId: "idempotent-owner", creationKey }).select("+creationKey");
   assert.equal(stored.creationKey, creationKey);
+  assert.match(stored.reviewId, REVIEW_ID_V4);
 });
 
-test("review IDs are validated and unsupported transactions get action-specific errors", { skip: !enabled }, async () => {
+test("review IDs require UUID v4 values and unsupported transactions get action-specific errors", { skip: !enabled }, async () => {
   assert.throws(() => assertReviewId("not-an-object-id"), (error) => error.code === "INVALID_REVIEW_ID" && error.status === 400);
+  assert.throws(() => assertReviewId(new mongoose.Types.ObjectId().toString()), (error) => error.code === "INVALID_REVIEW_ID" && error.status === 400);
+  assert.equal(assertReviewId("B2B5724A-5E8B-4A36-8737-C5E45BFE976A"), "b2b5724a-5e8b-4a36-8737-c5e45bfe976a");
   const original = mongoose.startSession;
   mongoose.startSession = async () => ({
     async withTransaction() { const error = new Error("Transaction numbers are only allowed on a replica set member"); error.code = 20; throw error; },
@@ -178,13 +183,13 @@ test("concurrent delete and like/pin requests leave no dangling review relations
   const review = await createReview(album, owner, 4, new Date());
   await UserProfile.create({ userId: owner });
   const pinRequest = runReviewTransaction("pin", async (session) => {
-    await assertPinnedReview(review._id, owner, session);
+    await assertPinnedReview(review.reviewId, owner, session);
     await UserProfile.updateOne({ userId: owner }, { $set: { pinnedReviewId: review._id } }, { session });
   });
   const [pinResult, deleteResult, likeResult] = await Promise.allSettled([
     pinRequest,
-    deleteOwnedReview(review._id, owner),
-    mutateReviewLike(review._id, "actor", true),
+    deleteOwnedReview(review.reviewId, owner),
+    mutateReviewLike(review.reviewId, "actor", true),
   ]);
   assert.ok(["fulfilled", "rejected"].includes(pinResult.status));
   assert.equal(deleteResult.status, "fulfilled");

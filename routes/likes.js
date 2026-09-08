@@ -2,7 +2,7 @@ const express = require("express");
 const { getAuth } = require("@clerk/express");
 const Like = require("../models/Like");
 const { findAlbumByPublicId } = require("./utils/albumCatalog");
-const { mutateReviewLike } = require("./utils/reviewInteractions");
+const { mutateReviewLike, assertReviewId } = require("./utils/reviewInteractions");
 const { likeMutationRateLimit } = require("./utils/rateLimit");
 
 const router = express.Router();
@@ -38,9 +38,8 @@ router.put("/album/:albumId", auth, likeMutationRateLimit, async (req, res) => {
 
 router.put("/review/:reviewId", auth, likeMutationRateLimit, async (req, res) => {
   try {
-    const reviewId = String(req.params.reviewId || "").trim();
+    const reviewId = assertReviewId(req.params.reviewId);
     const liked = likedValue(req.body.liked);
-    if (!reviewId) return res.status(400).json({ error: "Review id is required", code: "INVALID_REVIEW_ID" });
     if (liked === null) return res.status(400).json({ error: "liked must be true or false" });
     res.json(await mutateReviewLike(reviewId, req.userId, liked));
   } catch (error) {

@@ -6,6 +6,7 @@ const Review = require("../../models/Reviews");
 const UserProfile = require("../../models/UserProfile");
 const { isTransactionUnavailable } = require("./transactions");
 
+const REVIEW_ID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ACTION_CODES = {
   deletion: "REVIEW_DELETION_UNAVAILABLE",
   like: "REVIEW_LIKE_UNAVAILABLE",
@@ -44,10 +45,23 @@ class PinnedReviewValidationError extends Error {
   }
 }
 
+function isReviewId(reviewId) {
+  return REVIEW_ID_V4.test(String(reviewId || "").trim());
+}
+
 function assertReviewId(reviewId) {
-  const value = String(reviewId || "").trim();
-  if (!mongoose.isValidObjectId(value)) throw new InvalidReviewIdError();
+  const value = String(reviewId || "").trim().toLowerCase();
+  if (!isReviewId(value)) throw new InvalidReviewIdError();
   return value;
+}
+
+function persistedReviewId(review) {
+  const value = String(review?.reviewId || "").trim().toLowerCase();
+  if (isReviewId(value)) return value;
+  const error = new Error("Review is missing a valid public identifier");
+  error.status = 500;
+  error.code = "REVIEW_ID_INTEGRITY_ERROR";
+  throw error;
 }
 
 function sessionQuery(query, session) {
@@ -71,7 +85,7 @@ async function runReviewTransaction(action, callback) {
 }
 
 async function claimReview(reviewId, userId, session) {
-  const filter = { _id: reviewId };
+  const filter = { reviewId };
   if (userId !== undefined) filter.userId = userId;
   return Review.findOneAndUpdate(
     filter,
@@ -138,12 +152,15 @@ async function assertPinnedReview(reviewId, userId, session) {
 }
 
 module.exports = {
+  REVIEW_ID_V4,
   ACTION_CODES,
   ReviewTransactionUnavailableError,
   ReviewNotFoundError,
   InvalidReviewIdError,
   PinnedReviewValidationError,
+  isReviewId,
   assertReviewId,
+  persistedReviewId,
   runReviewTransaction,
   claimReview,
   deleteOwnedReview,

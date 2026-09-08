@@ -57,7 +57,7 @@ Some older catalog and social endpoints still return only `{ "error": "..." }`. 
 | `INVALID_CURSOR` | `400` | An opaque contributor, approved-feed, or moderator pagination cursor could not be decoded or validated. |
 | `INVALID_SUBMISSION` | `400` | A suggestion or correction payload, value, URL, date, count, or persisted submission fails validation. |
 | `INVALID_MODERATION_REQUEST` | `400` | A moderation body, filter, limit, public ID, reason, or `applyFields` selection is invalid. |
-| `INVALID_REVIEW_ID` | `400` | A review mutation received a malformed MongoDB review identifier. |
+| `INVALID_REVIEW_ID` | `400` | A review mutation received a malformed or client-supplied public UUID-v4 `reviewId`; Mongo ObjectIds are rejected. |
 | `INVALID_REVIEW_CURSOR` | `400` | A review-list pagination cursor could not be decrypted or does not match its list and sort. |
 | `INVALID_REVIEW_SORT` | `400` | A review list requested a sort other than `recent` or `popular`. |
 | `INVALID_IDEMPOTENCY_KEY` | `400` | A review creation request omitted or supplied a malformed UUID-v4 `Idempotency-Key`. |
@@ -304,6 +304,42 @@ Source: [`scripts/backfillMissingAlbumCovers.js`](../scripts/backfillMissingAlbu
 | `RECONCILIATION_COMMITTED_SESSION_CLEANUP_FAILED` | Reconciliation committed, but session cleanup failed. Do not treat this as a rollback. |
 
 Source: [`scripts/reconcileCommunityPublication.js`](../scripts/reconcileCommunityPublication.js).
+
+## Review-ID migration command codes
+
+| Code | Meaning |
+| --- | --- |
+| `REVIEW_ID_MIGRATION_FAILED` | Generic review-ID migration failure. |
+| `INVALID_ARGUMENTS` | CLI flags are invalid, missing, or contradictory. |
+| `MISSING_MONGO_URI` | `MONGO_URI` was not supplied. |
+| `TARGET_CONFIRMATION_REQUIRED` | Apply was requested without `--confirm-target`. |
+| `TARGET_CONFIRMATION_FAILED` | The confirmed target does not match the connected database or collection. |
+| `REPORT_REQUIRED` | Apply was requested without an explicit reviewed report path. |
+| `REPORT_EXISTS` | A dry-run destination already exists and was not replaced. |
+| `REPORT_READ_FAILED` | The reviewed report cannot be read. |
+| `REPORT_CHECKSUM_MISSING` | The reviewed report’s adjacent SHA-256 artifact is missing. |
+| `REPORT_CHECKSUM_MISMATCH` | The reviewed report differs from its file checksum. |
+| `PLAN_CHECKSUM_MISMATCH` | The embedded canonical plan checksum differs. |
+| `REPORT_NOT_REVIEWABLE` | The artifact is not a review-ID dry-run report. |
+| `REPORT_INVALID` | The report’s identity mapping or batch structure is invalid. |
+| `UUID_GENERATION_FAILED` | The command could not generate a unique canonical UUID-v4 assignment. |
+| `BLOCKING_REVIEW_IDS` | Existing malformed or duplicate review IDs require operator review before apply. |
+| `TARGET_BASELINE_MISMATCH` | The reviews collection identity, documents, or planned ID state changed after dry run. |
+| `REVIEW_TARGET_DELETED` | A planned review was deleted before its ID could be assigned. |
+| `REVIEW_ID_CONFLICT` | A planned review acquired a different ID before assignment. |
+| `TRANSACTION_UNAVAILABLE` | A transaction-capable MongoDB deployment is unavailable. |
+| `REVIEW_ID_MIGRATION_COMMIT_OUTCOME_UNKNOWN` | MongoDB could not confirm a batch commit. Database changes may have committed; retain the report and progress artifact, then retry only after inspection. |
+| `REVIEW_ID_INDEX_CONTRACT_MISMATCH` | An existing `reviewId_1` index does not enforce the required unique full-field contract. |
+| `REVIEW_ID_UNIQUE_INDEX_FAILED` | The unique `reviewId_1` index could not be created. |
+| `REVIEW_ID_VERIFICATION_FAILED` | Post-apply UUID coverage, uniqueness, or index verification failed. Database changes may already be committed. |
+| `PROGRESS_READ_FAILED` | The durable apply-progress artifact cannot be read. |
+| `PROGRESS_PLAN_MISMATCH` | The durable apply-progress artifact belongs to another reviewed plan. |
+| `PROGRESS_WRITE_FAILED` | The initial apply-progress artifact could not be written before a database write. |
+| `REVIEW_ID_MIGRATION_COMMITTED_PROGRESS_WRITE_FAILED` | A batch or index was committed, but its durable progress update could not be written. Do not treat this as a rollback. |
+| `REVIEW_ID_MIGRATION_COMMITTED_SESSION_CLEANUP_FAILED` | A batch committed, but session cleanup failed. Do not treat this as a rollback. |
+| `REVIEW_ID_MIGRATION_COMMITTED_FAILED` | A database change committed before an otherwise uncategorized later failure. Do not treat this as a rollback. |
+
+Source: [`scripts/migrateReviewIds.js`](../scripts/migrateReviewIds.js). Apply is report-bound and may commit an earlier batch before a later batch, progress write, index build, or verification error. The command marks those failures as committed in its console output; retain the report and progress artifact before retrying.
 
 ## Legacy migration codes
 

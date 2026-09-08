@@ -153,11 +153,11 @@ export function EditProfile() {
         setIsPrivate(Boolean(data.isPrivate));
         setFavoriteAlbums(Array.isArray(data.favoriteAlbums) ? data.favoriteAlbums : []);
         setListeningNextAlbum(data.listeningNextAlbum || null);
-        setPinnedReviewId(data.pinnedReview?._id || "");
+        setPinnedReviewId(data.pinnedReview?.reviewId || "");
         setPinnedBoardId(data.pinnedBoard?._id || "");
         const initialReviews = Array.isArray(reviewsData.reviews) ? reviewsData.reviews : [];
         const currentPinnedReview = data.pinnedReview || null;
-        setReviews(currentPinnedReview && !initialReviews.some((review) => review._id === currentPinnedReview._id)
+        setReviews(currentPinnedReview && !initialReviews.some((review) => review.reviewId === currentPinnedReview.reviewId)
           ? [currentPinnedReview, ...initialReviews]
           : initialReviews);
         setNextReviewCursor(reviewsData.nextCursor || null);
@@ -192,8 +192,8 @@ export function EditProfile() {
       if (!response.ok) throw new Error(await getApiErrorMessage(response, "Could not load more reviews."));
       const data = await response.json();
       setReviews((current) => {
-        const ids = new Set(current.map((review) => review._id));
-        return [...current, ...(Array.isArray(data.reviews) ? data.reviews.filter((review) => !ids.has(review._id)) : [])];
+        const ids = new Set(current.map((review) => review.reviewId));
+        return [...current, ...(Array.isArray(data.reviews) ? data.reviews.filter((review) => !ids.has(review.reviewId)) : [])];
       });
       setNextReviewCursor(data.nextCursor || null);
     } catch (error) {
@@ -437,7 +437,7 @@ export function EditProfile() {
       setIsPrivate(Boolean(data.isPrivate));
       setFavoriteAlbums(Array.isArray(data.favoriteAlbums) ? data.favoriteAlbums : []);
       setListeningNextAlbum(data.listeningNextAlbum || null);
-      setPinnedReviewId(data.pinnedReview?._id || "");
+      setPinnedReviewId(data.pinnedReview?.reviewId || "");
       setPinnedBoardId(data.pinnedBoard?._id || "");
       setProfileStatus("Profile saved.");
     } catch (error) {
@@ -643,7 +643,7 @@ export function EditProfile() {
                     <select value={pinnedReviewId} onChange={(event) => setPinnedReviewId(event.target.value)}>
                       <option value="">No pinned review</option>
                       {reviews.map((review) => (
-                        <option key={review._id} value={review._id}>
+                        <option key={review.reviewId} value={review.reviewId}>
                           {review.title || "Untitled album"} · {review.rating}/5
                         </option>
                       ))}

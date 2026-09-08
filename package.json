@@ -15,6 +15,7 @@
     "catalog:import": "node scripts/importCatalogDataset.js",
     "catalog:backfill-covers": "node scripts/backfillMissingAlbumCovers.js",
     "db:reconcile-community-state": "node scripts/reconcileCommunityPublication.js",
+    "db:migrate:review-ids": "node scripts/migrateReviewIds.js",
     "db:migrate:legacy": "node scripts/migrateLegacyDatabase.js",
     "db:migrate:legacy:plan": "node scripts/migrateLegacyDatabase.js --plan",
     "db:migrate:legacy:execute": "node scripts/migrateLegacyDatabase.js --execute",

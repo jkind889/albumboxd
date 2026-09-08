@@ -4,6 +4,7 @@ const Notification = require("../models/Notification");
 const Review = require("../models/Reviews");
 const AlbumCatalog = require("../models/AlbumCatalog");
 const { normalizeCatalogAlbum } = require("./utils/albumCatalog");
+const { persistedReviewId } = require("./utils/reviewInteractions");
 
 const router = express.Router();
 function auth(req, res, next) { const { userId } = getAuth(req); if (!userId) return res.status(401).json({ error: "Unauthorized" }); req.userId = userId; next(); }
@@ -25,7 +26,7 @@ router.get("/", auth, async (req, res) => {
     const actorMap = await authors(rows.map((row) => plain(row).actorUserId));
     const unread = rows.filter((row) => !row.readAt).map((row) => row._id);
     if (unread.length) await Notification.updateMany({ _id: { $in: unread }, recipientUserId: req.userId }, { $set: { readAt: new Date() } });
-    res.json({ notifications: rows.map((row) => { const source = plain(row); const review = reviewMap.get(String(source.reviewId || "")); const album = review ? albumMap.get(String(review.albumCatalogId?._id || review.albumCatalogId || "")) : null; return { _id: source._id, type: source.type, recipientUserId: source.recipientUserId, actorUserId: source.actorUserId, actor: actorMap.get(source.actorUserId), reviewId: source.reviewId ? String(source.reviewId) : "", albumId: album?.albumId || "", readAt: source.readAt || null, createdAt: source.createdAt, updatedAt: source.updatedAt, review: review ? { _id: review._id, albumId: album?.albumId || "", album, rating: review.rating } : null }; }) });
+    res.json({ notifications: rows.map((row) => { const source = plain(row); const review = reviewMap.get(String(source.reviewId || "")); const reviewId = review ? persistedReviewId(review) : ""; const album = review ? albumMap.get(String(review.albumCatalogId?._id || review.albumCatalogId || "")) : null; return { _id: source._id, type: source.type, recipientUserId: source.recipientUserId, actorUserId: source.actorUserId, actor: actorMap.get(source.actorUserId), reviewId, albumId: album?.albumId || "", readAt: source.readAt || null, createdAt: source.createdAt, updatedAt: source.updatedAt, review: review ? { reviewId, albumId: album?.albumId || "", album, rating: review.rating } : null }; }) });
   } catch { res.status(500).json({ error: "Failed to fetch notifications" }); }
 });
 module.exports = router;

@@ -334,9 +334,9 @@ export function AlbumDetail()
             if (!res.ok) throw new Error(await getApiErrorMessage(res, "Failed to submit review"));
             const newReview = await res.json();
             if (activeAlbumIdRef.current !== review.albumId) return true;
-            setReviews((current) => current.some((item) => item._id === newReview._id) ? current : [newReview, ...current]);
-            setRecentReviewPreviews((current) => [newReview, ...current.filter((item) => item._id !== newReview._id)].slice(0, 3));
-            setPopularReviewPreviews((current) => current.some((item) => item._id === newReview._id) ? current : current);
+            setReviews((current) => current.some((item) => item.reviewId === newReview.reviewId) ? current : [newReview, ...current]);
+            setRecentReviewPreviews((current) => [newReview, ...current.filter((item) => item.reviewId !== newReview.reviewId)].slice(0, 3));
+            setPopularReviewPreviews((current) => current.some((item) => item.reviewId === newReview.reviewId) ? current : current);
             if (res.status === 201) {
                 setAlbumSocial((currentSocial) => {
                     const ratingDistribution = adjustRatingDistribution(currentSocial.ratingDistribution, newReview.rating, 1);
@@ -351,24 +351,24 @@ export function AlbumDetail()
 
     };
 
-    async function removeReview(id) {
+    async function removeReview(reviewId) {
         if (!canUseAuthenticatedActions || deletingReviewId) {
             return false;
         }
-        setDeletingReviewId(id);
-        setDeleteErrors((current) => ({ ...current, [id]: "" }));
+        setDeletingReviewId(reviewId);
+        setDeleteErrors((current) => ({ ...current, [reviewId]: "" }));
         try {
             const token = await getToken();
-            const res = await fetch(`${API_BASE_URL}/reviews/review/user/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+            const res = await fetch(`${API_BASE_URL}/reviews/review/user/${reviewId}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
             if (!res.ok) throw new Error(await getApiErrorMessage(res, "Failed to delete review"));
             if (activeAlbumIdRef.current !== albumId) return true;
             let removedReview = null;
             setReviews((current) => {
-                removedReview = current.find((review) => review._id === id) || null;
-                return current.filter((review) => review._id !== id);
+                removedReview = current.find((review) => review.reviewId === reviewId) || null;
+                return current.filter((review) => review.reviewId !== reviewId);
             });
-            setRecentReviewPreviews((current) => current.filter((review) => review._id !== id));
-            setPopularReviewPreviews((current) => current.filter((review) => review._id !== id));
+            setRecentReviewPreviews((current) => current.filter((review) => review.reviewId !== reviewId));
+            setPopularReviewPreviews((current) => current.filter((review) => review.reviewId !== reviewId));
             if (removedReview) {
                 setAlbumSocial((currentSocial) => {
                     const ratingDistribution = adjustRatingDistribution(currentSocial.ratingDistribution, removedReview.rating, -1);
@@ -377,7 +377,7 @@ export function AlbumDetail()
             }
             return true;
         } catch (error) {
-            setDeleteErrors((current) => ({ ...current, [id]: error.message || "Could not delete that review." }));
+            setDeleteErrors((current) => ({ ...current, [reviewId]: error.message || "Could not delete that review." }));
             return false;
         } finally {
             setDeletingReviewId("");
@@ -395,8 +395,8 @@ export function AlbumDetail()
             const data = await response.json();
             if (activeAlbumIdRef.current !== albumId) return;
             setReviews((current) => {
-                const ids = new Set(current.map((review) => review._id));
-                return [...current, ...(Array.isArray(data.reviews) ? data.reviews.filter((review) => !ids.has(review._id)) : [])];
+                const ids = new Set(current.map((review) => review.reviewId));
+                return [...current, ...(Array.isArray(data.reviews) ? data.reviews.filter((review) => !ids.has(review.reviewId)) : [])];
             });
             setNextReviewCursor(data.nextCursor || null);
         } catch (error) {
@@ -409,7 +409,7 @@ export function AlbumDetail()
     function updateReviewLikeState(reviewId, nextState) {
         setReviews((currentReviews) => (
             currentReviews.map((review) => (
-                review._id === reviewId ? { ...review, ...nextState } : review
+                review.reviewId === reviewId ? { ...review, ...nextState } : review
             ))
         ));
     }
@@ -420,7 +420,7 @@ export function AlbumDetail()
             return;
         }
 
-        const reviewId = review._id;
+        const reviewId = review.reviewId;
         const nextLiked = !review.likedByViewer;
         const previousLikeCount = Number(review.likeCount) || 0;
         const nextLikeCount = Math.max(0, previousLikeCount + (nextLiked ? 1 : -1));

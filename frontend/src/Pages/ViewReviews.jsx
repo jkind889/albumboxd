@@ -6,8 +6,8 @@ import ReviewList from "../Components/ReviewList";
 import { getApiErrorMessage } from "../utils/apiErrors";
 
 function appendUniqueReviews(current, incoming) {
-    const ids = new Set(current.map((review) => review._id));
-    return [...current, ...incoming.filter((review) => !ids.has(review._id))];
+    const ids = new Set(current.map((review) => review.reviewId));
+    return [...current, ...incoming.filter((review) => !ids.has(review.reviewId))];
 }
 
 export function ViewReviews() {
@@ -80,32 +80,32 @@ export function ViewReviews() {
         }
     }
 
-    async function removeReview(id) {
+    async function removeReview(reviewId) {
         if (deletingReviewId) return false;
-        setDeletingReviewId(id);
-        setDeleteErrors((current) => ({ ...current, [id]: "" }));
+        setDeletingReviewId(reviewId);
+        setDeleteErrors((current) => ({ ...current, [reviewId]: "" }));
         try {
             const token = await getToken();
-            const res = await fetch(`${API_BASE_URL}/reviews/review/user/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+            const res = await fetch(`${API_BASE_URL}/reviews/review/user/${reviewId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
             if (!res.ok) throw new Error(await getApiErrorMessage(res, "Failed to delete review"));
-            setReviews((current) => current.filter((review) => review._id !== id));
+            setReviews((current) => current.filter((review) => review.reviewId !== reviewId));
             return true;
         } catch (reviewError) {
-            setDeleteErrors((current) => ({ ...current, [id]: reviewError.message || "Could not delete that review." }));
+            setDeleteErrors((current) => ({ ...current, [reviewId]: reviewError.message || "Could not delete that review." }));
             return false;
         } finally {
             setDeletingReviewId("");
         }
     }
 
-    async function editReview(id, updates) {
+    async function editReview(reviewId, updates) {
         setEditMessage("");
         try {
             const token = await getToken();
-            const res = await fetch(`${API_BASE_URL}/reviews/review/user/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(updates) });
+            const res = await fetch(`${API_BASE_URL}/reviews/review/user/${reviewId}`, { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(updates) });
             if (!res.ok) throw new Error(await getApiErrorMessage(res, "Failed to edit review"));
             const updatedReview = await res.json();
-            setReviews((current) => current.map((review) => review._id === id ? updatedReview : review));
+            setReviews((current) => current.map((review) => review.reviewId === reviewId ? updatedReview : review));
             setEditingReview(null);
             return true;
         } catch (reviewError) {
@@ -115,7 +115,7 @@ export function ViewReviews() {
     }
 
     function updateReviewLikeState(reviewId, nextState) {
-        setReviews((current) => current.map((review) => review._id === reviewId ? { ...review, ...nextState } : review));
+        setReviews((current) => current.map((review) => review.reviewId === reviewId ? { ...review, ...nextState } : review));
     }
 
     async function toggleReviewLike(review) {
@@ -125,16 +125,16 @@ export function ViewReviews() {
         }
         const nextLiked = !review.likedByViewer;
         const previousLikeCount = Number(review.likeCount) || 0;
-        updateReviewLikeState(review._id, { likedByViewer: nextLiked, likeCount: Math.max(0, previousLikeCount + (nextLiked ? 1 : -1)) });
+        updateReviewLikeState(review.reviewId, { likedByViewer: nextLiked, likeCount: Math.max(0, previousLikeCount + (nextLiked ? 1 : -1)) });
         setLikeMessage("");
         try {
             const token = await getToken();
-            const response = await fetch(`${API_BASE_URL}/likes/review/${review._id}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ liked: nextLiked }) });
+            const response = await fetch(`${API_BASE_URL}/likes/review/${review.reviewId}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ liked: nextLiked }) });
             if (!response.ok) throw new Error(await getApiErrorMessage(response, "Failed to update review like"));
             const data = await response.json();
-            updateReviewLikeState(review._id, { likedByViewer: Boolean(data.likedByViewer), likeCount: Number(data.likeCount) || 0 });
+            updateReviewLikeState(review.reviewId, { likedByViewer: Boolean(data.likedByViewer), likeCount: Number(data.likeCount) || 0 });
         } catch (likeError) {
-            updateReviewLikeState(review._id, { likedByViewer: Boolean(review.likedByViewer), likeCount: previousLikeCount });
+            updateReviewLikeState(review.reviewId, { likedByViewer: Boolean(review.likedByViewer), likeCount: previousLikeCount });
             setLikeMessage(likeError.message || "Could not update that like.");
         }
     }

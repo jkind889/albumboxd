@@ -4,6 +4,7 @@ const Review = require("../../models/Reviews");
 const AlbumCatalog = require("../../models/AlbumCatalog");
 const Like = require("../../models/Like");
 const { normalizeCatalogAlbum } = require("./albumCatalog");
+const { persistedReviewId } = require("./reviewInteractions");
 
 const NETWORK_ACTIVITY_LIMIT = 20;
 
@@ -51,6 +52,7 @@ function buildNetworkReviewsPipeline(userIds, viewerId) {
     {
       $project: {
         _id: 1,
+        reviewId: 1,
         userId: 1,
         date: 1,
         rating: 1,
@@ -79,18 +81,22 @@ async function getNetworkActivity(viewerId, getAuthors) {
   const reviews = await Review.aggregate(buildNetworkReviewsPipeline(visibleIds, viewerId));
   if (reviews.length === 0) return [];
   const authors = await getAuthors(reviews.map((review) => review.userId));
-  return reviews.map((review) => ({
-    id: String(review._id),
-    type: "review",
-    actor: authors.get(review.userId) || { userId: review.userId, username: "rescened user", imageUrl: "" },
-    userId: review.userId,
-    createdAt: review.date,
-    album: normalizeCatalogAlbum(review.catalogAlbum),
-    rating: review.rating,
-    reviewText: review.reviewText,
-    likeCount: review.likeCount,
-    likedByViewer: review.likedByViewer,
-  }));
+  return reviews.map((review) => {
+    const reviewId = persistedReviewId(review);
+    return {
+      id: reviewId,
+      reviewId,
+      type: "review",
+      actor: authors.get(review.userId) || { userId: review.userId, username: "rescened user", imageUrl: "" },
+      userId: review.userId,
+      createdAt: review.date,
+      album: normalizeCatalogAlbum(review.catalogAlbum),
+      rating: review.rating,
+      reviewText: review.reviewText,
+      likeCount: review.likeCount,
+      likedByViewer: review.likedByViewer,
+    };
+  });
 }
 
 module.exports = { NETWORK_ACTIVITY_LIMIT, buildNetworkReviewsPipeline, getNetworkActivity };

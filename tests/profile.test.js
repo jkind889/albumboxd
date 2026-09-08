@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const test = require("node:test");
 const mongoose = require("mongoose");
 const Follow = require("../models/Follow");
@@ -15,6 +16,7 @@ const ALBUM_ID = "184c836b-14dc-4f85-a3f6-e5a166b3156d";
 function reviewRow(userId, overrides = {}) {
   return {
     _id: new mongoose.Types.ObjectId(),
+    reviewId: crypto.randomUUID(),
     userId,
     albumCatalogId: new mongoose.Types.ObjectId(),
     date: new Date("2026-09-04T12:00:00.000Z"),
@@ -145,7 +147,8 @@ test("network returns followed-user review activities with current catalog metad
   assert.equal(result.status, 200);
   assert.equal(result.body.length, 2);
   assert.deepEqual(result.body[0], {
-    id: String(alex._id),
+    id: alex.reviewId,
+    reviewId: alex.reviewId,
     type: "review",
     actor: { userId: "user_alex", username: "alex", imageUrl: "https://example.test/alex.jpg" },
     userId: "user_alex",
@@ -286,6 +289,7 @@ test("network pipeline counts only review likes and computes the authenticated v
     viewerCount: { $sum: { $cond: [{ $eq: ["$userId", VIEWER] }, 1, 0] } },
   });
   const projection = pipeline.at(-1).$project;
+  assert.equal(projection.reviewId, 1);
   assert.deepEqual(projection.likeCount, { $ifNull: [{ $arrayElemAt: ["$likeStats.count", 0] }, 0] });
   assert.deepEqual(projection.likedByViewer, { $gt: [{ $ifNull: [{ $arrayElemAt: ["$likeStats.viewerCount", 0] }, 0] }, 0] });
 });
@@ -299,7 +303,8 @@ for (const [name, options] of [
     const route = installNetworkRoute(t, { rows: [row], ...options });
     const result = await route.request();
     assert.equal(result.status, 200);
-    assert.equal(result.body[0].id, String(row._id));
+    assert.equal(result.body[0].id, row.reviewId);
+    assert.equal(result.body[0].reviewId, row.reviewId);
     assert.deepEqual(result.body[0].actor, { userId: "user_alex", username: "rescened user", imageUrl: "" });
     assert.equal(result.body[0].album.albumId, ALBUM_ID);
     assert.equal(result.body[0].likedByViewer, true);

@@ -84,10 +84,10 @@ function AlbumReviewCard({
                     <button
                         className="review-delete-button album-review-delete"
                         type="button"
-                        onClick={() => onRemoveReview(review._id)}
-                        disabled={deletingReviewId === review._id}
+                        onClick={() => onRemoveReview(review.reviewId)}
+                        disabled={deletingReviewId === review.reviewId}
                     >
-                        {deletingReviewId === review._id ? "Deleting..." : "Delete Review"}
+                        {deletingReviewId === review.reviewId ? "Deleting..." : "Delete Review"}
                     </button>
                 )}
                 {deleteError && <p className="review-edit-error" role="alert">{deleteError}</p>}
@@ -118,14 +118,14 @@ export function AlbumReviewFeed({
         <div className="album-review-feed">
             {reviews.map((review) => (
                 <AlbumReviewCard
-                    key={review._id}
+                    key={review.reviewId}
                     review={review}
                     currentUserId={currentUserId}
                     onRemoveReview={onRemoveReview}
                     onToggleReviewLike={onToggleReviewLike}
                     likeMessage={likeMessage}
                     deletingReviewId={deletingReviewId}
-                    deleteError={deleteErrors[review._id]}
+                    deleteError={deleteErrors[review.reviewId]}
                 />
             ))}
         </div>

@@ -28,13 +28,35 @@ Before rollout, audit orphaned review likes, review-like notifications, and pinn
 
 `GET /profile/me/network` requires Clerk authentication and returns the newest 20 review activities across everyone the signed-in user follows, ordered by review date descending with review ID as a deterministic tie-breaker. The limit applies to the combined feed, not to each followed account. Self-follow rows, private-profile activity, and reviews whose catalog album no longer exists are excluded before selecting the feed. Following a private account does not grant access to its activity, even though its reviews remain available through public review surfaces.
 
-Each item contains `id` (the existing review interaction ID), `type: "review"`, `actor` (`userId`, `username`, `imageUrl`), `userId`, `createdAt`, `album`, `rating`, `reviewText`, `likeCount`, and `likedByViewer`. Album links use the public Rescened `album.albumId`; album metadata is resolved from the current catalog. Missing Clerk display details fall back to the existing account ID and a generic display name. No followed accounts or no visible reviews returns `[]`.
+Each item contains `id` and `reviewId` (the same public review UUID), `type: "review"`, `actor` (`userId`, `username`, `imageUrl`), `userId`, `createdAt`, `album`, `rating`, `reviewText`, `likeCount`, and `likedByViewer`. Album links use the public Rescened `album.albumId`; album metadata is resolved from the current catalog. Missing Clerk display details fall back to the existing account ID and a generic display name. No followed accounts or no visible reviews returns `[]`.
 
 Network remains a review-activity feed, not a people list or a stream of other users' personal likes and follows. Relationship lists remain at `/profile/me/social`; the personal `/profile/me/activity` contract is unchanged by this restoration.
 
 ## Review history feeds
 
 `GET /reviews/review/user/`, `GET /reviews/review/user/:userId`, and `GET /reviews/review/album/:albumId` return `{ reviews, nextCursor }`. They accept `sort=recent|popular`, an opaque `cursor`, and a `limit` of up to 50 (default 20). Popular pagination freezes its like-count ranking at the first request so later likes do not reshuffle an in-progress feed. `POST /reviews/review` requires an `Idempotency-Key` UUID-v4 header: a retry with the same key returns the already-created review instead of creating another.
+
+## Review public-ID migration
+
+Every review has an immutable public UUID-v4 `reviewId`; Mongo `_id` remains an internal relation and pagination key. Existing databases that predate this field must be backfilled before the matching API/frontend release serves review traffic. This includes any database restored from the legacy generation-1 workflow: run the review-ID migration after the legacy restore/migration has completed and before the restored database is served. The legacy transformer remains separate and is not rewritten by this operation.
+
+Start with a dry run. It reads `Review.collection` directly, with Mongoose index creation disabled, so missing IDs cannot be manufactured by schema defaults. The command writes a no-clobber JSON plan and an adjacent SHA-256 checksum under the ignored `.migration/review-ids/` directory unless `--report` selects a destination. The artifact contains collection identity, hashes, ID mappings, and blockers, but no review text.
+
+```sh
+npm run db:migrate:review-ids -- --dry-run
+npm run db:migrate:review-ids -- --dry-run --report .migration/review-ids/review-id-plan.json
+```
+
+Review the exact report and checksum, close review writers, and obtain authorization for the named database before applying it to a transaction-capable replica set or sharded deployment. Apply requires both the reviewed report and an exact database-name confirmation. It rechecks the collection identity and content baseline, updates only the report’s missing/null fields in batches of 500, then creates or verifies the `reviewId_1` unique index. It never overwrites the reviewed plan; progress is retained beside it as `*.apply-progress.json`. A retry treats an already matching assigned UUID as a successful no-op.
+
+```sh
+npm run db:migrate:review-ids -- --apply \
+  --report .migration/review-ids/review-id-plan.json \
+  --confirm-target rescened
+npm run db:migrate:review-ids -- --verify --report .migration/review-ids/review-id-plan.json
+```
+
+`--verify` is read-only and checks UUID coverage, uniqueness, and the unique index; its report is optional. Exit code `0` means complete, `2` means the dry run found blockers or verification found unresolved identity/index issues, and `1` means a fatal artifact, target, transaction, or database error. If an apply error says database changes were committed or that its commit outcome is unknown, retain the report and progress artifact and rerun only after inspecting the named error; do not treat that result as a rollback.
 
 ## Community submissions
 

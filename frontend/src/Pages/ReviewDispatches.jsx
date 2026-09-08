@@ -66,7 +66,7 @@ export function ReviewDispatches() {
 
   function updateReviewLikeState(reviewId, nextState) {
     setReviews((currentReviews) => currentReviews.map((review) => (
-      review._id === reviewId ? { ...review, ...nextState } : review
+      review.reviewId === reviewId ? { ...review, ...nextState } : review
     )));
   }
 
@@ -76,7 +76,7 @@ export function ReviewDispatches() {
       return;
     }
 
-    const reviewId = review._id;
+    const reviewId = review.reviewId;
     const nextLiked = !review.likedByViewer;
     const previousLikeCount = Number(review.likeCount) || 0;
 
@@ -140,7 +140,7 @@ export function ReviewDispatches() {
           <div className="profile-review-list">
             {reviews.map((review) => (
               <ProfileReviewCard
-                key={review._id}
+                key={review.reviewId}
                 review={review}
                 likeMessage={likeMessage}
                 onToggleLike={toggleReviewLike}

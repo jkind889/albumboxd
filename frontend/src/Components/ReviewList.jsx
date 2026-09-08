@@ -31,7 +31,7 @@ function ReviewEditForm({
         setIsSaving(true);
         setLocalError("");
 
-        const wasSaved = await onEditReview?.(review._id, {
+        const wasSaved = await onEditReview?.(review.reviewId, {
             reviewText: trimmedText,
             rating: numericRating,
         });
@@ -101,7 +101,7 @@ function ReviewListCard({
     formatRatingStars,
 }) {
     return (
-        <article className="review-card" key={review._id}>
+        <article className="review-card" key={review.reviewId}>
             <div className="review-card-poster">
                 {review.cover && (
                     <img className="review-card-image" src={review.cover} alt={`${review.title} cover`} />
@@ -123,7 +123,7 @@ function ReviewListCard({
                 </div>
                 {isEditing ? (
                     <ReviewEditForm
-                        key={review._id}
+                        key={review.reviewId}
                         review={review}
                         onCancelEdit={onCancelEdit}
                         onEditReview={onEditReview}
@@ -141,13 +141,13 @@ function ReviewListCard({
                                 onToggle={() => onToggleReviewLike?.(review)}
                             />
                             {canEditReviews && (
-                                <button className="review-edit-button" type="button" onClick={() => onStartEdit?.(review._id, listId)}>
+                                <button className="review-edit-button" type="button" onClick={() => onStartEdit?.(review.reviewId, listId)}>
                                     Edit Review
                                 </button>
                             )}
                             {canRemoveReviews && (
-                                <button className="review-delete-button" type="button" disabled={deletingReviewId === review._id} onClick={() => onRemoveReview(review._id)}>
-                                    {deletingReviewId === review._id ? "Deleting..." : "Delete Review"}
+                                <button className="review-delete-button" type="button" disabled={deletingReviewId === review.reviewId} onClick={() => onRemoveReview(review.reviewId)}>
+                                    {deletingReviewId === review.reviewId ? "Deleting..." : "Delete Review"}
                                 </button>
                             )}
                         </div>
@@ -208,10 +208,10 @@ export function ReviewList({
         <div className="review-list">
             {reviews.map((review) => (
                 <ReviewListCard
-                    key={review._id}
+                    key={review.reviewId}
                     review={review}
                     listId={listId}
-                    isEditing={editingReview?.reviewId === review._id && editingReview?.listId === listId}
+                    isEditing={editingReview?.reviewId === review.reviewId && editingReview?.listId === listId}
                     canEditReviews={canEditReviews}
                     canRemoveReviews={canRemoveReviews}
                     onStartEdit={onStartEdit}
@@ -222,7 +222,7 @@ export function ReviewList({
                     likeMessage={likeMessage}
                     editMessage={editMessage}
                     deletingReviewId={deletingReviewId}
-                    deleteError={deleteErrors[review._id]}
+                    deleteError={deleteErrors[review.reviewId]}
                     formatReviewDate={formatReviewDate}
                     formatRatingStars={formatRatingStars}
                 />

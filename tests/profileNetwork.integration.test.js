@@ -34,6 +34,7 @@ async function createAlbum(title) {
 function reviewRow(id, album, userId, date) {
   return {
     _id: objectId(id),
+    reviewId: `00000000-0000-4000-8000-${String(id).padStart(12, "0")}`,
     albumCatalogId: album._id,
     userId,
     rating: 4.5,
@@ -126,13 +127,14 @@ test("network feed merges followed public users globally and filters excluded us
   )).slice(0, NETWORK_ACTIVITY_LIMIT);
 
   assert.equal(result.length, 20);
-  assert.deepEqual(result.map((item) => item.id), expected.map((row) => String(row._id)));
-  assert.deepEqual(result.slice(0, 2).map((item) => item.id), [String(objectId(101)), String(objectId(100))]);
+  assert.deepEqual(result.map((item) => item.id), expected.map((row) => row.reviewId));
+  assert.deepEqual(result.slice(0, 2).map((item) => item.id), ["00000000-0000-4000-8000-000000000101", "00000000-0000-4000-8000-000000000100"]);
   assert.deepEqual(new Set(result.map((item) => item.userId)), new Set(followedUsers));
   assert.deepEqual(new Set(requestedAuthors), new Set(followedUsers));
   assert.equal(await UserProfile.exists({ userId: "no-profile" }), null);
   for (const item of result) {
     assert.equal(item.type, "review");
+    assert.equal(item.id, item.reviewId);
     assert.equal(item.actor.userId, item.userId);
     assert.equal(item.actor.username, `${item.userId}-name`);
     assert.equal(item.likeCount, 0);
@@ -161,7 +163,7 @@ test("missing and deleted catalog rows cannot consume network feed slots", { ski
 
   const result = await getNetworkActivity("viewer", async () => new Map());
   assert.equal(result.length, 20);
-  assert.deepEqual(result.map((item) => item.id), validRows.slice(1).reverse().map((row) => String(row._id)));
+  assert.deepEqual(result.map((item) => item.id), validRows.slice(1).reverse().map((row) => row.reviewId));
   assert.ok(result.every((item) => item.album.albumId === album.albumId));
   assert.deepEqual(result[0].actor, { userId: "followed", username: "rescened user", imageUrl: "" });
 });
@@ -190,10 +192,11 @@ test("network activities use current catalog metadata and review-specific viewer
   });
   const result = await getNetworkActivity("viewer", authors);
   assert.deepEqual(result.map((item) => [item.id, item.likeCount, item.likedByViewer]), [
-    [String(liked._id), 2, true],
-    [String(otherLiked._id), 1, false],
-    [String(zeroLikes._id), 0, false],
+    [liked.reviewId, 2, true],
+    [otherLiked.reviewId, 1, false],
+    [zeroLikes.reviewId, 0, false],
   ]);
+  const reviewTextById = new Map([liked, otherLiked, zeroLikes].map((review) => [review.reviewId, review.reviewText]));
   for (const item of result) {
     assert.equal(item.album.albumId, album.albumId);
     assert.match(item.album.albumId, UUID_V4);
@@ -202,10 +205,12 @@ test("network activities use current catalog metadata and review-specific viewer
     assert.equal(item.album.cover, "https://example.test/new-cover.jpg");
     assert.equal(item.rating, 4.5);
     assert.ok(item.createdAt instanceof Date);
-    assert.equal(item.reviewText, `Review ${Number.parseInt(item.id, 16)}`);
+    assert.equal(item.id, item.reviewId);
+    assert.equal(item.reviewText, reviewTextById.get(item.reviewId));
     assert.equal(Object.hasOwn(item.album, "_id"), false);
     assert.equal(Object.hasOwn(item, "albumCatalogId"), false);
     assert.equal(Object.hasOwn(item, "interactionRevision"), false);
+    assert.equal(Object.hasOwn(item, "_id"), false);
     assert.equal(JSON.stringify(item).includes(String(album._id)), false);
   }
 });

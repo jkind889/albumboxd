@@ -1,6 +1,22 @@
+const crypto = require("node:crypto");
 const mongoose = require("mongoose");
 
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const reviewSchema = new mongoose.Schema({
+  // Public, immutable identity. Mongo's _id remains an internal relation key
+  // for likes, notifications, profile pins, pagination, and transactions.
+  // The conditional default deliberately does not manufacture an ID while
+  // hydrating a legacy document that still needs the explicit backfill.
+  reviewId: {
+    type: String,
+    required: true,
+    unique: true,
+    immutable: true,
+    lowercase: true,
+    default: function defaultReviewId() { return this.isNew ? crypto.randomUUID() : undefined; },
+    match: UUID_V4,
+  },
   userId: { type: String, required: true },
   albumCatalogId: { type: mongoose.Schema.Types.ObjectId, ref: "AlbumCatalog", required: true },
   reviewText: { type: String, required: true, trim: true, maxlength: 300 },

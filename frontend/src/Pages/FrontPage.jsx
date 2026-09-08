@@ -315,7 +315,7 @@ export function FrontPage() {
                     {signals.reviews.length ? (
                         <div className="front-review-stack">
                             {signals.reviews.slice(0, 3).map((review) => (
-                                <ReviewDispatch review={review} key={review._id || getAlbumId(review)} />
+                                <ReviewDispatch review={review} key={review.reviewId} />
                             ))}
                         </div>
                     ) : (
