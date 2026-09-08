@@ -31,7 +31,7 @@ function ReviewEditForm({
         setIsSaving(true);
         setLocalError("");
 
-        const wasSaved = await onEditReview?.(review._id, {
+        const wasSaved = await onEditReview?.(review.reviewId, {
             reviewText: trimmedText,
             rating: numericRating,
         });
@@ -61,6 +61,7 @@ function ReviewEditForm({
                 <span>Review</span>
                 <textarea
                     rows="4"
+                    maxLength="300"
                     required
                     value={editText}
                     onChange={(event) => setEditText(event.target.value)}
@@ -94,11 +95,13 @@ function ReviewListCard({
     onToggleReviewLike,
     likeMessage,
     editMessage,
+    deletingReviewId,
+    deleteError,
     formatReviewDate,
     formatRatingStars,
 }) {
     return (
-        <article className="review-card" key={review._id}>
+        <article className="review-card" key={review.reviewId}>
             <div className="review-card-poster">
                 {review.cover && (
                     <img className="review-card-image" src={review.cover} alt={`${review.title} cover`} />
@@ -120,7 +123,7 @@ function ReviewListCard({
                 </div>
                 {isEditing ? (
                     <ReviewEditForm
-                        key={review._id}
+                        key={review.reviewId}
                         review={review}
                         onCancelEdit={onCancelEdit}
                         onEditReview={onEditReview}
@@ -138,14 +141,17 @@ function ReviewListCard({
                                 onToggle={() => onToggleReviewLike?.(review)}
                             />
                             {canEditReviews && (
-                                <button className="review-edit-button" type="button" onClick={() => onStartEdit?.(review._id, listId)}>
+                                <button className="review-edit-button" type="button" onClick={() => onStartEdit?.(review.reviewId, listId)}>
                                     Edit Review
                                 </button>
                             )}
                             {canRemoveReviews && (
-                                <button className="review-delete-button" type="button" onClick={() => onRemoveReview(review._id)}>Delete Review</button>
+                                <button className="review-delete-button" type="button" disabled={deletingReviewId === review.reviewId} onClick={() => onRemoveReview(review.reviewId)}>
+                                    {deletingReviewId === review.reviewId ? "Deleting..." : "Delete Review"}
+                                </button>
                             )}
                         </div>
+                        {deleteError && <p className="review-edit-error" role="alert">{deleteError}</p>}
                     </>
                 )}
             </div>
@@ -164,6 +170,8 @@ export function ReviewList({
     onToggleReviewLike,
     likeMessage,
     editMessage,
+    deletingReviewId,
+    deleteErrors = {},
 })
 {
     const canRemoveReviews = typeof onRemoveReview === "function";
@@ -200,10 +208,10 @@ export function ReviewList({
         <div className="review-list">
             {reviews.map((review) => (
                 <ReviewListCard
-                    key={review._id}
+                    key={review.reviewId}
                     review={review}
                     listId={listId}
-                    isEditing={editingReview?.reviewId === review._id && editingReview?.listId === listId}
+                    isEditing={editingReview?.reviewId === review.reviewId && editingReview?.listId === listId}
                     canEditReviews={canEditReviews}
                     canRemoveReviews={canRemoveReviews}
                     onStartEdit={onStartEdit}
@@ -213,6 +221,8 @@ export function ReviewList({
                     onToggleReviewLike={onToggleReviewLike}
                     likeMessage={likeMessage}
                     editMessage={editMessage}
+                    deletingReviewId={deletingReviewId}
+                    deleteError={deleteErrors[review.reviewId]}
                     formatReviewDate={formatReviewDate}
                     formatRatingStars={formatRatingStars}
                 />

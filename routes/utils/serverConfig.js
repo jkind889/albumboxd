@@ -12,6 +12,10 @@ function parsePort(env = process.env) {
   return Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : DEFAULT_PORT;
 }
 
+function isExternalAlbumSearchEnabled(env = process.env) {
+  return String(env.EXTERNAL_ALBUM_SEARCH_ENABLED || "").trim().toLowerCase() === "true";
+}
+
 function parseOriginList(value) {
   return String(value || "")
     .split(",")
@@ -74,14 +78,6 @@ function validateServerEnv(env = process.env) {
     missing.push("CLERK_PUBLISHABLE_KEY or VITE_CLERK_PUBLISHABLE_KEY");
   }
 
-  if (!env.SPOTIFY_CLIENT_ID) {
-    missing.push("SPOTIFY_CLIENT_ID");
-  }
-
-  if (!env.SPOTIFY_CLIENT_SECRET) {
-    missing.push("SPOTIFY_CLIENT_SECRET");
-  }
-
   if (env.NODE_ENV === "production" && getAllowedOrigins(env).length === 0) {
     missing.push("CORS_ALLOWED_ORIGINS or FRONTEND_URL");
   }
@@ -121,6 +117,7 @@ module.exports = {
   buildCorsOptions,
   getAllowedOrigins,
   getConfiguredOrigins,
+  isExternalAlbumSearchEnabled,
   normalizeOrigin,
   parseOriginList,
   parsePort,

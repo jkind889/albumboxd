@@ -24,11 +24,11 @@ export function RecentlySaved() {
     return (
         <div className="recently-saved">
             {savedAlbums.map((album) => (
-                <div key={album.spotifyId} className="recent-saved-album">
-                    <img src={album.cover} alt={`${album.name} cover`} className="recent-saved-album-cover" />
+                <div key={album.albumId} className="recent-saved-album">
+                    <img src={album.cover} alt={`${album.title} cover`} className="recent-saved-album-cover" />
                     <div className="recent-saved-album-info">
                         <h3>{album.title}</h3>
-                        <p>{album.artists?.[0]?.name || album.artist}</p>
+                        <p>{album.artistDisplayName}</p>
                     </div>
                 </div>
             ))}

@@ -1,0 +1,28 @@
+{
+  "reportVersion": "1.0.0",
+  "datasetId": "rescened-listenbrainz-sample-2026-08-14",
+  "schemaVersion": "1.0.0",
+  "mode": "apply",
+  "generatedAt": "2026-08-18T18:07:03.411Z",
+  "applied": true,
+  "counts": {
+    "inserted": 2,
+    "refreshed": 0,
+    "unchanged": 0,
+    "quarantined": 0,
+    "conflicted": 0
+  },
+  "albums": [
+    {
+      "action": "inserted",
+      "rowIndex": 0,
+      "releaseGroupMbid": "b1392450-e666-3926-a536-22c65f834433"
+    },
+    {
+      "action": "inserted",
+      "rowIndex": 1,
+      "releaseGroupMbid": "1b022e01-4da6-387b-8658-8678046e4cef"
+    }
+  ],
+  "quarantine": []
+}

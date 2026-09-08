@@ -57,14 +57,14 @@ export function NewOnRescened({ limit = 6 }) {
     return (
         <div className="front-album-strip">
             {albums.map((album) => (
-                <Link className="front-album-card" key={album.spotifyId} to={`/album/${album.spotifyId}`}>
+                <Link className="front-album-card" key={album.albumId} to={`/album/${album.albumId}`}>
                     {album.cover ? (
                         <img src={album.cover} alt={`${album.title} cover`} />
                     ) : (
                         <span className="front-album-cover-fallback">No cover</span>
                     )}
                     <span>{album.title}</span>
-                    <small>{album.artist}</small>
+                    <small>{album.artistDisplayName}</small>
                 </Link>
             ))}
         </div>
