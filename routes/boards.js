@@ -2,6 +2,7 @@ const express = require("express");
 const { getAuth } = require("@clerk/express");
 const Board = require("../models/Board");
 const BoardItem = require("../models/BoardItem");
+const UserProfile = require("../models/UserProfile");
 const { findAlbumByPublicId, normalizeCatalogAlbum } = require("./utils/albumCatalog");
 const { albumSaveRateLimit } = require("./utils/rateLimit");
 
@@ -17,6 +18,27 @@ function auth(req, res, next) {
 }
 function plain(value) { return typeof value?.toObject === "function" ? value.toObject() : value; }
 function title(value) { return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : ""; }
+function publicBoardId(value) {
+  const boardId = String(value || "").trim().toLowerCase();
+  return Board.isBoardId(boardId) ? boardId : "";
+}
+function persistedBoardId(board) {
+  const boardId = publicBoardId(board?.boardId);
+  if (boardId) return boardId;
+  const error = new Error("Board is missing a valid public identifier");
+  error.status = 500;
+  error.code = "BOARD_ID_INTEGRITY_ERROR";
+  throw error;
+}
+function rejectClientOwnedBoardId(body) {
+  if (!body || typeof body !== "object") return;
+  if (Object.hasOwn(body, "boardId") || Object.hasOwn(body, "_id")) {
+    const error = new Error("boardId is server-generated");
+    error.status = 400;
+    error.code = "INVALID_BOARD_ID";
+    throw error;
+  }
+}
 
 async function getDefaultBoard(userId) {
   const existing = await Board.findOne({ userId, isDefault: true });
@@ -24,13 +46,17 @@ async function getDefaultBoard(userId) {
   try { return await Board.create({ userId, title: DEFAULT_TITLE, isDefault: true }); }
   catch (error) { if (error.code === 11000) return Board.findOne({ userId, isDefault: true }); throw error; }
 }
-async function ownedBoard(userId, boardId) { return boardId === "default" ? getDefaultBoard(userId) : Board.findOne({ _id: boardId, userId }); }
+async function ownedBoard(userId, boardId) {
+  const publicId = String(boardId || "").trim().toLowerCase();
+  if (publicId === "default") return getDefaultBoard(userId);
+  const normalized = publicBoardId(publicId);
+  return normalized ? Board.findOne({ boardId: normalized, userId }) : null;
+}
 function formatItem(item) {
   const source = plain(item);
   const album = source.albumCatalogId;
-  return album && typeof album === "object"
-    ? { ...normalizeCatalogAlbum(album), boardId: source.boardId, userId: source.userId, savedAt: source.savedAt }
-    : source;
+  const normalized = album && typeof album === "object" ? normalizeCatalogAlbum(album) : null;
+  return normalized?.albumId ? { ...normalized, userId: source.userId, savedAt: source.savedAt } : null;
 }
 async function summary(board) {
   const source = plain(board);
@@ -38,7 +64,7 @@ async function summary(board) {
     BoardItem.find({ boardId: source._id }).populate("albumCatalogId").sort({ savedAt: -1 }).limit(PREVIEW_LIMIT),
     BoardItem.countDocuments({ boardId: source._id }),
   ]);
-  return { _id: source._id, userId: source.userId, title: source.title, isDefault: Boolean(source.isDefault), createdAt: source.createdAt, updatedAt: source.updatedAt, itemCount, previewAlbums: items.map(formatItem) };
+  return { boardId: persistedBoardId(source), userId: source.userId, title: source.title, isDefault: Boolean(source.isDefault), createdAt: source.createdAt, updatedAt: source.updatedAt, itemCount, previewAlbums: items.map(formatItem).filter(Boolean) };
 }
 
 router.get("/", auth, async (req, res) => {
@@ -51,17 +77,18 @@ router.get("/", auth, async (req, res) => {
 
 router.post("/", auth, async (req, res) => {
   try {
+    rejectClientOwnedBoardId(req.body);
     const boardTitle = title(req.body.title);
     if (!boardTitle) return res.status(400).json({ error: "Board title is required" });
     res.status(201).json(await summary(await Board.create({ userId: req.userId, title: boardTitle })));
-  } catch (error) { res.status(500).json({ error: "Failed to create board" }); }
+  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to create board", ...(error.code ? { code: error.code } : {}) }); }
 });
 
 router.get("/album/:albumId", auth, async (req, res) => {
   try {
     const album = await findAlbumByPublicId(req.params.albumId);
     const items = await BoardItem.find({ userId: req.userId, albumCatalogId: album._id }).populate("boardId");
-    const boards = items.map((item) => plain(item).boardId).filter(Boolean).map((board) => ({ _id: board._id, title: board.title, isDefault: Boolean(board.isDefault) }));
+    const boards = items.map((item) => plain(item).boardId).filter(Boolean).map((board) => ({ boardId: persistedBoardId(board), title: board.title, isDefault: Boolean(board.isDefault) }));
     res.json({ albumId: album.albumId, saved: boards.length > 0, boards });
   } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to check board saves" }); }
 });
@@ -71,12 +98,13 @@ router.get("/:boardId", auth, async (req, res) => {
     const board = await ownedBoard(req.userId, req.params.boardId);
     if (!board) return res.status(404).json({ error: "Board not found" });
     const items = await BoardItem.find({ boardId: board._id }).populate("albumCatalogId").sort({ savedAt: -1 });
-    res.json({ ...(await summary(board)), albums: items.map(formatItem) });
+    res.json({ ...(await summary(board)), albums: items.map(formatItem).filter(Boolean) });
   } catch (error) { res.status(500).json({ error: "Failed to fetch board" }); }
 });
 
 router.patch("/:boardId", auth, async (req, res) => {
   try {
+    rejectClientOwnedBoardId(req.body);
     const board = await ownedBoard(req.userId, req.params.boardId);
     const boardTitle = title(req.body.title);
     if (!boardTitle) return res.status(400).json({ error: "Board title is required" });
@@ -84,22 +112,25 @@ router.patch("/:boardId", auth, async (req, res) => {
     board.title = boardTitle;
     await board.save();
     res.json(await summary(board));
-  } catch (error) { res.status(500).json({ error: "Failed to rename board" }); }
+  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to rename board", ...(error.code ? { code: error.code } : {}) }); }
 });
 
 router.delete("/:boardId", auth, async (req, res) => {
   try {
+    rejectClientOwnedBoardId(req.body);
     const board = await ownedBoard(req.userId, req.params.boardId);
     if (!board) return res.status(404).json({ error: "Board not found" });
     if (board.isDefault) return res.status(400).json({ error: "The default board cannot be deleted" });
     await BoardItem.deleteMany({ boardId: board._id });
+    await UserProfile.updateMany({ pinnedBoardId: board._id }, { $set: { pinnedBoardId: null } });
     await Board.deleteOne({ _id: board._id, userId: req.userId });
     res.json({ message: "Board deleted" });
-  } catch (error) { res.status(500).json({ error: "Failed to delete board" }); }
+  } catch (error) { res.status(error.status || 500).json({ error: error.status ? error.message : "Failed to delete board", ...(error.code ? { code: error.code } : {}) }); }
 });
 
 router.post("/:boardId/albums", auth, albumSaveRateLimit, async (req, res) => {
   try {
+    rejectClientOwnedBoardId(req.body);
     const board = await ownedBoard(req.userId, req.params.boardId);
     if (!board) return res.status(404).json({ error: "Board not found" });
     const album = await findAlbumByPublicId(req.body.albumId);
@@ -114,6 +145,7 @@ router.post("/:boardId/albums", auth, albumSaveRateLimit, async (req, res) => {
 
 router.delete("/:boardId/albums/:albumId", auth, async (req, res) => {
   try {
+    rejectClientOwnedBoardId(req.body);
     const board = await ownedBoard(req.userId, req.params.boardId);
     if (!board) return res.status(404).json({ error: "Board not found" });
     const album = await findAlbumByPublicId(req.params.albumId);

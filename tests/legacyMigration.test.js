@@ -15,6 +15,8 @@ const { forbiddenFields, validateDocuments } = require("../lib/legacyMigration/v
 const { assertDocumentsMatchInventory, runExecute, runPlan } = require("../scripts/migrateLegacyDatabase");
 const mb = require("../lib/legacyMigration/musicBrainz");
 
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
 const ids = {
   group: "11111111-1111-4111-8111-111111111111",
   release: "22222222-2222-4222-8222-222222222222",
@@ -171,10 +173,92 @@ test("catalog hydration creates provider-neutral documents and social transforms
   assert.equal(social.documents.likes.length, 1);
   assert.equal(social.documents.notifications.length, 1);
   assert.equal(social.documents.follows.length, 1);
+  assert.match(social.documents.reviews[0].reviewId, UUID_V4);
+  assert.match(social.documents.boards[0].boardId, UUID_V4);
+  assert.match(social.documents.notifications[0].notificationId, UUID_V4);
   assert.equal(forbiddenFields(social.documents.reviews[0], "", "reviews").length, 0);
   assert.equal(forbiddenFields(social.documents.userprofiles[0], "", "userprofiles").length, 0);
   const issues = await validateDocuments({ albumcatalogs: [catalog.results[0].document], ...social.documents });
   assert.deepEqual(issues, []);
+});
+
+test("social plans preserve canonical review, board, and notification UUIDs and replace invalid values", async () => {
+  const { source, target, client } = fixture();
+  const reviewId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const boardId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const notificationId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  source.reviews[0].reviewId = reviewId;
+  target.boards.push({ ...source.boards[0], boardId });
+  target.notifications.push({
+    _id: source.notifications[0]._id,
+    notificationId,
+    recipientUserId: "user_1",
+    actorUserId: "user_2",
+    type: "review_like",
+    reviewId: source.reviews[0]._id,
+    readAt: null,
+    createdAt: source.notifications[0].createdAt,
+    updatedAt: source.notifications[0].updatedAt,
+  });
+  const catalog = await buildCatalogCrosswalk({ sourceDocuments: source, targetRows: target.albumcatalogs, client, overrides: { albums: [] } });
+  const preserved = transformSocial({ source, target, catalogResults: catalog.results });
+  assert.equal(preserved.documents.reviews[0].reviewId, reviewId);
+  assert.equal(preserved.documents.boards[0].boardId, boardId);
+  assert.equal(preserved.documents.notifications[0].notificationId, notificationId);
+
+  source.reviews[0].reviewId = "not-a-canonical-uuid";
+  target.boards[0].boardId = "not-a-canonical-uuid";
+  target.notifications[0].notificationId = "not-a-canonical-uuid";
+  const regenerated = transformSocial({ source, target, catalogResults: catalog.results });
+  assert.match(regenerated.documents.reviews[0].reviewId, UUID_V4);
+  assert.match(regenerated.documents.boards[0].boardId, UUID_V4);
+  assert.match(regenerated.documents.notifications[0].notificationId, UUID_V4);
+});
+
+test("validation rejects malformed and duplicate Review, Board, and Notification public UUIDs", async () => {
+  const now = new Date("2026-08-23T00:00:00.000Z");
+  const review = { _id: new ObjectId(), reviewId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", userId: "user_1", albumCatalogId: new ObjectId(), reviewText: "Good", rating: 4, date: now };
+  const board = { _id: new ObjectId(), boardId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", userId: "user_1", title: "Saved", isDefault: true, createdAt: now, updatedAt: now };
+  const notification = { _id: new ObjectId(), notificationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", recipientUserId: "user_1", actorUserId: "user_2", type: "follow", readAt: null, createdAt: now, updatedAt: now };
+  const duplicateIssues = await validateDocuments({
+    reviews: [review, { ...review, _id: new ObjectId(), userId: "user_2" }],
+    boards: [board, { ...board, _id: new ObjectId(), userId: "user_2", isDefault: false }],
+    notifications: [notification, { ...notification, _id: new ObjectId(), recipientUserId: "user_3" }],
+  });
+  assert.equal(duplicateIssues.some((issue) => issue.code === "DUPLICATE_REVIEW_ID"), true);
+  assert.equal(duplicateIssues.some((issue) => issue.code === "DUPLICATE_BOARD_ID"), true);
+  assert.equal(duplicateIssues.some((issue) => issue.code === "DUPLICATE_NOTIFICATION_ID"), true);
+
+  const malformedIssues = await validateDocuments({
+    reviews: [{ ...review, reviewId: undefined }],
+    boards: [{ ...board, boardId: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA" }],
+    notifications: [{ ...notification, notificationId: "not-a-uuid" }],
+  });
+  assert.equal(malformedIssues.some((issue) => issue.code === "INVALID_REVIEW_ID"), true);
+  assert.equal(malformedIssues.some((issue) => issue.code === "INVALID_BOARD_ID"), true);
+  assert.equal(malformedIssues.some((issue) => issue.code === "INVALID_NOTIFICATION_ID"), true);
+});
+
+test("sealed plans repair a target review missing a public ID before raw replacement", async () => {
+  const { source, target, client } = fixture();
+  const catalog = await buildCatalogCrosswalk({ sourceDocuments: source, targetRows: target.albumcatalogs, client, overrides: { albums: [] } });
+  const firstSocial = transformSocial({ source, target, catalogResults: catalog.results });
+  const legacyTargetReview = { ...firstSocial.documents.reviews[0] };
+  delete legacyTargetReview.reviewId;
+  target.reviews.push(legacyTargetReview);
+
+  const social = transformSocial({ source, target, catalogResults: catalog.results });
+  const plan = await buildMigrationPlan({
+    inventory: { source: { databaseName: "source", databaseHash: "source-hash" }, target: { databaseName: "candidate", databaseHash: "target-hash" } },
+    sourceDocuments: source,
+    targetDocuments: target,
+    catalogResults: catalog.results,
+    social,
+    runId: "review-id-repair",
+  });
+  const operation = plan.operations.find((entry) => entry.collection === "reviews");
+  assert.equal(operation.action, "update");
+  assert.match(operation.document.reviewId, UUID_V4);
 });
 
 test("legacy album saves reuse a source user's existing default board", async () => {
@@ -238,6 +322,9 @@ test("migration plan is model-valid, batched, and recheckable", async () => {
   assert.ok(plan.operations.length > 0);
   assert.equal(plan.batches.length, 1);
   assert.equal(plan.counts.catalogCreated, 1);
+  assert.match(plan.operations.find((operation) => operation.collection === "reviews").document.reviewId, UUID_V4);
+  assert.match(plan.operations.find((operation) => operation.collection === "boards").document.boardId, UUID_V4);
+  assert.match(plan.operations.find((operation) => operation.collection === "notifications").document.notificationId, UUID_V4);
   assert.equal(verifyPlanHash(plan, plan.planSha256), true);
 });
 

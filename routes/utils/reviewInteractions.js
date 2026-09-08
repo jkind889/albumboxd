@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const mongoose = require("mongoose");
 const AlbumCatalog = require("../../models/AlbumCatalog");
 const Like = require("../../models/Like");
@@ -125,7 +126,7 @@ async function mutateReviewLike(reviewId, userId, liked) {
       if (review.userId && review.userId !== userId) {
         await Notification.updateOne(
           { recipientUserId: review.userId, actorUserId: userId, type: "review_like", reviewId: review._id },
-          { $setOnInsert: { recipientUserId: review.userId, actorUserId: userId, type: "review_like", reviewId: review._id } },
+          { $setOnInsert: { notificationId: crypto.randomUUID(), recipientUserId: review.userId, actorUserId: userId, type: "review_like", reviewId: review._id } },
           { upsert: true, session },
         );
       }

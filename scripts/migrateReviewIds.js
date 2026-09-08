@@ -498,8 +498,44 @@ function hasErrorLabel(error, label) {
   );
 }
 
+function errorChain(error) {
+  const errors = [];
+  const seen = new Set();
+  let current = error;
+  while (current && (typeof current === "object" || typeof current === "function") && !seen.has(current)) {
+    errors.push(current);
+    seen.add(current);
+    current = current.cause || current.originalError || null;
+  }
+  return errors;
+}
+
 function unknownTransactionCommitResult(error) {
-  return hasErrorLabel(error, "UnknownTransactionCommitResult");
+  return errorChain(error).some((candidate) => hasErrorLabel(candidate, "UnknownTransactionCommitResult"));
+}
+
+function transientTransactionError(error) {
+  return errorChain(error).some((candidate) => hasErrorLabel(candidate, "TransientTransactionError"));
+}
+
+function timeoutError(error) {
+  return errorChain(error).some((candidate) => (
+    candidate?.name === "MongoOperationTimeoutError"
+    || candidate?.name === "MongoNetworkTimeoutError"
+    || candidate?.code === "ETIMEDOUT"
+    || /\b(?:timed out|timeout|deadline exceeded)\b/i.test(String(candidate?.message || ""))
+  ));
+}
+
+function commitOutcomeUnknown(error, { callbackAttemptCompleted = false } = {}) {
+  // The driver labels any commit result it cannot determine. With CSOT, the
+  // outer timeout can carry that label only on its cause, hence errorChain.
+  if (unknownTransactionCommitResult(error)) return true;
+  // A timeout after the callback has finished can only be from the commit
+  // phase of that callback. Do not treat a timeout while an update is still
+  // running as an ambiguous commit. A transient transaction retry is also
+  // explicitly safe for the driver to replay.
+  return callbackAttemptCompleted && !transientTransactionError(error) && timeoutError(error);
 }
 
 function commitOutcomeUnknownError(cause) {
@@ -508,6 +544,7 @@ function commitOutcomeUnknownError(cause) {
     "REVIEW_ID_MIGRATION_COMMIT_OUTCOME_UNKNOWN",
   );
   error.databaseCommitState = "unknown";
+  error.databaseMayHaveCommitted = true;
   error.cause = cause;
   return error;
 }
@@ -517,12 +554,15 @@ async function runBatch({ entries, collection, startSession } = {}) {
   const session = await startSession();
   if (!session || typeof session.withTransaction !== "function") throw new ReviewIdMigrationError("Mongo transactions are unavailable", "TRANSACTION_UNAVAILABLE");
   let committed = false;
-  let result = { updated: 0, alreadyApplied: 0 };
+  let finalAttemptResult = null;
+  let callbackAttemptCompleted = false;
   let primaryError = null;
   try {
     await session.withTransaction(async () => {
+      callbackAttemptCompleted = false;
       // withTransaction may replay this callback after a transient failure.
-      // Keep only the final callback's counters in durable progress.
+      // Keep only a fully completed final callback's counters in durable
+      // progress. Never add counters across driver-managed retries.
       const attempt = { updated: 0, alreadyApplied: 0 };
       for (const assignment of entries) {
         const update = await collection.updateOne(assignmentFilter(assignment), { $set: { reviewId: assignment.reviewId } }, { session });
@@ -538,14 +578,19 @@ async function runBatch({ entries, collection, startSession } = {}) {
         }
         throw new ReviewIdMigrationError("A planned review ID changed before assignment", "REVIEW_ID_CONFLICT", [{ mongoId: assignment.mongoId, actualReviewId: reportValue(current.reviewId) }]);
       }
-      result = attempt;
+      finalAttemptResult = attempt;
+      callbackAttemptCompleted = true;
+      return attempt;
     });
+    if (!finalAttemptResult) {
+      throw new ReviewIdMigrationError("MongoDB did not run the review-ID transaction callback", "TRANSACTION_CALLBACK_NOT_RUN");
+    }
     committed = true;
-    return result;
+    return finalAttemptResult;
   } catch (error) {
     primaryError = transactionUnavailable(error)
       ? new ReviewIdMigrationError("Mongo transactions are unavailable", "TRANSACTION_UNAVAILABLE")
-      : unknownTransactionCommitResult(error)
+      : commitOutcomeUnknown(error, { callbackAttemptCompleted })
         ? commitOutcomeUnknownError(error)
         : error;
     throw primaryError;
@@ -553,10 +598,11 @@ async function runBatch({ entries, collection, startSession } = {}) {
     try {
       await session.endSession?.();
     } catch (error) {
-      if (primaryError?.databaseCommitState === "unknown") {
-        error.databaseCommitState = "unknown";
-        error.code = primaryError.code;
-        error.cause = primaryError;
+      // Do not overwrite an uncertain commit result with a session-cleanup
+      // error. The original error is the operator-relevant database state.
+      if (primaryError) {
+        primaryError.sessionCleanupError = { name: error.name || "Error", message: String(error.message || error) };
+        return;
       }
       if (committed) {
         error.databaseCommitted = true;
@@ -738,6 +784,13 @@ async function applyPlan({ plan, db, collection, startSession, progressPath, now
     return { committedBatches, progressPath: resolvedProgressPath, verification };
   } catch (error) {
     const commitOutcomeUnknown = error.databaseCommitState === "unknown";
+    if (commitOutcomeUnknown) {
+      // This is deliberately separate from databaseCommitted, which means a
+      // commit is known to have completed. A caller must not assume rollback.
+      error.databaseMayHaveCommitted = true;
+      error.progressPath = resolvedProgressPath;
+      error.committedBatches = committedBatches;
+    }
     if (databaseChanged || error.databaseCommitted || commitOutcomeUnknown) {
       if (!commitOutcomeUnknown) {
         error.databaseCommitted = true;

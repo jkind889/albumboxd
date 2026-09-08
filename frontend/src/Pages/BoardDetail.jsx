@@ -90,7 +90,7 @@ export function BoardDetail() {
       setIsSavingTitle(true);
       setActionError("");
       const token = await getToken();
-      const response = await fetch(`${API_BASE_URL}/boards/${board._id}`, {
+      const response = await fetch(`${API_BASE_URL}/boards/${board.boardId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -123,7 +123,7 @@ export function BoardDetail() {
     try {
       setActionError("");
       const token = await getToken();
-      const response = await fetch(`${API_BASE_URL}/boards/${board._id}`, {
+      const response = await fetch(`${API_BASE_URL}/boards/${board.boardId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -149,7 +149,7 @@ export function BoardDetail() {
     try {
       setActionError("");
       const token = await getToken();
-      const response = await fetch(`${API_BASE_URL}/boards/${board._id}/albums/${albumId}`, {
+      const response = await fetch(`${API_BASE_URL}/boards/${board.boardId}/albums/${albumId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,

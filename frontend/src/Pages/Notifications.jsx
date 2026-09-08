@@ -145,7 +145,7 @@ export function Notifications() {
           {sortedNotifications.map((notification) => (
             <Link
               className={notification.readAt ? "notification-row" : "notification-row notification-row-unread"}
-              key={notification._id}
+              key={notification.notificationId}
               to={getNotificationPath(notification)}
             >
               {!notification.readAt && <span className="notification-unread-dot" aria-label="Unread notification" />}

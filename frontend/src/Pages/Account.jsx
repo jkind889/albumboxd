@@ -632,10 +632,10 @@ export function Account() {
   ];
 
   function renderOverview() {
-    const pinnedBoardPath = profile.pinnedBoard?._id
+    const pinnedBoardPath = profile.pinnedBoard?.boardId
       ? isPublicProfile
-        ? `/profile/${encodeURIComponent(profileUserId)}/boards/${profile.pinnedBoard._id}`
-        : `/boards/${profile.pinnedBoard._id}`
+        ? `/profile/${encodeURIComponent(profileUserId)}/boards/${profile.pinnedBoard.boardId}`
+        : `/boards/${profile.pinnedBoard.boardId}`
       : "";
 
     return (
@@ -1021,11 +1021,11 @@ export function Account() {
           <div className="boards-grid profile-boards-grid">
             {sortedBoards.map((board) => {
               const boardPath = isPublicProfile
-                ? `/profile/${encodeURIComponent(profileUserId)}/boards/${board._id}`
-                : `/boards/${board._id}`;
+                ? `/profile/${encodeURIComponent(profileUserId)}/boards/${board.boardId}`
+                : `/boards/${board.boardId}`;
 
               return (
-                <Link className="board-card" key={board._id} to={boardPath}>
+                <Link className="board-card" key={board.boardId} to={boardPath}>
                   <BoardPreview albums={board.previewAlbums || []} />
                   <h2>{board.title}</h2>
                   <p>

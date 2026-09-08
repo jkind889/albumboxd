@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const express = require("express");
 const { clerkClient, getAuth } = require("@clerk/express");
 const UserProfile = require("../models/UserProfile");
@@ -21,6 +22,18 @@ function plain(value) { return typeof value?.toObject === "function" ? value.toO
 function viewer(req) { try { return getAuth(req).userId || ""; } catch { return ""; } }
 function auth(req, res, next) { const userId = viewer(req); if (!userId) return res.status(401).json({ error: "Unauthorized" }); req.userId = userId; next(); }
 function author(userId, user) { return { userId, username: user?.username || DEFAULT_AUTHOR, imageUrl: user?.imageUrl || "" }; }
+function publicBoardId(value) {
+  const boardId = String(value || "").trim().toLowerCase();
+  return Board.isBoardId(boardId) ? boardId : "";
+}
+function persistedBoardId(board) {
+  const boardId = publicBoardId(board?.boardId);
+  if (boardId) return boardId;
+  const error = new Error("Board is missing a valid public identifier");
+  error.status = 500;
+  error.code = "BOARD_ID_INTEGRITY_ERROR";
+  throw error;
+}
 async function authors(ids, options = {}) {
   const map = new Map([...new Set(ids.filter(Boolean))].map((id) => [id, author(id)]));
   try { const listed = await clerkClient.users.getUserList({ ...options, userId: [...map.keys()] }); const users = Array.isArray(listed) ? listed : listed.data || []; users.forEach((user) => map.set(user.id, author(user.id, user))); } catch { /* optional */ }
@@ -60,16 +73,18 @@ async function socialStats(userId, viewerId) {
 async function formatBoard(board) {
   const source = plain(board);
   const items = await BoardItem.find({ boardId: source._id }).populate("albumCatalogId").sort({ savedAt: -1 });
-  return { _id: source._id, userId: source.userId, title: source.title, isDefault: Boolean(source.isDefault), itemCount: items.length, previewAlbums: items.slice(0, 4).map(formatItem), albums: items.map(formatItem) };
+  const albums = items.map(formatItem).filter(Boolean);
+  return { boardId: persistedBoardId(source), userId: source.userId, title: source.title, isDefault: Boolean(source.isDefault), itemCount: items.length, previewAlbums: albums.slice(0, 4), albums };
 }
 function formatItem(item) {
   const source = plain(item); const album = source.albumCatalogId;
-  return album && typeof album === "object" ? { ...normalizeCatalogAlbum(album), savedAt: source.savedAt, boardId: source.boardId, userId: source.userId } : source;
+  const normalized = album && typeof album === "object" ? normalizeCatalogAlbum(album) : null;
+  return normalized?.albumId ? { ...normalized, savedAt: source.savedAt, userId: source.userId } : null;
 }
 async function getSavedAlbums(userId) {
   const items = await BoardItem.find({ userId }).populate("albumCatalogId").sort({ savedAt: -1 });
   const seen = new Set();
-  return items.map(formatItem).filter((album) => { if (!album.albumId || seen.has(album.albumId)) return false; seen.add(album.albumId); return true; });
+  return items.map(formatItem).filter(Boolean).filter((album) => { if (!album.albumId || seen.has(album.albumId)) return false; seen.add(album.albumId); return true; });
 }
 async function formatReview(review) {
   const source = plain(review);
@@ -136,8 +151,10 @@ router.put("/me", auth, async (req, res) => {
     const nextAlbum = req.body.listeningNextAlbumId ? { albumCatalogId: (await findAlbumByPublicId(req.body.listeningNextAlbumId))._id } : null;
     const pinnedReviewId = String(req.body.pinnedReviewId || "").trim(); const pinnedBoardId = String(req.body.pinnedBoardId || "").trim();
     if (pinnedReviewId && !isReviewId(pinnedReviewId)) return res.status(400).json({ error: "Pinned review must belong to your profile", code: "INVALID_PINNED_REVIEW" });
-    if (pinnedBoardId && !(await Board.exists({ _id: pinnedBoardId, userId: req.userId }))) return res.status(400).json({ error: "Pinned board must belong to your profile" });
-    const update = { bio, spotifyProfileUrl: profileUrl, favoriteAlbums: favorites, listeningNextAlbum: nextAlbum, pinnedReviewId: null, pinnedBoardId: pinnedBoardId || null };
+    const boardId = pinnedBoardId ? publicBoardId(pinnedBoardId) : "";
+    const pinnedBoard = boardId ? await Board.findOne({ boardId, userId: req.userId }) : null;
+    if (pinnedBoardId && !pinnedBoard) return res.status(400).json({ error: "Pinned board must belong to your profile" });
+    const update = { bio, spotifyProfileUrl: profileUrl, favoriteAlbums: favorites, listeningNextAlbum: nextAlbum, pinnedReviewId: null, pinnedBoardId: pinnedBoard?._id || null };
     let profile;
     if (pinnedReviewId) {
       await runReviewTransaction("pin", async (session) => {
@@ -153,9 +170,9 @@ router.put("/me", auth, async (req, res) => {
 });
 router.patch("/me", auth, async (req, res) => { try { if (typeof req.body.isPrivate !== "boolean") return res.status(400).json({ error: "isPrivate must be true or false" }); const profile = await UserProfile.findOneAndUpdate({ userId: req.userId }, { $set: { userId: req.userId, isPrivate: req.body.isPrivate } }, { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }).populate("favoriteAlbums.albumCatalogId").populate("listeningNextAlbum.albumCatalogId").populate({ path: "pinnedReviewId", populate: { path: "albumCatalogId" } }).populate("pinnedBoardId"); res.json({ ...(await formatProfile(profile)), ...(await socialStats(req.userId, req.userId)) }); } catch { res.status(500).json({ error: "Failed to update profile" }); } });
 
-router.put("/:userId/follow", auth, async (req, res) => { try { const target = String(req.params.userId || "").trim(); if (target === req.userId) return res.status(400).json({ error: "You cannot follow yourself" }); if (typeof req.body.following !== "boolean") return res.status(400).json({ error: "following must be true or false" }); if (!(await followable(target))) return res.status(404).json({ error: "User not found" }); if (req.body.following) { await Follow.updateOne({ followerId: req.userId, followingId: target }, { $setOnInsert: { followerId: req.userId, followingId: target } }, { upsert: true }); await Notification.updateOne({ recipientUserId: target, actorUserId: req.userId, type: "follow" }, { $setOnInsert: { recipientUserId: target, actorUserId: req.userId, type: "follow" } }, { upsert: true }); } else await Follow.deleteOne({ followerId: req.userId, followingId: target }); res.json({ targetUserId: target, ...(await socialStats(target, req.userId)) }); } catch { res.status(500).json({ error: "Failed to update follow status" }); } });
+router.put("/:userId/follow", auth, async (req, res) => { try { const target = String(req.params.userId || "").trim(); if (target === req.userId) return res.status(400).json({ error: "You cannot follow yourself" }); if (typeof req.body.following !== "boolean") return res.status(400).json({ error: "following must be true or false" }); if (!(await followable(target))) return res.status(404).json({ error: "User not found" }); if (req.body.following) { await Follow.updateOne({ followerId: req.userId, followingId: target }, { $setOnInsert: { followerId: req.userId, followingId: target } }, { upsert: true }); await Notification.updateOne({ recipientUserId: target, actorUserId: req.userId, type: "follow" }, { $setOnInsert: { notificationId: crypto.randomUUID(), recipientUserId: target, actorUserId: req.userId, type: "follow" } }, { upsert: true }); } else await Follow.deleteOne({ followerId: req.userId, followingId: target }); res.json({ targetUserId: target, ...(await socialStats(target, req.userId)) }); } catch { res.status(500).json({ error: "Failed to update follow status" }); } });
 
-router.get("/:userId/boards/:boardId", async (req, res) => { try { const access = await profileAccess(req.params.userId, viewer(req)); if (access.status !== 200) return res.status(access.status).json(access.body); const board = await Board.findOne({ _id: req.params.boardId, userId: req.params.userId }); if (!board) return res.status(404).json({ error: "Board not found" }); res.json(await formatBoard(board)); } catch { res.status(500).json({ error: "Failed to fetch board" }); } });
+router.get("/:userId/boards/:boardId", async (req, res) => { try { const access = await profileAccess(req.params.userId, viewer(req)); if (access.status !== 200) return res.status(access.status).json(access.body); const requestedBoardId = String(req.params.boardId || "").trim().toLowerCase(); const board = requestedBoardId === "default" ? await Board.findOne({ userId: req.params.userId, isDefault: true }) : await Board.findOne({ boardId: publicBoardId(requestedBoardId), userId: req.params.userId }); if (!board) return res.status(404).json({ error: "Board not found" }); res.json(await formatBoard(board)); } catch { res.status(500).json({ error: "Failed to fetch board" }); } });
 router.get("/:userId/boards", async (req, res) => { try { const access = await profileAccess(req.params.userId, viewer(req)); if (access.status !== 200) return res.status(access.status).json(access.body); res.json(await Promise.all((await Board.find({ userId: req.params.userId }).sort({ isDefault: -1, updatedAt: -1 })).map(formatBoard))); } catch { res.status(500).json({ error: "Failed to fetch boards" }); } });
 router.get("/:userId/network", async (req, res) => { try { const access = await profileAccess(req.params.userId, viewer(req)); if (access.status !== 200) return res.status(access.status).json(access.body); const [followers, following] = await Promise.all([Follow.find({ followingId: req.params.userId }), Follow.find({ followerId: req.params.userId })]); const [fm, nm] = await Promise.all([authors(followers.map((row) => plain(row).followerId)), authors(following.map((row) => plain(row).followingId))]); res.json({ userId: req.params.userId, followers: followers.map((row) => fm.get(plain(row).followerId)), following: following.map((row) => nm.get(plain(row).followingId)), followerCount: followers.length, followingCount: following.length }); } catch { res.status(500).json({ error: "Failed to fetch network" }); } });
 router.get("/:userId/activity", async (req, res) => { try { const access = await profileAccess(req.params.userId, viewer(req)); if (access.status !== 200) return res.status(access.status).json(access.body); res.json(await activity(req.params.userId, true, viewer(req))); } catch { res.status(500).json({ error: "Failed to fetch activity" }); } });

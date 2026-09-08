@@ -141,9 +141,12 @@ test("review likes and notifications commit together, while unlike preserves not
   assert.equal(liked.reviewId, review.reviewId);
   assert.equal(liked.likeCount, 1);
   assert.equal(await Notification.countDocuments({ type: "review_like", reviewId: review._id }), 1);
+  const notification = await Notification.findOne({ type: "review_like", reviewId: review._id });
+  assert.match(notification.notificationId, REVIEW_ID_V4);
   const unliked = await mutateReviewLike(review.reviewId, "actor", false);
   assert.equal(unliked.likeCount, 0);
   assert.equal(await Notification.countDocuments({ type: "review_like", reviewId: review._id }), 1);
+  assert.equal((await Notification.findOne({ type: "review_like", reviewId: review._id })).notificationId, notification.notificationId);
 });
 
 test("review creation keys permit one durable review across concurrent retries", { skip: !enabled }, async () => {

@@ -154,7 +154,7 @@ export function EditProfile() {
         setFavoriteAlbums(Array.isArray(data.favoriteAlbums) ? data.favoriteAlbums : []);
         setListeningNextAlbum(data.listeningNextAlbum || null);
         setPinnedReviewId(data.pinnedReview?.reviewId || "");
-        setPinnedBoardId(data.pinnedBoard?._id || "");
+        setPinnedBoardId(data.pinnedBoard?.boardId || "");
         const initialReviews = Array.isArray(reviewsData.reviews) ? reviewsData.reviews : [];
         const currentPinnedReview = data.pinnedReview || null;
         setReviews(currentPinnedReview && !initialReviews.some((review) => review.reviewId === currentPinnedReview.reviewId)
@@ -438,7 +438,7 @@ export function EditProfile() {
       setFavoriteAlbums(Array.isArray(data.favoriteAlbums) ? data.favoriteAlbums : []);
       setListeningNextAlbum(data.listeningNextAlbum || null);
       setPinnedReviewId(data.pinnedReview?.reviewId || "");
-      setPinnedBoardId(data.pinnedBoard?._id || "");
+      setPinnedBoardId(data.pinnedBoard?.boardId || "");
       setProfileStatus("Profile saved.");
     } catch (error) {
       setProfileStatus("");
@@ -660,7 +660,7 @@ export function EditProfile() {
                     <select value={pinnedBoardId} onChange={(event) => setPinnedBoardId(event.target.value)}>
                       <option value="">No pinned board</option>
                       {boards.map((board) => (
-                        <option key={board._id} value={board._id}>
+                        <option key={board.boardId} value={board.boardId}>
                           {board.title || "Untitled board"} · {board.itemCount || 0} album{board.itemCount === 1 ? "" : "s"}
                         </option>
                       ))}

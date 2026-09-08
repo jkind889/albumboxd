@@ -251,7 +251,7 @@ export function AlbumDetail()
 
                 const data = await res.json();
                 setIsSaved(data.saved);
-                setSavedBoardIds(Array.isArray(data.boards) ? data.boards.map((board) => String(board._id)) : []);
+                setSavedBoardIds(Array.isArray(data.boards) ? data.boards.map((board) => String(board.boardId)) : []);
             } catch (error) {
                 console.error("Failed to check board saves", error);
 
@@ -604,8 +604,8 @@ export function AlbumDetail()
                     savedCount: (Number(currentSocial.savedCount) || 0) + 1,
                 }));
             }
-            if (data.board?._id) {
-                setSavedBoardIds((currentIds) => [...new Set([...currentIds, String(data.board._id)])]);
+            if (data.board?.boardId) {
+                setSavedBoardIds((currentIds) => [...new Set([...currentIds, String(data.board.boardId)])]);
             }
         }
 
@@ -678,8 +678,8 @@ export function AlbumDetail()
                     savedCount: (Number(currentSocial.savedCount) || 0) + 1,
                 }));
             }
-            if (data.board?._id) {
-                setSavedBoardIds((currentIds) => [...new Set([...currentIds, String(data.board._id)])]);
+            if (data.board?.boardId) {
+                setSavedBoardIds((currentIds) => [...new Set([...currentIds, String(data.board.boardId)])]);
             }
             setBoardSaveMessage(`Saved to ${data.board?.title || "board"}.`);
             await fetchBoards();
@@ -724,7 +724,7 @@ export function AlbumDetail()
             setBoards((currentBoards) => [createdBoard, ...currentBoards]);
             setNewBoardTitle("");
             setIsSavingBoard(false);
-            await saveAlbumToBoard(createdBoard._id);
+            await saveAlbumToBoard(createdBoard.boardId);
         } catch (error) {
             console.error(error);
             setBoardSaveMessage("Could not create that board.");
@@ -1095,15 +1095,15 @@ export function AlbumDetail()
                         </div>
                         <div className="board-save-list">
                             {boards.map((board) => {
-                                const boardId = String(board._id);
+                                const boardId = String(board.boardId);
                                 const alreadySaved = savedBoardIds.includes(boardId);
 
                                 return (
                                     <button
                                         className="board-save-option"
-                                        key={board._id}
+                                        key={board.boardId}
                                         type="button"
-                                        onClick={() => saveAlbumToBoard(board._id)}
+                                        onClick={() => saveAlbumToBoard(board.boardId)}
                                         disabled={alreadySaved || isSavingBoard}
                                     >
                                         <span>{board.title}</span>

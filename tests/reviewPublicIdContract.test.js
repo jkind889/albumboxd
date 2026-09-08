@@ -16,6 +16,7 @@ const notificationRoutePath = require.resolve("../routes/notifications");
 const profileRoutePath = require.resolve("../routes/profile");
 const reviewInteractionsPath = require.resolve("../routes/utils/reviewInteractions");
 const REVIEW_ID = "11111111-1111-4111-8111-111111111111";
+const NOTIFICATION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 function installClerk(t) {
   const previous = require.cache[clerkPath];
@@ -144,11 +145,13 @@ test("review creation and edits reject client-owned identifiers", async (t) => {
   assert.deepEqual(update, { status: 400, body: { error: "reviewId is server-generated", code: "INVALID_REVIEW_ID" } });
 });
 
-test("review notifications expose resolved UUIDs without leaking a review ObjectId", async (t) => {
+test("notifications expose public UUIDs and resolved review UUIDs without leaking Mongo IDs", async (t) => {
   const album = catalogAlbum();
   const internalReviewId = new mongoose.Types.ObjectId();
+  const internalNotificationId = new mongoose.Types.ObjectId();
   const notification = {
-    _id: new mongoose.Types.ObjectId(),
+    _id: internalNotificationId,
+    notificationId: NOTIFICATION_ID,
     recipientUserId: "owner",
     actorUserId: "actor",
     type: "review_like",
@@ -170,16 +173,20 @@ test("review notifications expose resolved UUIDs without leaking a review Object
   const response = await invokeLastHandler(router, "/", "get", { userId: "owner" });
   const result = response.body.notifications[0];
   assert.equal(response.status, 200);
+  assert.equal(result.notificationId, NOTIFICATION_ID);
   assert.equal(result.reviewId, REVIEW_ID);
   assert.equal(result.review.reviewId, REVIEW_ID);
+  assert.equal(Object.hasOwn(result, "_id"), false);
   assert.equal(Object.hasOwn(result.review, "_id"), false);
   assert.equal(JSON.stringify(result).includes(String(internalReviewId)), false);
+  assert.equal(JSON.stringify(result).includes(String(internalNotificationId)), false);
 });
 
 test("a dangling notification review reference remains empty instead of exposing its ObjectId", async (t) => {
   const internalReviewId = new mongoose.Types.ObjectId();
   const notification = {
     _id: new mongoose.Types.ObjectId(),
+    notificationId: NOTIFICATION_ID,
     recipientUserId: "owner",
     actorUserId: "actor",
     type: "review_like",
@@ -200,6 +207,8 @@ test("a dangling notification review reference remains empty instead of exposing
   const result = response.body.notifications[0];
   assert.equal(result.reviewId, "");
   assert.equal(result.review, null);
+  assert.equal(result.notificationId, NOTIFICATION_ID);
+  assert.equal(Object.hasOwn(result, "_id"), false);
   assert.equal(JSON.stringify(result).includes(String(internalReviewId)), false);
 });
 

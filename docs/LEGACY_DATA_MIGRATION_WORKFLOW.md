@@ -233,17 +233,17 @@ Policy/source references reviewed for this decision on August 23, 2026:
 
 ## Phase 6: social transformation
 
-Preserve existing `_id` values for reviews, boards, and other social documents where possible because profiles, likes, and notifications reference them. Catalog IDs are always resolved through the crosswalk because several legacy albums can converge on one existing generation-2 album.
+Preserve existing `_id` values for reviews, boards, and other social documents where possible because profiles, likes, and notifications reference them. Catalog IDs are always resolved through the crosswalk because several legacy albums can converge on one existing generation-2 album. Review, Board, and Notification public identifiers are canonical immutable UUID-v4 values: retain an already canonical value, otherwise generate it during plan construction and seal it into the plan before any apply.
 
 | Legacy collection | Target treatment |
 | --- | --- |
 | `albumcatalogs` | Reuse or create whitelisted generation-2 catalog documents through the crosswalk. |
 | `albums` | No direct target collection. Union each valid user save into that user's default `boards`/`boarditems` membership. Derive a missing `savedAt` from the ObjectId timestamp when possible and report the derivation. |
-| `boards` | Copy/merge, enforce ownership and at most one default board per user. |
+| `boards` | Copy/merge, preserve or assign the canonical immutable UUID-v4 `boardId` in the sealed plan, and enforce ownership and at most one default board per user. |
 | `boarditems` | Remap `albumCatalogId`, remove legacy provider fields, verify the board belongs to `userId`, and collapse duplicate `(boardId, albumCatalogId)` memberships. |
-| `reviews` | Resolve the legacy album key to required `albumCatalogId`; preserve `_id`, `userId`, text, rating, and date; remove denormalized album snapshots. Quarantine userless, invalid, or unresolved rows. |
+| `reviews` | Resolve the legacy album key to required `albumCatalogId`; preserve `_id`, `userId`, text, rating, and date; preserve or assign the canonical immutable UUID-v4 `reviewId` in the sealed plan; remove denormalized album snapshots. Quarantine userless, invalid, or unresolved rows. |
 | `likes` | Album likes resolve to `albumCatalogId`; review likes retain a valid `reviewId`; remove the legacy album key and enforce exactly one applicable target. Collapse duplicates under current unique tuples. |
-| `notifications` | Preserve actor, recipient, type, review reference, read state, and timestamps; remove the legacy album key. A review-like notification must reference a migrated review. |
+| `notifications` | Preserve actor, recipient, type, review reference, read state, and timestamps; preserve or assign the canonical immutable UUID-v4 `notificationId` in the sealed plan; and remove the legacy album key. A review-like notification must reference a migrated review. |
 | `userprofiles` | Remap favorites and listening-next albums, remove embedded legacy keys, normalize unique ranks `0..4`, and verify pinned Review/Board ownership. Clear only an invalid optional pin and report it; do not discard an otherwise valid profile. |
 | `follows` | Copy/merge valid unique follower/following pairs; report self-follows and missing IDs. |
 | `artistcatalogs`, `artistneighborhoods` | Archive only. There is no generation-2 target model. |
@@ -268,7 +268,7 @@ Before apply:
 
 - bind the plan to source archive SHA-256, source inventory hash, target baseline fingerprint, schema commit, tool commit, and target database name;
 - save the album crosswalk, transformed counts, planned writes, deduplication decisions, manual overrides, and quarantine/conflict report;
-- validate every transformed document against the current model contract;
+- validate every transformed document against the current model contract, including raw sealed-plan UUID format and uniqueness for reviews, boards, and notifications before schema defaults can mask a missing field;
 - write reports to a local ignored directory, never Git, and keep credentials out of arguments and report files;
 - require explicit `--apply`, exact target confirmation, and the expected plan checksum.
 
@@ -282,7 +282,7 @@ Every source row must end in exactly one reported bucket: migrated, merged/dedup
 
 Cutover requires all of the following:
 
-- unique valid generation-2 `albumId` values and unique external-reference tuples;
+- unique valid generation-2 `albumId`, `reviewId`, `boardId`, and `notificationId` values, plus unique external-reference tuples;
 - zero obsolete provider identity fields in active generation-2 collections;
 - zero dangling AlbumCatalog, Review, Board, pinned Review, or pinned Board references;
 - every BoardItem `userId` matches its Board owner;
