@@ -2,38 +2,24 @@ const mongoose = require("mongoose");
 
 const likeSchema = new mongoose.Schema(
   {
-    userId: {
-      type: String,
-      required: true,
-    },
-    targetType: {
-      type: String,
-      enum: ["album", "review"],
-      required: true,
-    },
-    spotifyId: {
-      type: String,
-      required: true,
-    },
-    reviewId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Review",
-    },
+    userId: { type: String, required: true },
+    targetType: { type: String, enum: ["album", "review"], required: true },
+    albumCatalogId: { type: mongoose.Schema.Types.ObjectId, ref: "AlbumCatalog" },
+    reviewId: { type: mongoose.Schema.Types.ObjectId, ref: "Review" },
   },
   { timestamps: true },
 );
 
 likeSchema.index(
-  { userId: 1, targetType: 1, spotifyId: 1 },
-  { unique: true, partialFilterExpression: { targetType: "album" } },
+  { userId: 1, targetType: 1, albumCatalogId: 1 },
+  { unique: true, partialFilterExpression: { targetType: "album", albumCatalogId: { $exists: true } } },
 );
 likeSchema.index(
   { userId: 1, targetType: 1, reviewId: 1 },
-  { unique: true, partialFilterExpression: { targetType: "review" } },
+  { unique: true, partialFilterExpression: { targetType: "review", reviewId: { $exists: true } } },
 );
-likeSchema.index({ targetType: 1, spotifyId: 1 });
+likeSchema.index({ targetType: 1, albumCatalogId: 1 });
 likeSchema.index({ targetType: 1, reviewId: 1 });
+likeSchema.index({ targetType: 1, reviewId: 1, createdAt: 1 });
 
-const Like = mongoose.model("Like", likeSchema);
-
-module.exports = Like;
+module.exports = mongoose.model("Like", likeSchema);

@@ -1,0 +1,9 @@
+npm run catalog:import -- \
+  --input data/catalog-import/seeds/listenbrainz-2026-08-14.json \
+  --dry-run{
+  "reportVersion": "1.0.0",
+  "datasetId": "rescened-listenbrainz-sample-2026-08-14",
+  "generatedAt": "2026-08-18T18:07:03.411Z",
+  "count": 0,
+  "entries": []
+}

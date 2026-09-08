@@ -76,10 +76,10 @@ export function PopularReviews({ limit = 4 }) {
                 const username = review.author?.username || DEFAULT_USERNAME;
 
                 return (
-                    <article className="front-review-card" key={review._id}>
-                        <Link className="front-review-cover-link" to={`/album/${review.spotifyId}`}>
-                            {review.cover ? (
-                                <img src={review.cover} alt={`${review.title} cover`} />
+                    <article className="front-review-card" key={review.reviewId}>
+                        <Link className="front-review-cover-link" to={`/album/${review.albumId}`}>
+                            {review.album?.cover ? (
+                                <img src={review.album.cover} alt={`${review.album.title} cover`} />
                             ) : (
                                 <span className="front-album-cover-fallback">No cover</span>
                             )}
@@ -91,7 +91,7 @@ export function PopularReviews({ limit = 4 }) {
                                 <span>{formatReviewDate(review.date)}</span>
                             </div>
                             <h4>
-                                <Link to={`/album/${review.spotifyId}`}>{review.title || "Untitled album"}</Link>
+                                <Link to={`/album/${review.albumId}`}>{review.album?.title || "Untitled album"}</Link>
                             </h4>
                             {review.reviewText && <p>{review.reviewText}</p>}
                         </div>

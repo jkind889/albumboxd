@@ -57,7 +57,7 @@ function getClerkUsernameError(error) {
 }
 
 function getAlbumId(album) {
-  return album.spotifyId || album.id;
+  return album.albumId;
 }
 
 function AlbumCover({ src, title }) {
@@ -80,6 +80,8 @@ export function EditProfile() {
   const [pinnedReviewId, setPinnedReviewId] = useState("");
   const [pinnedBoardId, setPinnedBoardId] = useState("");
   const [reviews, setReviews] = useState([]);
+  const [nextReviewCursor, setNextReviewCursor] = useState(null);
+  const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
   const [boards, setBoards] = useState([]);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [profileStatus, setProfileStatus] = useState("");
@@ -110,6 +112,7 @@ export function EditProfile() {
 // isCurrent is our safe guard incase a user exits the page before the fetch finishes or signs out 
   useEffect(() => {
     let isCurrent = true;
+    const controller = new AbortController();
 
     async function fetchProfile() {
       if (!isSignedIn) {
@@ -126,9 +129,9 @@ export function EditProfile() {
           Authorization: `Bearer ${token}`,
         };
         const [profileResponse, reviewsResponse, boardsResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/profile/me`, { headers }),
-          fetch(`${API_BASE_URL}/reviews/review/user/`, { headers }),
-          fetch(`${API_BASE_URL}/boards`, { headers }),
+          fetch(`${API_BASE_URL}/profile/me`, { headers, signal: controller.signal }),
+          fetch(`${API_BASE_URL}/reviews/review/user/?sort=recent`, { headers, signal: controller.signal }),
+          fetch(`${API_BASE_URL}/boards`, { headers, signal: controller.signal }),
         ]);
 
         if (!profileResponse.ok || !reviewsResponse.ok || !boardsResponse.ok) {
@@ -150,12 +153,17 @@ export function EditProfile() {
         setIsPrivate(Boolean(data.isPrivate));
         setFavoriteAlbums(Array.isArray(data.favoriteAlbums) ? data.favoriteAlbums : []);
         setListeningNextAlbum(data.listeningNextAlbum || null);
-        setPinnedReviewId(data.pinnedReview?._id || "");
-        setPinnedBoardId(data.pinnedBoard?._id || "");
-        setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+        setPinnedReviewId(data.pinnedReview?.reviewId || "");
+        setPinnedBoardId(data.pinnedBoard?.boardId || "");
+        const initialReviews = Array.isArray(reviewsData.reviews) ? reviewsData.reviews : [];
+        const currentPinnedReview = data.pinnedReview || null;
+        setReviews(currentPinnedReview && !initialReviews.some((review) => review.reviewId === currentPinnedReview.reviewId)
+          ? [currentPinnedReview, ...initialReviews]
+          : initialReviews);
+        setNextReviewCursor(reviewsData.nextCursor || null);
         setBoards(Array.isArray(boardsData) ? boardsData : []);
       } catch (error) {
-        if (isCurrent) {
+        if (isCurrent && !controller.signal.aborted) {
           setProfileError(getErrorMessage(error, "Could not load profile settings."));
         }
       } finally {
@@ -169,8 +177,31 @@ export function EditProfile() {
 
     return () => {
       isCurrent = false;
+      controller.abort();
     };
   }, [getToken, isSignedIn]);
+
+  async function loadMoreReviews() {
+    if (!nextReviewCursor || isLoadingMoreReviews) return;
+    setIsLoadingMoreReviews(true);
+    try {
+      const token = await getToken();
+      const response = await fetch(`${API_BASE_URL}/reviews/review/user/?sort=recent&cursor=${encodeURIComponent(nextReviewCursor)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(await getApiErrorMessage(response, "Could not load more reviews."));
+      const data = await response.json();
+      setReviews((current) => {
+        const ids = new Set(current.map((review) => review.reviewId));
+        return [...current, ...(Array.isArray(data.reviews) ? data.reviews.filter((review) => !ids.has(review.reviewId)) : [])];
+      });
+      setNextReviewCursor(data.nextCursor || null);
+    } catch (error) {
+      setProfileError(error.message || "Could not load more reviews.");
+    } finally {
+      setIsLoadingMoreReviews(false);
+    }
+  }
 
   async function handleUsernameSubmit(event) {
     event.preventDefault();
@@ -314,7 +345,7 @@ export function EditProfile() {
     }
 
     setSearchError("");
-    setFavoriteAlbums((currentFavorites) => [...currentFavorites, { ...album, spotifyId: albumId }]);
+    setFavoriteAlbums((currentFavorites) => [...currentFavorites, { ...album, albumId }]);
   }
 
   function removeFavoriteAlbum(albumId) {
@@ -330,7 +361,7 @@ export function EditProfile() {
       return;
     }
 
-    setListeningNextAlbum({ ...album, spotifyId: albumId });
+    setListeningNextAlbum({ ...album, albumId });
   }
 
   function moveFavoriteAlbum(albumId, direction) {
@@ -406,8 +437,8 @@ export function EditProfile() {
       setIsPrivate(Boolean(data.isPrivate));
       setFavoriteAlbums(Array.isArray(data.favoriteAlbums) ? data.favoriteAlbums : []);
       setListeningNextAlbum(data.listeningNextAlbum || null);
-      setPinnedReviewId(data.pinnedReview?._id || "");
-      setPinnedBoardId(data.pinnedBoard?._id || "");
+      setPinnedReviewId(data.pinnedReview?.reviewId || "");
+      setPinnedBoardId(data.pinnedBoard?.boardId || "");
       setProfileStatus("Profile saved.");
     } catch (error) {
       setProfileStatus("");
@@ -485,7 +516,7 @@ export function EditProfile() {
                       <AlbumCover src={listeningNextAlbum.cover} title={listeningNextAlbum.title} />
                       <div>
                         <h3>{listeningNextAlbum.title || "Untitled album"}</h3>
-                        <p>{listeningNextAlbum.artist || "Artist unknown"}</p>
+                        <p>{listeningNextAlbum.artistDisplayName || "Artist unknown"}</p>
                       </div>
                       <div className="edit-profile-album-actions">
                         <button type="button" onClick={() => setListeningNextAlbum(null)}>
@@ -523,7 +554,7 @@ export function EditProfile() {
                             <AlbumCover src={album.cover} title={album.title} />
                             <div>
                               <h3>{album.title || "Untitled album"}</h3>
-                              <p>{album.artist || "Artist unknown"}</p>
+                              <p>{album.artistDisplayName || "Artist unknown"}</p>
                             </div>
                             <div className="edit-profile-album-actions">
                               <button
@@ -577,7 +608,7 @@ export function EditProfile() {
                             <AlbumCover src={album.cover} title={album.title} />
                             <div>
                               <h3>{album.title || "Untitled album"}</h3>
-                              <p>{album.artist || "Artist unknown"}</p>
+                              <p>{album.artistDisplayName || "Artist unknown"}</p>
                             </div>
                             <div className="edit-profile-album-actions">
                               <button
@@ -612,19 +643,24 @@ export function EditProfile() {
                     <select value={pinnedReviewId} onChange={(event) => setPinnedReviewId(event.target.value)}>
                       <option value="">No pinned review</option>
                       {reviews.map((review) => (
-                        <option key={review._id} value={review._id}>
+                        <option key={review.reviewId} value={review.reviewId}>
                           {review.title || "Untitled album"} · {review.rating}/5
                         </option>
                       ))}
                     </select>
                   </label>
+                  {nextReviewCursor && (
+                    <button className="profile-secondary-button" type="button" onClick={loadMoreReviews} disabled={isLoadingMoreReviews}>
+                      {isLoadingMoreReviews ? "Loading reviews..." : "Load older reviews"}
+                    </button>
+                  )}
 
                   <label className="edit-profile-field">
                     <span>Pinned Board</span>
                     <select value={pinnedBoardId} onChange={(event) => setPinnedBoardId(event.target.value)}>
                       <option value="">No pinned board</option>
                       {boards.map((board) => (
-                        <option key={board._id} value={board._id}>
+                        <option key={board.boardId} value={board.boardId}>
                           {board.title || "Untitled board"} · {board.itemCount || 0} album{board.itemCount === 1 ? "" : "s"}
                         </option>
                       ))}

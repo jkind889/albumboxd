@@ -35,34 +35,46 @@ app.get("/", (req,res) =>
     res.send("Hey")
 })
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.log(err));
-
 const authRoutes = require("./routes/auth");
 const albumRoutes = require("./routes/album");
 const searchRoutes = require("./routes/search");
 const reviewRoutes = require("./routes/reviews");
-const collectionRoutes = require("./routes/collections")
 const profileRoutes = require("./routes/profile")
 const boardRoutes = require("./routes/boards")
 const likeRoutes = require("./routes/likes")
 const notificationRoutes = require("./routes/notifications")
+const suggestionRoutes = require("./routes/suggestions")
+const moderationRoutes = require("./routes/moderation")
 
 app.use("/auth", authRoutes);
 app.use("/search", searchRoutes);
 app.use("/albums", albumRoutes);
 app.use("/reviews", reviewRoutes);
-app.use("/collections", collectionRoutes)
 app.use("/profile", profileRoutes)
 app.use("/boards", boardRoutes)
 app.use("/likes", likeRoutes)
 app.use("/notifications", notificationRoutes)
+app.use("/suggestions", suggestionRoutes)
+app.use("/moderation/album-suggestions", moderationRoutes)
 
-const port = parsePort();
+async function startServer({
+  connect = mongoose.connect.bind(mongoose),
+  listen = app.listen.bind(app),
+  mongoUri = process.env.MONGO_URI,
+  port = parsePort(),
+} = {}) {
+  await connect(mongoUri);
+  console.log("MongoDB Connected");
+  return listen(port, () => {
+    console.log(`server running on port ${port}`);
+  });
+}
 
-app.listen(port, () =>
-{
-    console.log(`server running on port ${port}`)
-})
+if (require.main === module) {
+  startServer().catch((error) => {
+    console.error("MongoDB connection failed; server did not start", error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { app, startServer };

@@ -61,9 +61,9 @@ export function PopularAlbums({ limit = 10, window = "30d" }) {
         <div className="popular-albums-grid">
             {albums.map((album, index) => (
                 <Link
-                    key={album.spotifyId}
+                    key={album.albumId}
                     className="popular-album-card"
-                    to={`/album/${album.spotifyId}`}
+                    to={`/album/${album.albumId}`}
                 >
                     <span className="popular-album-rank">{index + 1}</span>
                     {album.cover ? (
@@ -79,7 +79,7 @@ export function PopularAlbums({ limit = 10, window = "30d" }) {
                     )}
                     <div className="popular-album-info">
                         <h4>{album.title}</h4>
-                        <p>{album.artist}</p>
+                        <p>{album.artistDisplayName}</p>
                     </div>
                 </Link>
             ))}

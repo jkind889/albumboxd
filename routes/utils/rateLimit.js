@@ -13,17 +13,17 @@ const RATE_LIMITS = {
     duration: 5 * 60,
     message: "Too many requests. Please slow down and try again soon.",
   },
-  spotifyFallback: {
-    keyPrefix: "rescened:spotify-fallback",
-    points: 60,
-    duration: 10 * 60,
-    message: "Too many Spotify-backed requests. Please try again soon.",
-  },
   search: {
     keyPrefix: "rescened:search",
     points: 90,
     duration: 60,
     message: "Too many searches. Please slow down and try again soon.",
+  },
+  externalSearch: {
+    keyPrefix: "rescened:external-search",
+    points: 30,
+    duration: 60,
+    message: "Too many external searches. Please try again soon.",
   },
   albumSave: {
     keyPrefix: "rescened:album-save",
@@ -48,6 +48,24 @@ const RATE_LIMITS = {
     points: 120,
     duration: 10 * 60,
     message: "Too many like updates. Please try again soon.",
+  },
+  submissionCreate: {
+    keyPrefix: "rescened:submission-create",
+    points: 6,
+    duration: 10 * 60,
+    message: "Too many suggestion submissions. Please try again soon.",
+  },
+  submissionMutation: {
+    keyPrefix: "rescened:submission-mutation",
+    points: 20,
+    duration: 10 * 60,
+    message: "Too many suggestion updates. Please try again soon.",
+  },
+  moderationMutation: {
+    keyPrefix: "rescened:moderation-mutation",
+    points: 120,
+    duration: 10 * 60,
+    message: "Too many moderation commands. Please try again soon.",
   },
 };
 
@@ -175,20 +193,15 @@ function createRateLimitMiddleware(limiter, options = {}) {
 }
 
 const globalApiLimiter = createRateLimiter(RATE_LIMITS.globalApi);
-const spotifyFallbackLimiter = createRateLimiter(RATE_LIMITS.spotifyFallback);
 const searchLimiter = createRateLimiter(RATE_LIMITS.search);
+const externalSearchLimiter = createRateLimiter(RATE_LIMITS.externalSearch);
 const albumSaveLimiter = createRateLimiter(RATE_LIMITS.albumSave);
 const reviewCreateLimiter = createRateLimiter(RATE_LIMITS.reviewCreate);
 const reviewMutationLimiter = createRateLimiter(RATE_LIMITS.reviewMutation);
 const likeMutationLimiter = createRateLimiter(RATE_LIMITS.likeMutation);
-
-async function consumeSpotifyRateLimit(key) {
-  return consumeRateLimit(
-    spotifyFallbackLimiter,
-    key,
-    RATE_LIMITS.spotifyFallback.message,
-  );
-}
+const submissionCreateLimiter = createRateLimiter(RATE_LIMITS.submissionCreate);
+const submissionMutationLimiter = createRateLimiter(RATE_LIMITS.submissionMutation);
+const moderationMutationLimiter = createRateLimiter(RATE_LIMITS.moderationMutation);
 
 module.exports = {
   RATE_LIMIT_ERROR_CODE,
@@ -200,9 +213,12 @@ module.exports = {
   }),
   buildRateLimitPayload,
   consumeRateLimit,
-  consumeSpotifyRateLimit,
   createRateLimitMiddleware,
   createRateLimiter,
+  externalSearchRateLimit: createRateLimitMiddleware(externalSearchLimiter, {
+    keyGenerator: getIpRateLimitKey,
+    message: RATE_LIMITS.externalSearch.message,
+  }),
   getAuthenticatedUserRateLimitKey,
   getIpRateLimitKey,
   getTrustProxyHops,
@@ -223,6 +239,18 @@ module.exports = {
   reviewMutationRateLimit: createRateLimitMiddleware(reviewMutationLimiter, {
     keyGenerator: getAuthenticatedUserRateLimitKey,
     message: RATE_LIMITS.reviewMutation.message,
+  }),
+  submissionCreateRateLimit: createRateLimitMiddleware(submissionCreateLimiter, {
+    keyGenerator: getAuthenticatedUserRateLimitKey,
+    message: RATE_LIMITS.submissionCreate.message,
+  }),
+  submissionMutationRateLimit: createRateLimitMiddleware(submissionMutationLimiter, {
+    keyGenerator: getAuthenticatedUserRateLimitKey,
+    message: RATE_LIMITS.submissionMutation.message,
+  }),
+  moderationMutationRateLimit: createRateLimitMiddleware(moderationMutationLimiter, {
+    keyGenerator: getAuthenticatedUserRateLimitKey,
+    message: RATE_LIMITS.moderationMutation.message,
   }),
   searchRateLimit: createRateLimitMiddleware(searchLimiter, {
     keyGenerator: getIpRateLimitKey,

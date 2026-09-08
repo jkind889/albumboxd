@@ -70,12 +70,12 @@ test("GET /health returns ok when Mongo is connected", async () => {
   assert.match(response.body.timestamp, /^\d{4}-\d{2}-\d{2}T/);
 });
 
-test("GET /health reports degraded when Mongo is disconnected", async () => {
+test("GET /health returns 503 when Mongo is disconnected", async () => {
   readyState = 0;
 
   const response = await callHealthRoute();
 
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 503);
   assert.equal(response.body.status, "degraded");
   assert.equal(response.body.database.status, "disconnected");
   assert.equal(response.body.database.readyState, 0);

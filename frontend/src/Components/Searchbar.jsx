@@ -114,9 +114,9 @@ export function SearchBar({ placeholder = "Search" })
       {showDropdown && !suggestionError && suggestions.length > 0 && (
         <ul className="suggestions-dropdown">
           {suggestions.map((suggestion) => (
-            <li key={suggestion.id} onClick={() => { navigate(`/album/${suggestion.id}`); setShowDropdown(false); }}>
+            <li key={suggestion.albumId} onClick={() => { navigate(`/album/${suggestion.albumId}`); setShowDropdown(false); }}>
              <img src={suggestion.cover} className="suggestion-cover" alt={suggestion.title} />
-             {suggestion.title} - {suggestion.artist}
+             {suggestion.title} - {suggestion.artistDisplayName}
             </li>
           ))}
         </ul>

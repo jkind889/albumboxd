@@ -1,7 +1,6 @@
 node_modules/
 dist/
+.cache/
+.migration/
 .env
 .DS_Store
-/.migration/
-/.agents/
-/data/catalog-import/seeds/.cache/

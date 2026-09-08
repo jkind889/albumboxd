@@ -61,11 +61,7 @@ function formatMonthYear(value) {
 }
 
 function getArtistName(album) {
-  if (Array.isArray(album.artists) && album.artists.length > 0) {
-    return album.artists.join(", ");
-  }
-
-  return album.artist || "Artist unknown";
+  return album.artistDisplayName || "Artist unknown";
 }
 
 function ProfileEmptyState({ title, body }) {
@@ -94,7 +90,7 @@ function BoardPreview({ albums }) {
         const album = previewAlbums[index];
 
         return album?.cover ? (
-          <img key={album.spotifyId || index} src={album.cover} alt="" />
+          <img key={album.albumId || index} src={album.cover} alt="" />
         ) : (
           <span key={index} />
         );
@@ -114,6 +110,14 @@ export function Account() {
   const [savedViewMode, setSavedViewMode] = useState("grid");
   const [savedAlbums, setSavedAlbums] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [recentReviewPreviews, setRecentReviewPreviews] = useState([]);
+  const [recentPreviewHasMore, setRecentPreviewHasMore] = useState(false);
+  const [popularReviewPreviews, setPopularReviewPreviews] = useState([]);
+  const [nextReviewCursor, setNextReviewCursor] = useState(null);
+  const [reviewSort, setReviewSort] = useState("recent");
+  const [isLoadingMoreReviews, setIsLoadingMoreReviews] = useState(false);
+  const [deletingReviewId, setDeletingReviewId] = useState("");
+  const [deleteErrors, setDeleteErrors] = useState({});
   const [activityItems, setActivityItems] = useState([]);
   const [networkItems, setNetworkItems] = useState([]);
   const [boards, setBoards] = useState([]);
@@ -145,12 +149,13 @@ export function Account() {
   const canManageProfile = !isPublicProfile;
   const isPrivateProfile = isPublicProfile && profile.isPrivate && !profile.isCurrentUser;
   const availableTabs = useMemo(
-    () => tabs.filter((tab) => tab.id !== "settings" && (!isPrivateProfile || tab.id === "overview")),
+    () => tabs.filter((tab) => tab.id !== "settings" && (!isPrivateProfile || ["overview", "reviews"].includes(tab.id))),
     [isPrivateProfile],
   );
 
   useEffect(() => {
     let isCurrent = true;
+    const controller = new AbortController();
 
     async function fetchProfileData() {
       if (!isPublicProfile && !isSignedIn) {
@@ -186,7 +191,8 @@ export function Account() {
         const token = isSignedIn ? await getToken() : null;
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
         let savedData = [];
-        let reviewsData = [];
+        let reviewsData = { reviews: [], nextCursor: null };
+        let popularReviewsData = { reviews: [], nextCursor: null };
         let activityData = [];
         let networkData = [];
         let boardsData = [];
@@ -194,7 +200,11 @@ export function Account() {
 
         if (isPublicProfile) {
           const encodedPublicUserId = encodeURIComponent(publicUserId);
-          const profileResponse = await fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}`, { headers });
+          const [profileResponse, reviewsResponse, popularReviewsResponse] = await Promise.all([
+            fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}`, { headers }),
+            fetch(`${API_BASE_URL}/reviews/review/user/${encodedPublicUserId}?sort=recent`, { headers, signal: controller.signal }),
+            fetch(`${API_BASE_URL}/reviews/review/user/${encodedPublicUserId}?sort=popular&limit=${REVIEW_PREVIEW_LIMIT}`, { headers, signal: controller.signal }),
+          ]);
 
           if (!profileResponse.ok) {
             throw new Error("Failed to load profile data");
@@ -202,68 +212,76 @@ export function Account() {
 
           profileData = await profileResponse.json();
 
+          if (!reviewsResponse.ok || !popularReviewsResponse.ok) {
+            throw new Error("Failed to load profile reviews");
+          }
+          reviewsData = await reviewsResponse.json();
+          popularReviewsData = await popularReviewsResponse.json();
+
           if (!(profileData.isPrivate && !profileData.isCurrentUser)) {
-            const [savedResponse, reviewsResponse, activityResponse, boardsResponse] = await Promise.all([
+            const [savedResponse, activityResponse, boardsResponse] = await Promise.all([
               fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/saved`, { headers }),
-              fetch(`${API_BASE_URL}/reviews/review/user/${encodedPublicUserId}`, { headers }),
               fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/activity`, { headers }),
               fetch(`${API_BASE_URL}/profile/${encodedPublicUserId}/boards`, { headers }),
             ]);
 
             if (
               !savedResponse.ok
-              || !reviewsResponse.ok
               || !activityResponse.ok
               || !boardsResponse.ok
             ) {
               throw new Error("Failed to load profile data");
             }
 
-            [savedData, reviewsData, activityData, boardsData] = await Promise.all([
+            [savedData, activityData, boardsData] = await Promise.all([
               savedResponse.json(),
-              reviewsResponse.json(),
               activityResponse.json(),
               boardsResponse.json(),
             ]);
           }
         } else {
           const [
-            defaultBoardResponse,
+            savedResponse,
             reviewsResponse,
             profileResponse,
             activityResponse,
             networkResponse,
             boardsResponse,
+            popularReviewsResponse,
           ] = await Promise.all([
-            fetch(`${API_BASE_URL}/boards/default`, { headers }),
-            fetch(`${API_BASE_URL}/reviews/review/user/`, { headers }),
+            fetch(`${API_BASE_URL}/profile/me/saved`, { headers }),
+            fetch(`${API_BASE_URL}/reviews/review/user/?sort=recent`, { headers, signal: controller.signal }),
             fetch(`${API_BASE_URL}/profile/me`, { headers }),
             fetch(`${API_BASE_URL}/profile/me/activity`, { headers }),
             fetch(`${API_BASE_URL}/profile/me/network`, { headers }),
             fetch(`${API_BASE_URL}/boards`, { headers }),
+            fetch(`${API_BASE_URL}/reviews/review/user/?sort=popular&limit=${REVIEW_PREVIEW_LIMIT}`, { headers, signal: controller.signal }),
           ]);
 
           if (
-            !defaultBoardResponse.ok
+            !savedResponse.ok
             || !reviewsResponse.ok
             || !profileResponse.ok
             || !activityResponse.ok
             || !networkResponse.ok
             || !boardsResponse.ok
+            || !popularReviewsResponse.ok
           ) {
             throw new Error("Failed to load profile data");
           }
 
-          const [defaultBoardData, nextReviewsData, nextProfileData, nextActivityData, nextNetworkData, nextBoardsData] = await Promise.all([
-            defaultBoardResponse.json(),
+          const [savedResponseData, nextReviewsData, nextProfileData, nextActivityData, nextNetworkData, nextBoardsData, nextPopularReviewsData] = await Promise.all([
+            savedResponse.json(),
             reviewsResponse.json(),
             profileResponse.json(),
             activityResponse.json(),
             networkResponse.json(),
             boardsResponse.json(),
+            popularReviewsResponse.json(),
           ]);
-          savedData = Array.isArray(defaultBoardData.albums) ? defaultBoardData.albums : [];
+          savedData = Array.isArray(savedResponseData) ? savedResponseData : [];
           reviewsData = nextReviewsData;
+          popularReviewsData = nextPopularReviewsData;
           profileData = nextProfileData;
           activityData = nextActivityData;
           networkData = nextNetworkData;
@@ -275,7 +293,11 @@ export function Account() {
         }
 
         setSavedAlbums(Array.isArray(savedData) ? savedData : []);
-        setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+        setReviews(Array.isArray(reviewsData.reviews) ? reviewsData.reviews : []);
+        setRecentReviewPreviews((Array.isArray(reviewsData.reviews) ? reviewsData.reviews : []).slice(0, REVIEW_PREVIEW_LIMIT));
+        setRecentPreviewHasMore(Boolean(reviewsData.nextCursor));
+        setPopularReviewPreviews(Array.isArray(popularReviewsData.reviews) ? popularReviewsData.reviews : []);
+        setNextReviewCursor(reviewsData.nextCursor || null);
         setActivityItems(Array.isArray(activityData) ? activityData : []);
         setNetworkItems(Array.isArray(networkData) ? networkData : []);
         setBoards(Array.isArray(boardsData) ? boardsData : []);
@@ -335,6 +357,7 @@ export function Account() {
 
     return () => {
       isCurrent = false;
+      controller.abort();
     };
   }, [getToken, isPublicProfile, isSignedIn, publicProfileImageUrl, publicProfileUsername, publicUserId]);
 
@@ -359,16 +382,6 @@ export function Account() {
     return (total / reviews.length).toFixed(1);
   }, [reviews]);
 
-  const sortedReviews = useMemo(() => (
-    [...reviews].sort((first, second) => new Date(second.date) - new Date(first.date))
-  ), [reviews]);
-  const popularReviews = useMemo(() => (
-    [...reviews].sort((first, second) => (
-      (Number(second.likeCount) || 0) - (Number(first.likeCount) || 0)
-      || (Number(second.rating) || 0) - (Number(first.rating) || 0)
-      || new Date(second.date) - new Date(first.date)
-    ))
-  ), [reviews]);
   const sortedSavedAlbums = useMemo(() => (
     [...savedAlbums].sort((first, second) => new Date(second.savedAt) - new Date(first.savedAt))
   ), [savedAlbums]);
@@ -376,80 +389,96 @@ export function Account() {
     [...boards].sort((first, second) => Number(second.isDefault) - Number(first.isDefault)
       || new Date(second.updatedAt || 0) - new Date(first.updatedAt || 0))
   ), [boards]);
-  const latestReviews = useMemo(() => sortedReviews.slice(0, REVIEW_PREVIEW_LIMIT), [sortedReviews]);
-  const previewPopularReviews = useMemo(() => (
-    popularReviews.slice(0, REVIEW_PREVIEW_LIMIT)
-  ), [popularReviews]);
+  const latestReviews = recentReviewPreviews;
+  const previewPopularReviews = popularReviewPreviews;
   const latestSidebarActivity = useMemo(() => activityItems.slice(0, 4), [activityItems]);
   const favoriteAlbums = profile.favoriteAlbums;
   const profileUserId = profile.userId || publicUserId || user?.id || "";
   const moreReviewsPath = profileUserId
     ? `/profile/${encodeURIComponent(profileUserId)}/reviews`
     : "/viewreviews";
+  const reviewListEndpoint = isPublicProfile && profileUserId
+    ? `${API_BASE_URL}/reviews/review/user/${encodeURIComponent(profileUserId)}`
+    : `${API_BASE_URL}/reviews/review/user/`;
   const socialPath = isPublicProfile && profileUserId
     ? `/profile/${encodeURIComponent(profileUserId)}/network`
     : "/account/network";
 
-  async function removeSavedAlbum(spotifyId) {
-    const token = await getToken();
-    const response = await fetch(
-      `${API_BASE_URL}/boards/default/albums/${spotifyId}`,
-      {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
+  async function requestReviewPage(sort, cursor = null) {
+    const token = isSignedIn ? await getToken() : null;
+    const params = new URLSearchParams({ sort });
+    if (cursor) params.set("cursor", cursor);
+    const response = await fetch(`${reviewListEndpoint}?${params.toString()}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!response.ok) throw new Error(await getApiErrorMessage(response, "Could not load reviews."));
+    return response.json();
+  }
 
-    if (!response.ok) {
-      console.error("Failed to remove album from saved albums");
-      return;
+  async function changeReviewSort(nextSort) {
+    if (nextSort === reviewSort || isLoadingMoreReviews) return;
+    setReviewSort(nextSort);
+    setIsLoadingMoreReviews(true);
+    try {
+      const data = await requestReviewPage(nextSort);
+      setReviews(Array.isArray(data.reviews) ? data.reviews : []);
+      setNextReviewCursor(data.nextCursor || null);
+    } catch (reviewError) {
+      setError(reviewError.message || "Could not load reviews.");
+    } finally {
+      setIsLoadingMoreReviews(false);
     }
+  }
 
-    setSavedAlbums((currentAlbums) => (
-      currentAlbums.filter((album) => album.spotifyId !== spotifyId)
-    ));
+  async function loadMoreReviews() {
+    if (!nextReviewCursor || isLoadingMoreReviews) return;
+    setIsLoadingMoreReviews(true);
+    try {
+      const data = await requestReviewPage(reviewSort, nextReviewCursor);
+      setReviews((current) => {
+        const ids = new Set(current.map((review) => review.reviewId));
+        return [...current, ...(Array.isArray(data.reviews) ? data.reviews.filter((review) => !ids.has(review.reviewId)) : [])];
+      });
+      setNextReviewCursor(data.nextCursor || null);
+    } catch (reviewError) {
+      setError(reviewError.message || "Could not load more reviews.");
+    } finally {
+      setIsLoadingMoreReviews(false);
+    }
   }
 
   async function removeReview(reviewId) {
-    const token = await getToken();
-    const response = await fetch(
-      `${API_BASE_URL}/reviews/review/user/${reviewId}`,
-      {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
-
-    if (!response.ok) {
-      const message = await getApiErrorMessage(response, "Failed to delete review");
-      console.error("Failed to delete review");
-      setError(message);
-      return;
+    if (deletingReviewId) return false;
+    setDeletingReviewId(reviewId);
+    setDeleteErrors((current) => ({ ...current, [reviewId]: "" }));
+    try {
+      const token = await getToken();
+      const response = await fetch(`${API_BASE_URL}/reviews/review/user/${reviewId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error(await getApiErrorMessage(response, "Failed to delete review"));
+      const withoutReview = (currentReviews) => currentReviews.filter((review) => review.reviewId !== reviewId);
+      setReviews(withoutReview);
+      setRecentReviewPreviews(withoutReview);
+      setPopularReviewPreviews(withoutReview);
+      return true;
+    } catch (reviewError) {
+      setDeleteErrors((current) => ({ ...current, [reviewId]: reviewError.message || "Could not delete that review." }));
+      return false;
+    } finally {
+      setDeletingReviewId("");
     }
-
-    setReviews((currentReviews) => (
-      currentReviews.filter((review) => review._id !== reviewId)
-    ));
   }
 
   function updateReviewLikeState(reviewId, nextState) {
-    setReviews((currentReviews) => (
-      currentReviews.map((review) => (
-        review._id === reviewId ? { ...review, ...nextState } : review
-      ))
-    ));
+    const update = (currentReviews) => currentReviews.map((review) => review.reviewId === reviewId ? { ...review, ...nextState } : review);
+    setReviews(update);
+    setRecentReviewPreviews(update);
+    setPopularReviewPreviews(update);
     setActivityItems((currentItems) => (
       currentItems.map((activity) => (
-        activity.type === "review" && activity.id === reviewId ? { ...activity, ...nextState } : activity
+        activity.type === "review" && activity.reviewId === reviewId ? { ...activity, ...nextState } : activity
       ))
     ));
     setNetworkItems((currentItems) => (
       currentItems.map((activity) => (
-        activity.type === "review" && activity.id === reviewId ? { ...activity, ...nextState } : activity
+        activity.type === "review" && activity.reviewId === reviewId ? { ...activity, ...nextState } : activity
       ))
     ));
   }
@@ -460,7 +489,7 @@ export function Account() {
       return;
     }
 
-    const reviewId = review._id || review.id;
+    const reviewId = review.reviewId;
 
     if (!reviewId) {
       return;
@@ -603,10 +632,10 @@ export function Account() {
   ];
 
   function renderOverview() {
-    const pinnedBoardPath = profile.pinnedBoard?._id
+    const pinnedBoardPath = profile.pinnedBoard?.boardId
       ? isPublicProfile
-        ? `/profile/${encodeURIComponent(profileUserId)}/boards/${profile.pinnedBoard._id}`
-        : `/boards/${profile.pinnedBoard._id}`
+        ? `/profile/${encodeURIComponent(profileUserId)}/boards/${profile.pinnedBoard.boardId}`
+        : `/boards/${profile.pinnedBoard.boardId}`
       : "";
 
     return (
@@ -617,7 +646,7 @@ export function Account() {
           </div>
           <div className="profile-pin-grid">
             {profile.listeningNextAlbum ? (
-              <Link className="profile-pin-card profile-listening-next-card" to={`/album/${profile.listeningNextAlbum.spotifyId}`}>
+              <Link className="profile-pin-card profile-listening-next-card" to={`/album/${profile.listeningNextAlbum.albumId}`}>
                 <AlbumCover src={profile.listeningNextAlbum.cover} title={profile.listeningNextAlbum.title} />
                 <div>
                   <span>Listening Next</span>
@@ -634,7 +663,7 @@ export function Account() {
             )}
 
             {profile.pinnedReview ? (
-              <Link className="profile-pin-card" to={`/album/${profile.pinnedReview.spotifyId}`}>
+              <Link className="profile-pin-card" to={`/album/${profile.pinnedReview.albumId}`}>
                 <AlbumCover src={profile.pinnedReview.cover} title={profile.pinnedReview.title} />
                 <div>
                   <span>Pinned Review</span>
@@ -686,8 +715,8 @@ export function Account() {
               {favoriteAlbums.map((album) => (
                 <Link
                   className="profile-favorite-card"
-                  key={album.spotifyId}
-                  to={`/album/${album.spotifyId}`}
+                  key={album.albumId}
+                  to={`/album/${album.albumId}`}
                 >
                   <AlbumCover src={album.cover} title={album.title} />
                   <h3>{album.title || "Untitled album"}</h3>
@@ -701,7 +730,7 @@ export function Account() {
         <section className="profile-panel">
           <div className="profile-section-header">
             <h2>Recent Reviews</h2>
-            {reviews.length > latestReviews.length && (
+            {recentPreviewHasMore && (
               <Link
                 className="profile-more-link"
                 to={moreReviewsPath}
@@ -723,7 +752,7 @@ export function Account() {
             <div className="profile-review-list">
               {latestReviews.map((review) => (
                 <ProfileReviewCard
-                  key={review._id}
+                  key={review.reviewId}
                   review={review}
                   likeMessage={likeMessage}
                   onToggleLike={toggleReviewLike}
@@ -747,7 +776,7 @@ export function Account() {
             <div className="profile-review-list">
               {previewPopularReviews.map((review) => (
                 <ProfileReviewCard
-                  key={review._id}
+                  key={review.reviewId}
                   review={review}
                   likeMessage={likeMessage}
                   onToggleLike={toggleReviewLike}
@@ -800,30 +829,21 @@ export function Account() {
         {savedViewMode === "grid" ? (
           <div className="profile-album-grid">
             {sortedSavedAlbums.map((album) => (
-              <article className="profile-album-card" key={album.spotifyId}>
-                <Link to={`/album/${album.spotifyId}`} className="profile-album-card-link">
+              <article className="profile-album-card" key={album.albumId}>
+                <Link to={`/album/${album.albumId}`} className="profile-album-card-link">
                   <AlbumCover src={album.cover} title={album.title} />
                   <h3>{album.title || "Untitled album"}</h3>
                   <p>{getArtistName(album)}</p>
                   <span>Saved {formatMonthYear(album.savedAt)}</span>
                 </Link>
-                {canManageProfile && (
-                  <button
-                    className="profile-secondary-button"
-                    type="button"
-                    onClick={() => removeSavedAlbum(album.spotifyId)}
-                  >
-                    Remove
-                  </button>
-                )}
               </article>
             ))}
           </div>
         ) : (
           <div className="profile-saved-list">
             {sortedSavedAlbums.map((album) => (
-              <article className="profile-saved-row" key={album.spotifyId}>
-                <Link to={`/album/${album.spotifyId}`} className="profile-saved-album">
+              <article className="profile-saved-row" key={album.albumId}>
+                <Link to={`/album/${album.albumId}`} className="profile-saved-album">
                   <AlbumCover src={album.cover} title={album.title} />
                   <div>
                     <h3>{album.title || "Untitled album"}</h3>
@@ -834,15 +854,6 @@ export function Account() {
                   <span>Saved</span>
                   <strong>{formatMonthYear(album.savedAt)}</strong>
                 </div>
-                {canManageProfile && (
-                  <button
-                    className="profile-secondary-button"
-                    type="button"
-                    onClick={() => removeSavedAlbum(album.spotifyId)}
-                  >
-                    Remove
-                  </button>
-                )}
               </article>
             ))}
           </div>
@@ -929,7 +940,7 @@ export function Account() {
                       {actorName}
                     </Link>
                     {` ${actionText} `}
-                    <Link to={`/album/${album.spotifyId}`}>
+                    <Link to={`/album/${album.albumId}`}>
                       {album.title || "Untitled album"}
                     </Link>
                   </h3>
@@ -938,7 +949,7 @@ export function Account() {
                   <p>Reviewed by {reviewAuthorName}</p>
                 )}
                 {activity.type !== "follow" && activity.type !== "liked_review" && (
-                  <p>{album.artist || "Artist unknown"}</p>
+                  <p>{album.artistDisplayName || "Artist unknown"}</p>
                 )}
                 {activity.reviewText && <p className="profile-review-copy">{activity.reviewText}</p>}
                 {activity.type === "review" && (
@@ -1010,11 +1021,11 @@ export function Account() {
           <div className="boards-grid profile-boards-grid">
             {sortedBoards.map((board) => {
               const boardPath = isPublicProfile
-                ? `/profile/${encodeURIComponent(profileUserId)}/boards/${board._id}`
-                : `/boards/${board._id}`;
+                ? `/profile/${encodeURIComponent(profileUserId)}/boards/${board.boardId}`
+                : `/boards/${board.boardId}`;
 
               return (
-                <Link className="board-card" key={board._id} to={boardPath}>
+                <Link className="board-card" key={board.boardId} to={boardPath}>
                   <BoardPreview albums={board.previewAlbums || []} />
                   <h2>{board.title}</h2>
                   <p>
@@ -1047,25 +1058,24 @@ export function Account() {
   }
 
   function renderReviews() {
-    if (sortedReviews.length === 0) {
+    if (reviews.length === 0) {
       return (
         <ProfileEmptyState
           title="No reviews yet"
           body={canManageProfile
             ? "Your album reviews will live here once you write them."
-            : "Reviews are not available on public profiles yet."}
+            : "Reviews are not available on this profile yet."}
         />
       );
     }
 
-    const shouldShowMoreReviews = reviews.length > REVIEW_PREVIEW_LIMIT;
     const renderReviewCard = (review) => (
-      <article className="profile-review-card" key={review._id}>
-        <Link className="profile-review-album" to={`/album/${review.spotifyId}`}>
+      <article className="profile-review-card" key={review.reviewId}>
+        <Link className="profile-review-album" to={`/album/${review.albumId}`}>
           <AlbumCover src={review.cover} title={review.title} />
           <div>
             <h3>{review.title || "Untitled album"}</h3>
-            <p>{review.artist || "Artist unknown"}</p>
+            <p>{review.album?.artistDisplayName || "Artist unknown"}</p>
           </div>
         </Link>
         <div className="profile-review-meta">
@@ -1086,11 +1096,13 @@ export function Account() {
           <button
             className="profile-secondary-button"
             type="button"
-            onClick={() => removeReview(review._id)}
+            onClick={() => removeReview(review.reviewId)}
+            disabled={deletingReviewId === review.reviewId}
           >
-            Delete Review
+            {deletingReviewId === review.reviewId ? "Deleting..." : "Delete Review"}
           </button>
         )}
+        {deleteErrors[review.reviewId] && <p className="review-edit-error" role="alert">{deleteErrors[review.reviewId]}</p>}
       </article>
     );
 
@@ -1098,29 +1110,17 @@ export function Account() {
       <div className="profile-review-tab">
         <section className="profile-panel">
           <div className="profile-section-header">
-            <h2>Popular Reviews</h2>
-            {shouldShowMoreReviews && (
-              <Link
-                className="profile-more-link"
-                to={moreReviewsPath}
-                state={{ profileUser: publicProfileState }}
-              >
-                More
-              </Link>
-            )}
+            <h2>{reviewSort === "popular" ? "Most Liked Reviews" : "Latest Reviews"}</h2>
+            <select value={reviewSort} onChange={(event) => changeReviewSort(event.target.value)} disabled={isLoadingMoreReviews}>
+              <option value="recent">Latest first</option>
+              <option value="popular">Most liked</option>
+            </select>
           </div>
           <div className="profile-review-list">
-            {previewPopularReviews.map(renderReviewCard)}
+            {reviews.map(renderReviewCard)}
           </div>
-        </section>
-
-        <section className="profile-panel">
-          <div className="profile-section-header">
-            <h2>Latest Reviews</h2>
-          </div>
-          <div className="profile-review-list">
-            {latestReviews.map(renderReviewCard)}
-          </div>
+          {nextReviewCursor && <button className="profile-more-link" type="button" onClick={loadMoreReviews} disabled={isLoadingMoreReviews}>{isLoadingMoreReviews ? "Loading..." : "Load more reviews"}</button>}
+          {!nextReviewCursor && <p className="edit-profile-current-value">You’re all caught up.</p>}
         </section>
       </div>
     );
@@ -1143,11 +1143,11 @@ export function Account() {
       return <AsyncState error={error} errorTitle="Profile unavailable" />;
     }
 
-    if (isPrivateProfile) {
+    if (isPrivateProfile && !["overview", "reviews"].includes(activeTab)) {
       return (
         <ProfileEmptyState
           title={`${displayName} account is private`}
-          body="This listener is keeping their albums, reviews, activity, and boards private."
+          body="This listener is keeping their saved albums, favorites, activity, boards, and network private."
         />
       );
     }
@@ -1251,6 +1251,10 @@ export function Account() {
               <div className="profile-hero-links" aria-label="Profile links">
                 {isPrivateProfile ? (
                   <>
+                    <button type="button" onClick={() => setActiveTab("reviews")}>
+                      <span>Reviews</span>
+                      <strong>{reviews.length}</strong>
+                    </button>
                     <div className="profile-hero-stat">
                       <span>Followers</span>
                       <strong>{profile.followerCount}</strong>
@@ -1290,6 +1294,7 @@ export function Account() {
               {canManageProfile && (
                 <div className="profile-hero-actions">
                   <Link className="profile-edit-link" to="/account/edit">Edit Profile</Link>
+                  <Link className="profile-edit-link" to="/moderation/album-suggestions">Moderation</Link>
                 </div>
               )}
             </header>
@@ -1369,7 +1374,7 @@ export function Account() {
                         const actionLabel = actionLabelByType[activity.type] || "Activity";
                         const activityPath = activity.type === "follow" && targetUser.userId
                           ? `/profile/${encodeURIComponent(targetUser.userId)}`
-                          : `/album/${album.spotifyId}`;
+                          : `/album/${album.albumId}`;
 
                         return (
                           <Link

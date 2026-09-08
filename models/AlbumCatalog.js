@@ -1,218 +1,83 @@
 const mongoose = require("mongoose");
 
-const artistReferenceSchema = new mongoose.Schema(
+const artistCreditSchema = new mongoose.Schema(
   {
-    spotifyId: {
-      type: String,
-      default: "",
-    },
-    name: {
-      type: String,
-      required: true,
-    },
-    spotifyUrl: {
-      type: String,
-      default: "",
-    },
+    name: { type: String, required: true, trim: true },
+    role: { type: String, default: "main", trim: true },
   },
   { _id: false },
 );
 
-const genreRankingSchema = new mongoose.Schema(
+const trackSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-    },
-    score: {
-      type: Number,
-      required: true,
-      min: 1,
-    },
+    trackId: { type: String, required: true, trim: true },
+    discNumber: { type: Number, default: 1, min: 1 },
+    trackNumber: { type: Number, default: 1, min: 1 },
+    title: { type: String, required: true, trim: true },
+    durationMs: { type: Number, default: 0, min: 0 },
+    artistDisplayName: { type: String, default: "", trim: true },
   },
   { _id: false },
 );
 
-// Stores Spotify album data once so routes can read from Mongo before calling Spotify again.
+const externalReferenceSchema = new mongoose.Schema(
+  {
+    provider: { type: String, required: true, trim: true, lowercase: true },
+    entityType: { type: String, required: true, trim: true, lowercase: true },
+    externalId: { type: String, required: true, trim: true },
+    url: { type: String, default: "", trim: true },
+  },
+  { _id: false },
+);
+
+const catalogRevisionSchema = {
+  type: Number,
+  required: true,
+  min: 1,
+  default: 1,
+};
+
 const albumCatalogSchema = new mongoose.Schema(
   {
-    spotifyId: {
+    // Public, provider-neutral identity. Mongo's _id remains an internal relation key.
+    albumId: {
       type: String,
       required: true,
       unique: true,
+      immutable: true,
+      lowercase: true,
+      match: /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     },
-    title: {
+    title: { type: String, required: true, trim: true },
+    artistDisplayName: { type: String, required: true, trim: true },
+    artistCredits: { type: [artistCreditSchema], default: [] },
+    releaseType: {
       type: String,
-      required: true,
-    },
-    artist: {
-      type: String,
-      required: true,
-    },
-    artists: {
-      type: [String],
-      default: [],
-    },
-    artistRefs: {
-      type: [artistReferenceSchema],
-      default: [],
-    },
-    year: {
-      type: String,
-      default: "unknown",
-    },
-    releaseDate: {
-      type: String,
-      default: "",
-    },
-    genres: {
-      type: [String],
-      default: [],
-    },
-    genreRankings: {
-      type: [genreRankingSchema],
-      default: [],
-    },
-    genreSource: {
-      type: String,
-      default: "",
-    },
-    genreEnrichmentStatus: {
-      type: String,
-      enum: ["pending", "resolved", "empty", "failed"],
-      default: "pending",
-    },
-    genresSyncedAt: {
-      type: Date,
-      default: null,
-    },
-    lastGenreEnrichmentAttemptAt: {
-      type: Date,
-      default: null,
-    },
-    lastGenreEnrichmentFailureAt: {
-      type: Date,
-      default: null,
-    },
-    lastGenreEnrichmentError: {
-      type: String,
-      default: "",
-    },
-    musicBrainzReleaseIds: {
-      type: [String],
-      default: [],
-    },
-    musicBrainzReleaseGroupId: {
-      type: String,
-      default: undefined,
-    },
-    musicBrainzReleaseGroupCandidates: {
-      type: [String],
-      default: [],
-    },
-    musicBrainzMappingStatus: {
-      type: String,
-      enum: ["pending", "resolved", "not_found", "ambiguous", "failed"],
-      default: "pending",
-    },
-    musicBrainzMappingSource: {
-      type: String,
-      default: "",
-    },
-    musicBrainzMappedAt: {
-      type: Date,
-      default: null,
-    },
-    lastMusicBrainzMappingAttemptAt: {
-      type: Date,
-      default: null,
-    },
-    lastMusicBrainzMappingFailureAt: {
-      type: Date,
-      default: null,
-    },
-    lastMusicBrainzMappingError: {
-      type: String,
-      default: "",
-    },
-    imgs: {
-      type: [mongoose.Schema.Types.Mixed],
-      default: [],
-    },
-    cover: {
-      type: String,
-      default: null,
-    },
-    totalTracks: {
-      type: Number,
-      default: 0,
-    },
-    detailMetadataVersion: {
-      type: Number,
-      default: 0,
-    },
-    tracks: {
-      type: [
-        {
-          spotifyId: {
-            type: String,
-            default: "",
-          },
-          trackNumber: {
-            type: Number,
-            default: 0,
-          },
-          discNumber: {
-            type: Number,
-            default: 1,
-          },
-          title: {
-            type: String,
-            default: "",
-          },
-          durationMs: {
-            type: Number,
-            default: 0,
-          },
-          spotifyUrl: {
-            type: String,
-            default: "",
-          },
-          artistRefs: {
-            type: [artistReferenceSchema],
-            default: [],
-          },
-        },
-      ],
-      default: [],
-    },
-    label: {
-      type: String,
-      default: "",
-    },
-    albumType: {
-      type: String,
+      enum: ["album", "ep", "single", "mixtape", "soundtrack", "compilation", "live", "remix", "other"],
       default: "album",
     },
-    spotifyUrl: {
-      type: String,
-      default: "",
-    },
+    releaseDate: { type: String, default: "", trim: true },
+    releaseDatePrecision: { type: String, enum: ["year", "month", "day", ""], default: "" },
+    releaseYear: { type: Number, min: 0, max: 9999, default: null },
+    tracks: { type: [trackSchema], default: [] },
+    label: { type: String, default: "", trim: true },
+    cover: { type: String, default: "", trim: true },
+    externalReferences: { type: [externalReferenceSchema], default: [] },
+    fieldProvenance: { type: mongoose.Schema.Types.Mixed, default: {} },
+    catalogSource: { type: String, enum: ["community", "import", "manual"], default: "community" },
+    // Internal optimistic-concurrency token. It is deliberately omitted from
+    // public album representations and advances on every maintained catalog
+    // mutation.
+    catalogRevision: catalogRevisionSchema,
   },
   { timestamps: true },
 );
 
-albumCatalogSchema.index({ title: "text", artist: "text", artists: "text" });
-albumCatalogSchema.index({ artist: 1, title: 1 });
-albumCatalogSchema.index({ "artistRefs.spotifyId": 1 });
-albumCatalogSchema.index({ "tracks.artistRefs.spotifyId": 1 });
-albumCatalogSchema.index({ musicBrainzReleaseGroupId: 1 }, { sparse: true });
-albumCatalogSchema.index({
-  musicBrainzMappingStatus: 1,
-  genreEnrichmentStatus: 1,
-  genresSyncedAt: 1,
-});
+albumCatalogSchema.index({ title: "text", artistDisplayName: "text", "artistCredits.name": "text" });
+albumCatalogSchema.index({ artistDisplayName: 1, title: 1 });
+albumCatalogSchema.index(
+  { "externalReferences.provider": 1, "externalReferences.entityType": 1, "externalReferences.externalId": 1 },
+  { unique: true, sparse: true },
+);
 
-const AlbumCatalog = mongoose.model("AlbumCatalog", albumCatalogSchema);
-
-module.exports = AlbumCatalog;
+module.exports = mongoose.model("AlbumCatalog", albumCatalogSchema);

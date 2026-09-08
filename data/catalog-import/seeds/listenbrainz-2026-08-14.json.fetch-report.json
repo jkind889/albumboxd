@@ -1,0 +1,950 @@
+{
+  "schemaVersion": "1.0.0",
+  "generatedAt": "2026-08-15T04:17:14.416Z",
+  "status": "complete",
+  "targetAlbumCount": 500,
+  "selectedAlbumCount": 500,
+  "ranges": [
+    {
+      "range": "all_time",
+      "quota": 300,
+      "candidateLimit": 1000,
+      "from": "2002-01-01",
+      "to": "2026-07-27",
+      "fetchedAt": "2026-08-15T04:17:13.802Z",
+      "candidatesFetched": 1000,
+      "uniqueValidCandidates": 987,
+      "selected": 300
+    },
+    {
+      "range": "year",
+      "quota": 150,
+      "candidateLimit": 1000,
+      "from": "2025-01-01",
+      "to": "2026-01-01",
+      "fetchedAt": "2026-08-15T04:17:14.096Z",
+      "candidatesFetched": 1000,
+      "uniqueValidCandidates": 947,
+      "selected": 150
+    },
+    {
+      "range": "month",
+      "quota": 50,
+      "candidateLimit": 1000,
+      "from": "2026-06-01",
+      "to": "2026-07-01",
+      "fetchedAt": "2026-08-15T04:17:14.252Z",
+      "candidatesFetched": 1000,
+      "uniqueValidCandidates": 932,
+      "selected": 50
+    }
+  ],
+  "candidates": {
+    "rowsFetched": 3000,
+    "validRows": 2899,
+    "uniqueCandidates": 1444,
+    "duplicateRows": 1455,
+    "invalidRows": 101,
+    "hydrated": 548,
+    "cacheHits": 548,
+    "cacheMisses": 0,
+    "networkRequests": 0
+  },
+  "rejections": [
+    {
+      "range": "all_time",
+      "rank": 259,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "all_time",
+      "rank": 477,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "all_time",
+      "rank": 564,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "all_time",
+      "rank": 570,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "all_time",
+      "rank": 744,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "all_time",
+      "rank": 771,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "all_time",
+      "rank": 857,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "all_time",
+      "rank": 877,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "all_time",
+      "rank": 946,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "all_time",
+      "rank": 971,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 12,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 47,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 68,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 81,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 88,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 94,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 141,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 146,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 148,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 162,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 206,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 238,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 254,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 256,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 292,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 312,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 315,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 318,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 323,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 377,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 408,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 424,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 472,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 490,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 498,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 543,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 560,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 561,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 583,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 607,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 644,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 661,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 719,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 754,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 849,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 872,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 892,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 898,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "year",
+      "rank": 969,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 14,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 22,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 39,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 44,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 51,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 83,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 90,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 128,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 144,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 147,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 150,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 176,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 182,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 185,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 202,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 216,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 220,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 230,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 270,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 308,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 326,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 344,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 370,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 378,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 396,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 398,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 405,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 409,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 433,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 435,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 455,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 463,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 473,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 476,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 487,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 524,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 536,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 563,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 570,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 573,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 638,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 693,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 694,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 725,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 736,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 787,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 810,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 839,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 844,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 911,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 972,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "month",
+      "rank": 974,
+      "code": "invalid_release_group_mbid",
+      "message": "ListenBrainz candidate has no valid MusicBrainz release-group MBID"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "bca9280e-28b4-327f-8fe0-fd918579e486",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Radiohead already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "bbce0087-d386-4246-a51d-dbcdfdbe8fb2",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Radiohead already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "ee28c781-09a9-419b-9db5-f3ddf8fe8adb",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "026c4502-ae2b-4bec-9399-5218ec3c6936",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "205347cd-aae4-4121-b6ba-b57474b3c580",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "8a01217e-6947-3927-a39b-6691104694f1",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Kanye West already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "5c14fd50-a2f1-3672-9537-b0dad91bea2f",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Radiohead already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "fe9200d2-6a79-4b3f-8f64-e54865342823",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "7f4792fe-b563-4554-849a-95a89be71f84",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Kanye West already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "c1df4acf-cd59-4b44-be2c-0b2df5de7c96",
+      "code": "primary_artist_cap",
+      "message": "Primary artist 방탄소년단 already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "dca03435-8adb-30a5-ba82-5a162267ff38",
+      "code": "primary_artist_cap",
+      "message": "Primary artist The Beatles already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "65404106-2976-4f98-a0e2-4e76923ea06d",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Linkin Park already has 5 selected releases"
+    },
+    {
+      "range": "all_time",
+      "releaseGroupMbid": "a73cecde-0923-40ad-aad1-e8c24ba6c3d2",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Taylor Swift already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "42fa0b58-afe2-48b9-91f8-2b22c0561d69",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "7a3f8a64-30f8-4914-b6eb-11f760c5cc17",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "c7800324-d78e-445b-a042-0556b6f008da",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "0150fd41-0851-4f95-9430-97cfe8d2e6c5",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "3280bba3-5dd9-4262-94c5-d2565b4bbeb5",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "ea958ad6-4519-44f8-8c7c-18b3f16218f4",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "3a91498a-4e50-4a77-93e2-a7b599b9739e",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "a3ed68fc-eb06-4c18-a61f-beb9f955337e",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "9ae7e7e9-ac40-4874-bd43-d77a9bb9b617",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Taylor Swift already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "e1c201da-caa7-49df-82a9-bad7056b4041",
+      "code": "primary_artist_cap",
+      "message": "Primary artist j‐hope already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "8c72972f-e54e-47b0-bcb0-275dbe3ec43a",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "1bd22a9f-54d2-46bf-9d3a-3c7056299a90",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "71c3eed6-466c-4aef-ad12-65a36d19467a",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Taylor Swift already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "5533d926-0aa1-49ee-963a-f54c472c8d8c",
+      "code": "primary_artist_cap",
+      "message": "Primary artist V already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "998c8031-d30a-4816-bd12-a944ba24b138",
+      "code": "primary_artist_cap",
+      "message": "Primary artist j‐hope already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "7b70f452-a540-4fc8-933e-3b1d6800e290",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "f26a2441-41a4-401f-940b-50de9261f8b3",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "7671a770-8180-4d8a-8278-0573f0ef83a6",
+      "code": "primary_artist_cap",
+      "message": "Primary artist V already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "172edfc4-d7cb-4dd2-b106-56082b34d82d",
+      "code": "primary_artist_cap",
+      "message": "Primary artist V already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "75ec671d-bd15-4bfa-baeb-f6054d2202db",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "1c4770b3-b7a3-4d44-a7a9-8e2dbb74b85a",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Taylor Swift already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "4b423cb1-6da1-476c-a335-6d5f0777af8a",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "28a34ea0-4198-4f0e-be85-34a130814db6",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "67727253-f1c0-4243-9270-f9f1401c3b8c",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Taylor Swift already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "e86d6219-f5a2-4edd-bf2b-3f9eab190ae0",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Taylor Swift already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "f5f62004-9e92-48b3-a463-7bdb3dd156a2",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Jimin already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "b07a485f-cde7-4160-8b69-72ff3bf277ce",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "a91487bb-c520-44d5-9276-6f4d351e2ace",
+      "code": "primary_artist_cap",
+      "message": "Primary artist JIN already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "f9b61cfd-aa04-4042-ae25-02834726aa07",
+      "code": "primary_artist_cap",
+      "message": "Primary artist j‐hope already has 5 selected releases"
+    },
+    {
+      "range": "year",
+      "releaseGroupMbid": "79c1a4d5-d24f-429d-8d89-2d1005f4fa1c",
+      "code": "primary_artist_cap",
+      "message": "Primary artist JIN already has 5 selected releases"
+    },
+    {
+      "range": "month",
+      "releaseGroupMbid": "5c80e093-b77a-4579-8ce1-abfd5eb4beea",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "month",
+      "releaseGroupMbid": "9034c5d7-5fd8-4b64-b734-0dbd8f293e94",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "month",
+      "releaseGroupMbid": "e1c076a9-4bda-4dac-9c09-7342af0be7ab",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    },
+    {
+      "range": "month",
+      "releaseGroupMbid": "e306d9e9-3fe9-4631-a6fb-6e3b716e7b05",
+      "code": "primary_artist_cap",
+      "message": "Primary artist Jimin already has 5 selected releases"
+    },
+    {
+      "range": "month",
+      "releaseGroupMbid": "5e0d1921-8361-4b7b-8d91-2a6a37e56129",
+      "code": "primary_artist_cap",
+      "message": "Primary artist BTS already has 5 selected releases"
+    }
+  ],
+  "datasetId": "a1171d91-0a42-442a-852e-4b09828e086d"
+}

@@ -80,6 +80,19 @@ function Navbar()
                                 <li className="nav-item">
                                     <Link to="/boards" className="nav-link active">Boards</Link>
                                 </li>
+                                <li className="nav-item">
+                                    <Link to="/community/approved" className={`nav-link${location.pathname === "/community/approved" ? " nav-link-current" : ""}`}>Community</Link>
+                                </li>
+                                <Show when="signed-in">
+                                    <li className="nav-item">
+                                        <Link
+                                            to="/suggestions"
+                                            className={`nav-link${location.pathname.startsWith("/suggestions") || location.pathname.startsWith("/moderation/album-suggestions") ? " nav-link-current" : ""}`}
+                                        >
+                                            Suggestions
+                                        </Link>
+                                    </li>
+                                </Show>
                             </ul>
                             <div className="site-navbar-search">
                                 <SearchBar />

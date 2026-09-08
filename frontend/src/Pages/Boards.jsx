@@ -13,7 +13,7 @@ function BoardPreview({ albums }) {
         const album = previewAlbums[index];
 
         return album?.cover ? (
-          <img key={album.spotifyId || index} src={album.cover} alt="" />
+          <img key={album.albumId || index} src={album.cover} alt="" />
         ) : (
           <span key={index} />
         );
@@ -157,7 +157,7 @@ export function Boards() {
       >
         <div className="boards-grid">
           {sortedBoards.map((board) => (
-            <Link className="board-card" key={board._id} to={`/boards/${board._id}`}>
+            <Link className="board-card" key={board.boardId} to={`/boards/${board.boardId}`}>
               <BoardPreview albums={board.previewAlbums || []} />
               <h2>{board.title}</h2>
               <p>
