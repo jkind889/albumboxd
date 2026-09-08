@@ -35,11 +35,6 @@ app.get("/", (req,res) =>
     res.send("Hey")
 })
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.log(err));
-
 const authRoutes = require("./routes/auth");
 const albumRoutes = require("./routes/album");
 const searchRoutes = require("./routes/search");
@@ -62,9 +57,24 @@ app.use("/notifications", notificationRoutes)
 app.use("/suggestions", suggestionRoutes)
 app.use("/moderation/album-suggestions", moderationRoutes)
 
-const port = parsePort();
+async function startServer({
+  connect = mongoose.connect.bind(mongoose),
+  listen = app.listen.bind(app),
+  mongoUri = process.env.MONGO_URI,
+  port = parsePort(),
+} = {}) {
+  await connect(mongoUri);
+  console.log("MongoDB Connected");
+  return listen(port, () => {
+    console.log(`server running on port ${port}`);
+  });
+}
 
-app.listen(port, () =>
-{
-    console.log(`server running on port ${port}`)
-})
+if (require.main === module) {
+  startServer().catch((error) => {
+    console.error("MongoDB connection failed; server did not start", error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { app, startServer };

@@ -21,9 +21,10 @@ function getDatabaseStatus() {
 
 router.get("/", (req, res) => {
   const database = getDatabaseStatus();
+  const connected = database.status === "connected";
 
-  res.status(200).json({
-    status: database.status === "connected" ? "ok" : "degraded",
+  res.status(connected ? 200 : 503).json({
+    status: connected ? "ok" : "degraded",
     service: "rescened-api",
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
